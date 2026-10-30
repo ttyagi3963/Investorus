@@ -1,0 +1,10 @@
+{
+  "extends": "@clever/config/tsconfig/library.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "src",
+    "test"
+  ]
+}

@@ -1,0 +1,24 @@
+# Keep the build context small and the build deterministic (research R19).
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/next-env.d.ts
+packages/core/src/generated
+.git
+.gitignore
+.vscode
+.idea
+.claude
+.specify
+specs
+*.log
+*.md
+!README.md
+investor-platform.zip
+Dockerfile*
+.dockerignore
+.env
+.env.*

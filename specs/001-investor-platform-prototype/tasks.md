@@ -1,0 +1,599 @@
+---
+
+description: "Task list for the Investor Platform Prototype"
+---
+
+# Tasks: Investor Platform Prototype
+
+**Input**: Design documents from `specs/001-investor-platform-prototype/`
+
+**Prerequisites**: [plan.md](./plan.md), [spec.md](./spec.md), [research.md](./research.md),
+[data-model.md](./data-model.md), [contracts/](./contracts/), [quickstart.md](./quickstart.md)
+
+**Tests**: Included. The spec requires automated tests (FR-006, SC-006, SC-009, SC-014, SC-015),
+and the constitution requires test-first work (XVII.2) on two tiers (XV): `pnpm test` (unit,
+offline) and `pnpm test:integration` (Testcontainers PostgreSQL 17 + Redis 7). Within each
+phase, write the test tasks first and confirm they fail before implementing.
+
+**Organization**: Tasks are grouped by user story so each story can be built and checked on
+its own. Phase 9 covers the design-system requirements (FR-090 to FR-097), which apply to every
+story and so have no story label.
+
+## Format: `[ID] [P?] [Story] Description`
+
+- **[P]**: Can run in parallel (different files, no dependency on an unfinished task)
+- **[Story]**: The user story the task belongs to (US1–US6)
+- Paths are relative to the repository root
+
+## Conventions every task follows
+
+- **Vertical slices (R22)**: a repository slice is `packages/core/src/repositories/<entity>/`
+  holding `I<Entity>Repository.ts` (port, domain types only), `Prisma<Entity>RepositoryImpl.ts`
+  (the only file with Prisma queries), `<entity>.mapper.ts` (`to<Entity>()` /
+  `toPrisma<Entity>()`, the only place Prisma types appear), and `index.ts`. Each slice also
+  gets `packages/core/test/doubles/InMemory<Entity>Repository.ts`.
+- **Services** take `(actor, input: unknown)`, validate with the Zod schema from
+  `@clever/contracts`, check role and ownership, and throw `DomainError` subclasses (III, VI).
+  Every multi-write runs inside `uow.run(...)` together with its `OutboxEvent` and `AuditLog`
+  rows (XVIII.1).
+- **Audit (XII, VII)**: every status transition of a package, offer, deal, or buy box writes an
+  `AuditLog` entry (actor, action, entity, outcome) in the same uow, and a rejected business
+  action (deadline passed, illegal transition, expired offer) writes one with outcome `REJECTED`.
+  Services own this; tests assert it.
+- **Routers** are `create<Resource>Router(services)` factories: they take `req.params` /
+  `req.body`, call one service method, and send the status code from
+  [contracts/api.md](./contracts/api.md). They have no try/catch and no validation (II).
+- **Wiring**: a new port, `*Impl`, service, or router is exported from the right barrel
+  (`@clever/core` for ports and services, `@clever/core/adapters` for `*Impl`) and wired only in
+  that app's `src/container.ts`.
+- **Time**: all time-dependent code takes `IClock`; its tests use `FakeClock` and fake timers
+  (R18).
+- **UI**: screens are built from `@clever/ui` templates and semantic utilities only (FR-091,
+  FR-094); server state uses React Query keys `["entity", id]` with explicit invalidation (XIII).
+
+---
+
+## Phase 1: Setup (Shared Infrastructure)
+
+**Purpose**: Workspace, tooling, and empty app/package shells.
+
+- [X] T001 Create root workspace files: `package.json` (private; `packageManager: "pnpm@10"`; scripts `build`, `dev`, `test`, `test:integration`, `lint`, `typecheck` that call turbo), `pnpm-workspace.yaml` (`apps/*`, `packages/*`), `turbo.json` (tasks `build`, `test`, `test:integration`, `lint`, `typecheck`, each with `dependsOn: ["^build"]`), and `.gitignore` (no `.nvmrc`: the local Node version manager would demand Node 24 locally; `engines` requires >= 24 and the Dockerfile pins Node 24)
+- [X] T002 [P] Create shared TypeScript presets (strict, `noUncheckedIndexedAccess`, `verbatimModuleSyntax`) in packages/config/tsconfig/base.json, node.json, library.json, nextjs.json, plus packages/config/package.json
+- [X] T003 [P] Create Vitest presets: packages/config/vitest/unit.js (excludes `**/*.int.test.ts`; packages/config/vitest/no-network.js makes unstubbed `fetch` throw; neither preset enables fake timers, which XV 7.0.0 prohibits globally) and packages/config/vitest/integration.js (only `**/*.int.test.ts`, 120 s timeout, single fork)
+- [X] T004 [P] Create the boundary lint rules in packages/config/eslint/boundaries.js: in apps/web, ban `@prisma/client`, `@clever/core`, and `@clever/core/adapters`; ban imports between apps; allow `@clever/core/adapters` only in `**/src/container.ts`; allow `@prisma/client` only in `packages/core/src/**/*Impl.ts`, `packages/core/src/infra/**`, and `packages/core/prisma/**`, plus type-only imports in `packages/core/src/**/*.mapper.ts`; block deep imports past package `exports`
+- [X] T005 [P] Create the style lint rule in packages/config/eslint/no-raw-style-values.js, applied to apps/web and packages/ui: ban hex, `rgb()`, and `hsl()` literals; ban Tailwind arbitrary values (`-[`); ban default palette classes such as `bg-blue-500` and `text-gray-700` (SC-014). Export the composed flat config from packages/config/eslint/index.js
+- [X] T006 [P] Add root `.prettierrc`, `.prettierignore`, `.editorconfig`, and `eslint.config.js` (imports packages/config/eslint)
+- [X] T007 [P] Scaffold packages/contracts: package.json (`name: @clever/contracts`; `exports` for `.` and subpaths `./common`, `./auth`, `./listing-package`, `./investor`, `./buy-box`, `./match`, `./offer`, `./deal`, `./brand`, `./events`, `./ops`, `./config`, `./client`; dependency `zod@4` only), tsconfig.json, src/index.ts root barrel, and an empty `index.ts` in each subfolder
+- [X] T008 [P] Scaffold packages/core: package.json (`name: @clever/core`; `exports` `"."` → src/index.ts and `"./adapters"` → src/adapters.ts; dependencies prisma, @prisma/client, @prisma/adapter-pg, bullmq@5, ioredis, json-logic-js, jose, bcryptjs, pino, csv-parse, zod, @clever/contracts; devDependencies testcontainers, @testcontainers/postgresql, @testcontainers/redis), tsconfig.json, vitest.config.ts, vitest.integration.config.ts, and empty src/index.ts and src/adapters.ts (json-logic-js is removed again by T216 after the XIX 6.0.0 amendment)
+- [X] T009 [P] Scaffold packages/ui: package.json (`name: @clever/ui`; react@19, react-aria-components, tailwindcss@4; peer @clever/contracts types only), tsconfig.json, vitest.config.ts (jsdom), src/index.ts
+- [X] T010 [P] Scaffold apps/api: package.json (express@5, helmet, pino-http, @clever/core, @clever/contracts; dev: supertest, @types/express), tsconfig.json, vitest.config.ts, vitest.integration.config.ts
+- [X] T011 [P] Scaffold apps/worker: package.json (@clever/core, @clever/contracts, bullmq), tsconfig.json, vitest.config.ts
+- [X] T012 [P] Scaffold apps/sandbox: package.json (express@5, pg, pino-http; dev: supertest), tsconfig.json, vitest.config.ts
+- [X] T013 [P] Scaffold apps/web with Next.js 16 App Router: package.json (next@16, react@19, @tanstack/react-query@5, @clever/ui, @clever/contracts; dev: @testing-library/react, jsdom), next.config.ts (`output: "standalone"`, `transpilePackages: ["@clever/ui", "@clever/contracts"]`), postcss.config.mjs (Tailwind 4), tsconfig.json, vitest.config.ts
+- [X] T014 Create the committed `.env` at the repo root with working demo values and a header comment ("demo values only, not secrets; see README Prototype Shortcuts"): `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `PII_ENCRYPTION_KEY` (base64, 32 bytes, with key version `v1`), `ADDRESS_HASH_KEY`, `SANDBOX_URL` (internal), `PUBLIC_SANDBOX_URL` (`http://localhost:4100`), `SANDBOX_INTERNAL_TOKEN`, `STORAGE_SIGNING_KEY`, `CRM_PROVIDER=sandbox`, `MESSAGING_PROVIDER=sandbox`, `STORAGE_PROVIDER=sandbox`, `ERROR_REPORTER=log`, `API_URL`, `COOKIE_SECURE=true`, `DEFAULT_BRAND_ID=clever`
+- [X] T015 [P] Create `.dockerignore` excluding `node_modules`, `.next`, `dist`, `.turbo`, `.git`, `coverage`, and `specs`
+- [X] T216 Constitution 6.0.0 follow-up to T008: remove `json-logic-js` and `@types/json-logic-js` from packages/core/package.json, add `fast-check` to its devDependencies, run `pnpm install` to update pnpm-lock.yaml, and confirm `pnpm typecheck` still passes (XIX amended 2026-10-30)
+
+**Checkpoint**: `pnpm install`, `pnpm lint`, and `pnpm typecheck` succeed on the empty shells.
+
+> **Note (2026-10-30)**: the buy-box redesign (constitution XIX 6.0.0) rewrote T019, T021–T023,
+> T026, T031, T032, T034, T051–T055, T067, T096, T098, T099, T109–T111, T114, T116, T117, T121–T123,
+> T126, T127, T131, T138, T140, T178–T183, T185, T187, T188, T191, T194, T196, and T197, and added
+> T216–T225. New IDs sit next to the tasks they belong with, so they are out of numeric order.
+
+---
+
+## Phase 2: Foundational (Blocking Prerequisites)
+
+**Purpose**: Contracts, database, core infrastructure, the outbox and job engine, providers,
+the sandbox, and app skeletons that every story needs.
+
+**⚠️ CRITICAL**: No user story work can begin until this phase is complete.
+
+### Contracts (packages/contracts)
+
+- [ ] T016 [P] Create common schemas in packages/contracts/src/common/: `idSchema` (cuid), `usdSchema` (integer USD), `paginationQuerySchema` (`cursor?`, `limit` default 25, max 100), `pageSchema(item)` → `{ items, nextCursor }`, `errorResponseSchema` → `{ error, code, details? }`, with barrel index.ts
+- [ ] T017 [P] Create the domain error hierarchy in packages/contracts/src/common/errors.ts: `DomainError` (abstract, `readonly status`, `readonly code`), `ValidationError` (400, `details.fields[]` of `{ field, message }`), `ForbiddenError` (403), `NotFoundError` (404), `BusinessRuleError` (409), `ConflictError` (409, optional `details.allowedNext`); every class sets `this.name = new.target.name` (VII)
+- [ ] T018 [P] Write the state machine tests in packages/contracts/src/listing-package/status.test.ts, packages/contracts/src/offer/status.test.ts, packages/contracts/src/deal/status.test.ts, packages/contracts/src/ops/status.test.ts: every allowed transition in the data-model tables passes; every other pair fails; CLOSED and WITHDRAWN are final; `allowedNext()` returns the listed next states
+- [ ] T019 [P] Implement the status machines as `as const` arrays and transition maps with `canTransition(from, to)` and `allowedNext(from)`: `PACKAGE_STATUSES` (DRAFT, ACCEPTING_OFFERS, NO_OFFERS_RECEIVED, OFFER_ACCEPTED, UNDER_CONTRACT, INSPECTION, CLOSING, CLOSED, FELL_THROUGH, WITHDRAWN) in packages/contracts/src/listing-package/status.ts; `OFFER_STATUSES` (ACTIVE, COUNTERED, WITHDRAWN, EXPIRED, ACCEPTED, BACKUP, DECLINED_TO_RECONFIRM, FELL_THROUGH, DECLINED), plus BACKUP → WITHDRAWN (spec FR-054) in packages/contracts/src/offer/status.ts; `DEAL_STATUSES` (OFFER_ACCEPTED, UNDER_CONTRACT, INSPECTION, CLOSING, CLOSED, FELL_THROUGH, PENDING_RECONFIRMATION, RECONFIRM_DECLINED) in packages/contracts/src/deal/status.ts; `JOB_STATUSES`, `JOB_TYPES` (MATCH_PACKAGE, MATCH_BUY_BOX, SEND_MATCH_DIGESTS, IMPORT_INVESTORS, CLOSE_OFFER_ROUND, EXPIRE_OFFER, EXPIRE_RECONFIRMATION), `DELIVERY_STATUSES` (PENDING, SENDING, SENT, RETRYING, NEEDS_ATTENTION), and `DELIVERY_TARGETS` (CRM, EMAIL, SMS, IN_APP) in packages/contracts/src/ops/status.ts (depends on T018)
+- [ ] T020 [P] Create auth contracts in packages/contracts/src/auth/: `ROLES` (`AGENT`, `INVESTOR`, `OPS`), `createSessionSchema` (`username` 3–40 lowercase, `password`), `actorSchema` (`userId`, `role`, `agentId?`, `investorId?`), `sessionResponseSchema` (`{ token, user }`), `meViewSchema`
+- [ ] T021 [P] Create the property and listing enums in packages/contracts/src/listing-package/enums.ts: `PROPERTY_TYPES` (SINGLE_FAMILY, CONDO, TOWNHOME, MULTI_FAMILY, MANUFACTURED, LAND), `CONDITIONS` (EXCELLENT, GOOD, FAIR, POOR, DISTRESSED), and `OFFER_PROGRAMS` (CASH_OFFER, CASH_WITH_UPSIDE, SEVEN_DAY_SOLD); and in packages/contracts/src/buy-box/enums.ts: `BUY_BOX_STATUSES` (ACTIVE, PAUSED), `BUY_BOX_STRATEGIES` (FIX_FLIP, BUY_HOLD, WHOLESALE, NOVATION, SELLER_FINANCE), `GEOGRAPHY_MODES` (NATIONWIDE, STATES, ZIPS), with derived types
+- [ ] T224 [P] Write the registry definition tests in packages/contracts/src/buy-box/criteria.test.ts: every key in `CRITERION_KEYS` has a definition; every `listingFields` entry names a real listing fact; `MATERIAL_FIELDS` equals the union of all `listingFields`; the buy box schema accepts null for every criterion ("any"), rejects every empty array, rejects each inverted min/max pair with the field named, and rejects a geography mode that disagrees with its entries (STATES with a ZIP, ZIPS with none, NATIONWIDE with any)
+- [ ] T022 [P] Create the Criterion Registry definitions in packages/contracts/src/buy-box/criteria.ts (XIX.3): `CRITERION_KEYS` (as const: `geography`, `propertyType`, `price`, `yearBuilt`, `beds`, `baths`, `sqft`, `units`, `condition`, `repair`, `closingSpeed`, `listedStatus`, `programs`) and `CRITERIA` typed `satisfies Record<CriterionKey, CriterionDefinition>`, each entry holding `label`, the Zod field schema, form metadata (group, input kind), and `listingFields`; `MATERIAL_FIELDS` derived from the union of `listingFields`; the buy box schemas built from the entries (`createBuyBoxInputSchema`, `updateBuyBoxInputSchema` with `version`): `name` 1–60, `status`, `strategy?`, `geographyMode` with `states[]` or `zips[]`, every criterion nullable (null = any), no empty arrays, every min ≤ max, `closeWithinDays` 7–120, each failure naming its field (FR-060, FR-025); and `clauseResultSchema` (`{ key, label, passed, expected, actual }`) (depends on T224)
+- [ ] T023 [P] Create the config key schemas in packages/contracts/src/config/: `CONFIG_KEYS` and a schema for each — `netProceeds` (`closingCostPct` 0–0.2, `flatFees` integer ≥ 0), `offerWindowHours` (default 72), `reconfirmHours` (default 48), `deliveryRetry` (`baseMs` 2000, `factor` 2, `capMs` 60000, `jitter` 0.2, `attempts` 10: about 5 minutes of automatic retries), `packageFormSteps` (an ordered list of steps, each with field keys and a required flag), `matchDigest` (`hourUtc` 0–23, default 14), `nearMiss` (`windowDays` default 30, `minCount` ≥ 5, default 5)
+- [ ] T024 [P] Write the PII contract test in packages/contracts/src/events/events.pii.test.ts: walk every event payload schema and fail if any key is `fullName`, `sellerName`, `email`, `phone`, `streetLine`, or `sellerContact` (FR-032, SC-006)
+- [ ] T025 [P] Create the outbox event contracts in packages/contracts/src/events/: the envelope (`id`, `type`, `aggregateType`, `aggregateId`, `occurredAt`, `version: 1`, `payload`); a discriminated union on `type` for every event in [contracts/events.md](./contracts/events.md) with its listed payload; and `EVENT_TARGETS` (as const: event type → targets and recipient rule) (depends on T024)
+- [ ] T026 [P] Create job payload schemas per `JOB_TYPES` in packages/contracts/src/ops/jobs.ts (e.g., MATCH_PACKAGE `{ packageId, round, listingVersion }`; MATCH_BUY_BOX `{ buyBoxId, buyBoxVersion }`; SEND_MATCH_DIGESTS `{ digestDate }`; EXPIRE_OFFER `{ offerId, revision }`; EXPIRE_RECONFIRMATION `{ dealId }`; CLOSE_OFFER_ROUND `{ packageId, round, deadline }`; IMPORT_INVESTORS `{ batchId, storageKey }`) and the job status view `{ status, progress, error? }`
+- [ ] T027 [P] Create the brand contracts in packages/contracts/src/brand/: `REQUIRED_SEMANTIC_TOKENS` (as const; every token in the [design-tokens.md](./contracts/design-tokens.md) table, including the five status tones `neutral`, `info`, `success`, `warning`, and `danger`, each with an indicator, a `-text`, and a `-surface` token, plus `color.brand.accent`), `brandTokenSetSchema` (`#RRGGBB` hex; every semantic value references an existing primitive; no raw values in `semantic`; `content.displayName` required), `brandThemeViewSchema` (`{ brandId, tokenVersion, cssVariables, content }`), and `toCssVariables(tokenSet)` (dots become dashes: `color.action.primary` → `--color-action-primary`)
+- [ ] T028 [P] Write the contrast checker tests in packages/contracts/src/brand/contrast.test.ts: `#000000` on `#FFFFFF` is 21:1; `#767676` on `#FFFFFF` passes 4.5:1; `#777777` on `#FFFFFF` fails; white on `#0D9488` is 3.74 (fails as button text); `#0284C7` on `#FFFFFF` is 4.10 (fails as text, passes as a 3:1 indicator); `validateBrandTokenSet` names every missing token and every failing pair with its ratio
+- [ ] T029 Implement `contrastRatio(hexA, hexB)` (WCAG 2.1 relative luminance) and `validateBrandTokenSet(tokenSet)` in packages/contracts/src/brand/contrast.ts, checking the [design-tokens.md](./contracts/design-tokens.md) rules: 4.5:1 for `text.default`, `text.muted`, and `text.link` on `surface.page` and `surface.card`, `action.on-primary` on `action.primary` and `action.primary-hover`, `action.on-secondary` on `action.secondary`, and each `status.<tone>-text` on `status.<tone>-surface` and on `surface.card`; 3:1 for `focus.ring` on `surface.page` and `surface.card`, `border.strong` on `surface.card`, and each `status.<tone>` indicator on `surface.card`. It lives in contracts (not packages/ui) so the api and the seed can enforce FR-095 server-side, and packages/ui re-exports it (depends on T027, T028)
+- [ ] T030 Create the typed REST client base in packages/contracts/src/client/http.ts: `createApiClient({ baseUrl, getToken?, fetch })`, JSON handling, an `idempotencyKey` option sent as `Idempotency-Key`, and an automatically generated key (`crypto.randomUUID()`) on every POST, PUT, and PATCH that does not pass one (XX.2: the api rejects mutations without a key), and a typed `ApiError` parsed from `errorResponseSchema` that exposes `details.fields`
+
+### Database (packages/core/prisma)
+
+- [ ] T031 Write packages/core/prisma/schema.prisma for every entity in [data-model.md](./data-model.md): User, Agent, Brand, Seller, Property, ListingPackage, ListingVersion, Photo, Investor, BuyBox, BuyBoxGeography, BuyBoxVersion, Match, MatchEvaluation, Offer, OfferRevision, Decision, Deal, Job, OutboxEvent, Delivery, Notification, AuditLog, ImportBatch, ImportRowResult, ConfigEntry. Include CUID ids, `createdAt` / `updatedAt` (append-only tables have `createdAt` only), `version Int` on ListingPackage, BuyBox, Offer, and Deal, `listingVersion Int` on ListingPackage, every buy box criterion as its own typed nullable column (enum arrays for `propertyTypes`, `conditionsAccepted`, `programsAccepted`; no criteria or clauses JSON), the nullable type-dependent Property fields (`beds`, `baths`, `sqft`, `yearBuilt`, `condition`, plus `lotSqft`, `units`, `lat`, `lng`), `ListingPackage.currentlyListed` and `eligiblePrograms`, `Investor.proofOfFundsExpiresAt`, `onDelete: Cascade` on parent-child relations (never on AuditLog or history), the unique constraints (User.username; Investor.externalRef and email; BuyBox `(investorId, name)`; BuyBoxGeography `(buyBoxId, kind, value)`; BuyBoxVersion `(buyBoxId, version)`; ListingVersion `(packageId, listingVersion)`; Match `(packageId, investorId, round)`; MatchEvaluation `(packageId, listingVersion, buyBoxId, buyBoxVersion)`; Photo `(packageId, position)`; OfferRevision `(offerId, revision)`; Deal.offerId; Delivery `(outboxEventId, target, recipientRef)`; ConfigEntry `(key, brandId)`), and the indexes (Property `(zip)` and `(addressHash)`; ListingPackage `(agentId, status)` and `(status, offerDeadline)`; BuyBox `(investorId)` and `(status)`; BuyBoxGeography `(kind, value)`; Match `(investorId)`; Job `(status, runAt)`; Delivery `(status)`; AuditLog `(entityType, entityId, occurredAt)`). BuyBox.investorId is **not** unique (1:N). Use the driver-adapters preview feature if the pinned Prisma version needs it
+- [ ] T032 Generate the initial migration, then append the SQL Prisma cannot express, in packages/core/prisma/migrations/20261030000000_init/migration.sql:
+  - the partial unique indexes: ListingPackage `(propertyId)` WHERE status IN the active statuses; Offer `(packageId, investorId, round)` WHERE status IN (`ACTIVE`, `COUNTERED`, `BACKUP`, `ACCEPTED`); Deal `(packageId)` WHERE status NOT IN (`FELL_THROUGH`, `CLOSED`, `RECONFIRM_DECLINED`); Job `(type, dedupeKey)` WHERE status IN (`QUEUED`, `PROCESSING`); OutboxEvent `(relayedAt)` WHERE relayedAt IS NULL;
+  - the User CHECK (AGENT ⇒ agentId, INVESTOR ⇒ investorId, OPS ⇒ neither);
+  - BuyBox: a partial unique `(investorId)` WHERE `isDefault`; CHECKs for every min ≤ max pair (price, year built, beds, baths, sqft, units), `cardinality(...) > 0` on each non-null enum array, `closeWithinDays` 7–120, and `repairMax` ≥ 0 (XIX.2);
+  - a deferred constraint trigger on BuyBox and BuyBoxGeography that rejects a geography mode that disagrees with its rows (NATIONWIDE with any row; STATES without a STATE row or with a ZIP row; ZIPS without a ZIP row or with a STATE row);
+  - a trigger that raises on UPDATE or DELETE of AuditLog, and the same for BuyBoxVersion, MatchEvaluation, and ListingVersion (ListingVersion allows only the one-time set of `matchedCount` and `topExclusionReasons`);
+  - `CREATE SCHEMA IF NOT EXISTS sandbox` (the sandbox also creates it on boot)
+  (depends on T031)
+- [ ] T033 Create `createPrismaClient(databaseUrl)` (driver adapter `PrismaPg`, the URL from validated env only) in packages/core/src/infra/prisma-client.ts and `createRedisClient(redisUrl)` (ioredis, `maxRetriesPerRequest: null` for BullMQ) in packages/core/src/infra/redis-client.ts; export both from packages/core/src/adapters.ts
+- [ ] T034 Write the database constraint integration test in packages/core/test/integration/schema.int.test.ts (Testcontainers PostgreSQL 17, `prisma migrate deploy`): each partial unique index rejects a second active row and allows one after the first becomes inactive; AuditLog UPDATE and DELETE raise, and so do BuyBoxVersion, MatchEvaluation, and ListingVersion updates (except the one-time match summary); the User CHECK holds; BuyBox rejects an inverted price range (the case Clever's own form lets through), an empty property-type array, and a second default box per investor; the geography trigger rejects each inconsistent mode at commit; an investor can hold two buy boxes; deleting a ListingPackage cascades Photos and Matches
+
+### Core infrastructure (packages/core)
+
+- [ ] T035 [P] Create the `IClock` port and `SystemClockImpl` in packages/core/src/providers/clock/, and `FakeClock` (settable `now`, `advance(ms)`) in packages/core/test/doubles/FakeClock.ts
+- [ ] T036 [P] Write the cipher tests in packages/core/src/providers/pii-cipher/AesGcmPiiCipherImpl.test.ts: encrypt/decrypt round trip; the same input gives different ciphertext (random IV); output starts with the `v1:` key-version prefix; tampered ciphertext throws; `addressHash()` is identical for differently formatted copies of the same address
+- [ ] T037 Create the `IPiiCipher` port and `AesGcmPiiCipherImpl` (AES-256-GCM, 12-byte random IV, `v1:` prefix, base64), plus `createAddressHasher(key)` (HMAC-SHA256 of the normalized lowercased full address) in packages/core/src/providers/pii-cipher/ (depends on T036)
+- [ ] T038 [P] Write the redaction test, then implement `redactPii(value)` (deep-redacts keys `fullName`, `sellerName`, `email`, `phone`, `streetLine`, `sellerContact`, `password`, `authorization`, `cookie`) in packages/core/src/errors/redact-pii.ts and packages/core/src/errors/redact-pii.test.ts
+- [ ] T039 [P] Create `InfrastructureError` (status 502 or 503, `cause` kept privately and never serialized) in packages/core/src/errors/InfrastructureError.ts
+- [ ] T040 [P] Create the `IErrorReporter` port and `LogErrorReporterImpl` (structured pino `error` entry passed through `redactPii`) in packages/core/src/providers/error-reporter/, and the logger factory `createLogger(name)` (pino JSON with redact paths) in packages/core/src/infra/logger.ts
+- [ ] T041 Write the HTTP translator tests in packages/core/src/errors/http-error-translator.test.ts: ZodError → 400 with `details.fields[]`; each DomainError → its status and code, not logged; InfrastructureError → its status with a generic message, logged and reported; unknown error → 500 `{ error: "Internal server error" }` with no stack, path, or SQL text, logged and reported
+- [ ] T042 Implement `translateError(err, { reporter, logger })` → `{ status, body }` in packages/core/src/errors/http-error-translator.ts, and `translateWorkerError(err, context)` (always logs plus reports with `job_id` / `delivery_id`, redacted) in packages/core/src/errors/worker-error-translator.ts (depends on T041)
+- [ ] T043 Create the `IUnitOfWork` port (`run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T>`) and the `UnitOfWorkRepositories` interface in packages/core/src/unit-of-work/IUnitOfWork.ts, and `PrismaUnitOfWorkImpl` (one `$transaction` interactive transaction; builds each repository Impl bound to the transaction client) in packages/core/src/unit-of-work/PrismaUnitOfWorkImpl.ts. Each later slice adds its repository to `UnitOfWorkRepositories` and the Impl factory. Also create `InMemoryUnitOfWork` in packages/core/test/doubles/InMemoryUnitOfWork.ts
+
+### Shared repository slices (packages/core/src/repositories)
+
+- [ ] T044 [P] Create the audit slice in packages/core/src/repositories/audit/: `append({ actorType, actorId, action, entityType, entityId, outcome, details })` (details passed through `redactPii`), `listByEntity(entityType, entityId)`; `AUDIT_ACTIONS` as const in packages/contracts/src/ops/audit.ts (PACKAGE_PUBLISHED, MATCH_EVALUATED, OFFER_SUBMITTED, OFFER_REVISED, DECISION_RECORDED, DEAL_MILESTONE, DEAL_FELL_THROUGH, BACKUP_PROMOTED, PII_ACCESSED, CONFIG_CHANGED, IMPORT_COMPLETED, plus PACKAGE_STATUS_CHANGED and DELIVERY_RETRIED)
+- [ ] T045 [P] Create the outbox slice in packages/core/src/repositories/outbox/ (`insert`, `claimUnrelayed(limit)` using `FOR UPDATE SKIP LOCKED`, `markRelayed(id)`) and `OutboxWriter.write(repos, event)` in packages/core/src/outbox/outbox-writer.ts, which validates the event against the contracts union before inserting
+- [ ] T046 [P] Create the delivery slice in packages/core/src/repositories/delivery/: `createMany` (skips duplicates on the unique key), `findById`, `markSending`, `markSent`, `markRetrying(error, nextAttemptAt)`, `markNeedsAttention(error)`, `resetForRetry(id)` (PENDING, attempts 0), `listByStatus`, `listByPackage`; `lastError` passed through `redactPii`
+- [ ] T047 [P] Create the notification slice in packages/core/src/repositories/notification/: `create`, `listForUser(userId)`, `markRead(id, userId)`
+- [ ] T048 [P] Create the config slice in packages/core/src/repositories/config/ and `ConfigService` in packages/core/src/services/config/: `get(key, brandId?)` (brand-scoped value, else the global value, parsed with the per-key schema), `list()`, `set(actor, key, value)` (OPS only; validated; writes a CONFIG_CHANGED audit entry)
+- [ ] T049 [P] Create the user slice in packages/core/src/repositories/user/: `findByUsername`, `findById`
+- [ ] T050 [P] Create the brand slice in packages/core/src/repositories/brand/: `findById`, `list`, `updateTheme(brandId, tokens)` (increments `tokenVersion`)
+- [ ] T051 [P] Create the investor slice in packages/core/src/repositories/investor/: `findById`, `findByExternalRef`, `findByEmail`, `upsert(investor)` (including `proofOfFundsExpiresAt`), and `getContact(investorId)` (used only by the email/SMS delivery handlers). Candidate selection for matching lives in the buy-box slice (T052), not here
+- [ ] T052 [P] Create the buy-box slice in packages/core/src/repositories/buy-box/: `findByInvestorId` (returns an array, default box first), `findById`, `findDefaultForInvestor`, `create(box)` and `update(id, version, box)` (each replaces the BuyBoxGeography rows, increments `version`, and appends a BuyBoxVersion snapshot in the same transaction; a stale `version` → ConflictError), `findVersionAt(buyBoxId, at)`, `listActiveForMatching(now)` (all ACTIVE boxes of ACTIVE investors with unexpired proof of funds), and `findCandidates(listingFacts, now)`, the stage 1 pre-filter: one SQL query with the hard cuts (investor ACTIVE, `proofOfFundsExpiresAt > now`, box ACTIVE) plus every fragment from packages/core/src/repositories/buy-box/prefilter-fragments.ts, a `Record<CriterionKey, (facts) => Prisma.Sql>` typed with `satisfies` (NATIONWIDE skips the geography fragment; every fragment lets a null criterion pass). Fragments live in the adapter because they contain SQL (IV)
+- [ ] T053 [P] Create InMemory doubles for T044–T052 in packages/core/test/doubles/ (InMemoryAuditRepository.ts, InMemoryOutboxRepository.ts, InMemoryDeliveryRepository.ts, InMemoryNotificationRepository.ts, InMemoryConfigRepository.ts, InMemoryUserRepository.ts, InMemoryBrandRepository.ts, InMemoryInvestorRepository.ts, InMemoryBuyBoxRepository.ts). `InMemoryBuyBoxRepository.findCandidates` applies only the hard cuts and returns every remaining box, which is a valid superset under the XIX.4 invariant
+
+### Criterion Registry and two-stage matching (Principle XIX)
+
+- [ ] T054 Write the evaluator tests in packages/core/src/registry/evaluators.test.ts: for each criterion key, one passing and one failing listing; a null criterion passes; a null listing value that a non-null criterion needs fails with `actual: null` (fail closed, FR-025); `price` passes only when `priceMin ≤ priceExpectationMax ≤ priceMax`; `closingSpeed` passes only if `closeWithinDays` covers the seller's closing window; `listedStatus` fails only for a listed home when `acceptsListed` is false; `programs` needs one shared program; NATIONWIDE passes any ZIP; `evaluateBuyBox` returns `[{ key, label, passed, expected, actual }]` for every key and matches only if all pass; add a fast-check property (unit tier) that a box with every criterion null matches any complete listing
+- [ ] T055 Implement the evaluator layer in packages/core/src/registry/: `evaluators.ts` (`EVALUATORS` typed `satisfies Record<CriterionKey, CriterionEvaluator>`, each `evaluate(box, facts)` → `{ passed, expected, actual }`, pure; `EVALUATOR_VERSION = 1`, raised whenever any predicate changes), `evaluate-buy-box.ts` (`evaluateBuyBox(box, facts)` running every key in `CRITERION_KEYS` order), and `listing-facts.ts` (`toListingFacts(listingPackage, property, today)`, the flat no-PII fact object that also becomes the ListingVersion snapshot); export from the core barrel (depends on T022, T054)
+- [ ] T217 Write the pre-filter safety property test in packages/core/test/integration/prefilter-safety.int.test.ts (Testcontainers PostgreSQL 17, fast-check default 100 runs): generate random investors (some inactive, some with expired proof of funds), buy boxes (nulls, ranges, every geography mode, paused boxes), and complete or partly null listings; insert them, then assert that every box `evaluateBuyBox` matches (among ACTIVE boxes of ACTIVE investors with unexpired proof of funds) is returned by `findCandidates` (XIX.4). Lower `numRuns` only if CI time requires, never below 50 (depends on T052, T055)
+
+### Durable jobs (Principle VIII)
+
+- [ ] T056 Write the job integration test in packages/core/test/integration/jobs.int.test.ts: enqueuing with the same `(type, dedupeKey)` while QUEUED returns the existing job; two concurrent `claimNext` calls never claim the same job (SKIP LOCKED); a job with a future `runAt` is not claimed until FakeClock passes it; a PROCESSING job with `lockedAt` older than 60 s is reclaimed; a failure re-queues while `retryCount < maxRetries`, then sets FAILED with a redacted error
+- [ ] T057 Create the job slice in packages/core/src/repositories/job/: `enqueue({ type, dedupeKey, payload, runAt?, maxRetries? })` (insert `ON CONFLICT DO NOTHING`, returns the existing job), `claimNext(workerId, now)` (`FOR UPDATE SKIP LOCKED WHERE status = 'QUEUED' AND runAt <= now`), `reclaimStale(now)`, `complete(id, result)`, `fail(id, error)`, `updateProgress(id, pct)`, `findById` (depends on T056)
+- [ ] T058 Create `JobHandlerRegistry` (generic: `register(type, payloadSchema, handler)`, where each handler module supplies its own payload schema from T026; the registry validates the payload with that schema before calling the handler (VI) and imports no feature types itself (VIII); the worker container does the registering) and `JobService.getStatus(actor, jobId)` (owner or OPS) in packages/core/src/jobs/registry.ts and packages/core/src/services/job/JobService.ts
+
+### Outbox relay and delivery (Principle XVIII)
+
+- [ ] T059 [P] Create the outbound provider ports with Zod response schemas: `ICrmProvider` (`upsertListingStatus(record, idempotencyKey)` → `{ result: "APPLIED" | "STALE" }`) in packages/core/src/providers/crm/; `IMessagingProvider` (`sendEmail`, `sendSms`, both keyed) in packages/core/src/providers/messaging/; `IStorageProvider` (`createUpload(key, contentType, maxBytes)` → the vendor-neutral `UploadInstruction` `{ url, method, headers, expiresAt }`, `getReadUrl(key)`, `exists(key)`, `read(key)` (the CSV import), and `put(key, body, contentType)` (server-side write, used only by the seed; user uploads always use `createUpload`)) in packages/core/src/providers/storage/, with `uploadInstructionSchema` in packages/contracts/src/common/upload.ts; `IGeoProvider` (`isValidZip`, `lookup`) in packages/core/src/providers/geo/; `ISimulationControlProvider` (`get`, `set`) in packages/core/src/providers/simulation/; `ICrmMirrorReader` (`listListings()`, read-only, for the ops CRM comparison, so the api never holds the CRM write provider) in packages/core/src/providers/crm/; `ISellerContactReader` (`getForPackage(packageId)`) in packages/core/src/providers/seller-contact/
+- [X] T060 Update [contracts/providers.md](./contracts/providers.md) with `IStorageProvider.createUpload` → `UploadInstruction`, `read(key)` with sandbox `GET /internal/storage/objects/:key`, `ICrmMirrorReader`, and `ISellerContactReader` (done during planning, 2026-10-30)
+- [ ] T061 Write the outbox integration test in packages/core/test/integration/outbox.int.test.ts: a `uow.run` that throws after writing a state change and an outbox event commits neither; the relay creates exactly one Delivery per target and recipient per `EVENT_TARGETS`; running the relay twice creates no duplicates; the event is marked relayed; each delivery is enqueued once in BullMQ (`jobId = delivery.id`)
+- [ ] T062 Implement `OutboxRelay.tick()` in packages/core/src/outbox/outbox-relay.ts: claim unrelayed events, resolve recipients from `EVENT_TARGETS` (matched investors → investorId; package agent → userId; CRM → none), insert deliveries, enqueue on the `deliveries` BullMQ queue with `jobId = delivery.id`, then mark relayed (depends on T061)
+- [ ] T063 Write the dispatcher unit tests in packages/core/src/outbox/delivery-dispatcher.test.ts (mock providers, FakeClock): 2xx → SENT; 5xx, timeout, or malformed → RETRYING with `nextAttemptAt` = min(base 2 s × 2^attempt, 60 s) ± 20%, so the 10 default attempts span about 5 minutes; CRM `STALE` → SENT (superseded); any other 4xx except 408/429 → NEEDS_ATTENTION immediately; the last attempt → NEEDS_ATTENTION and the error is reported; IN_APP writes a Notification; EMAIL and SMS resolve the investor's contact at send time and never read it from the payload
+- [ ] T064 Implement `DeliveryDispatcher.dispatch(deliveryId)` in packages/core/src/outbox/delivery-dispatcher.ts with target handlers in packages/core/src/outbox/targets/{crm,email,sms,in-app}.ts. The CRM handler loads seller contact through `ISellerContactReader` and writes a `PII_ACCESSED` audit entry with actor SYSTEM. Messages are rendered from packages/core/src/outbox/message-templates.ts using the brand's `content.displayName` (no hard-coded brand names, XVI). The retry policy comes from `ConfigEntry["deliveryRetry"]` (depends on T063)
+
+### Provider implementations (sandbox and static)
+
+- [ ] T065 Write the provider tests in packages/core/src/providers/sandbox-http.test.ts (mocked fetch): a call over 5 s → InfrastructureError; a malformed body → InfrastructureError; a 503 → InfrastructureError with retryable=true; CRM 409 `{ code: "STALE" }` → `{ result: "STALE" }`; every request sends `Idempotency-Key`
+- [ ] T066 Implement the shared `sandboxRequest()` helper (5 s AbortSignal timeout, Zod-validated response, InfrastructureError mapping) in packages/core/src/providers/sandbox-http.ts, then `SandboxCrmProviderImpl`, `SandboxCrmMirrorReaderImpl`, `SandboxMessagingProviderImpl`, `SandboxStorageProviderImpl` (`createUpload` returns `{ url: PUBLIC_SANDBOX_URL/storage/objects/:key?sig=&exp=, method: "PUT", headers: { "Content-Type" }, expiresAt }`, signed with HMAC-SHA256; `exists`, `read`, and `put` use `SANDBOX_INTERNAL_TOKEN`), and `SandboxSimulationProviderImpl` in their port folders under packages/core/src/providers/ (depends on T065)
+- [ ] T067 [P] Implement `StaticGeoProviderImpl` with the bundled ZIP list for the seeded markets (3–5 metros, e.g. Austin TX 787xx, Dallas TX 752xx, Phoenix AZ 850xx, Atlanta GA 303xx; each with city, state, neighborhood names, and a centroid `lat` / `lng` that `lookup` returns for Property) in packages/core/src/providers/geo/StaticGeoProviderImpl.ts and packages/core/src/providers/geo/zips.json
+- [ ] T068 Fill the barrels: packages/core/src/index.ts (ports, services, workflows, domain types, errors, `redactPii`, translators — no `*Impl`) and packages/core/src/adapters.ts (every `*Impl`, `createPrismaClient`, `createRedisClient`, `createLogger`)
+
+### Sandbox app (apps/sandbox, port 4100)
+
+- [ ] T069 Write the sandbox route tests (supertest, in-memory store) in apps/sandbox/src/routes/crm.test.ts, messages.test.ts, storage.test.ts, simulation.test.ts: CRM upsert deduplicates by `Idempotency-Key`; an older `occurredAt` → 409 `{ code: "STALE" }`; messages are captured once per key; storage PUT rejects a bad or expired signature, a disallowed content type, and an oversize body; an `OPTIONS` preflight from `WEB_ORIGIN` gets the CORS headers and one from any other origin does not; each mode `down` (503), `slow` (10 s, fake timers), and `garbage` (200 with malformed JSON) applies only to its own service
+- [ ] T070 Create apps/sandbox/src/env.ts (Zod; fail fast), apps/sandbox/src/container.ts (pg pool on the `sandbox` schema, store), apps/sandbox/src/store.ts (on boot runs `CREATE SCHEMA IF NOT EXISTS sandbox`, so the sandbox can start before `migrate`; tables created if missing: `crm_listings`, `messages`, `idempotency_keys`, `objects` (path on the `SANDBOX_STORAGE_DIR` volume), `simulation_modes`), and apps/sandbox/src/server.ts (listen 0.0.0.0:4100)
+- [ ] T071 Implement the per-service simulation middleware in apps/sandbox/src/middleware/simulation.ts and the routes in apps/sandbox/src/routes/: crm.ts (`PUT /crm/listings/:packageId`, `GET /crm/listings`), messages.ts (`POST /messages/email`, `POST /messages/sms`, `GET /messages`), storage.ts (`PUT` / `GET /storage/objects/:key?sig=&exp=`, `HEAD /storage/objects/:key`, and `GET` / `PUT /internal/storage/objects/:key` with the token; CORS on `/storage/objects/*` allowing only `WEB_ORIGIN` with `PUT`, `GET`, and `OPTIONS` and the `Content-Type` header, so the browser can upload directly), simulation.ts (`GET /simulation`, `PUT /simulation/:service`), per [contracts/providers.md](./contracts/providers.md) (depends on T069, T070)
+- [ ] T072 Implement the HTML inspection page `GET /` (CRM records, captured messages newest first, current modes; server-rendered, escaped) in apps/sandbox/src/inspect-page.ts
+
+### API skeleton (apps/api, port 4000)
+
+- [ ] T073 Create apps/api/src/env.ts (Zod `apiEnvSchema`; on failure print the missing or invalid variable names and exit 1) and the `res.locals.actor` type in apps/api/src/types/express.d.ts
+- [ ] T074 Write the app tests in apps/api/src/app.test.ts (supertest, mock services): the middleware order is helmet → pino-http → json → authenticate → idempotency → routers → notFound → errorTranslator; an unknown route → 404 `{ error }`; a thrown `BusinessRuleError` → 409 body shape; an unexpected error → 500 generic body with no stack; protected routes without a bearer → 401
+- [ ] T075 Implement the `authenticate` middleware (jose HS256 verify; sets `res.locals.actor`; public allowlist: `POST /api/v1/sessions`, `GET /api/v1/health`, `GET /api/v1/brands`, and `GET /api/v1/brands/:brandId/theme`) in apps/api/src/middleware/authenticate.ts, plus `notFound` and `errorTranslator` (4-argument; calls `translateError`) in apps/api/src/middleware/
+- [ ] T076 Write the idempotency integration test in apps/api/test/integration/idempotency.int.test.ts (Testcontainers Redis 7): POST without a key → 400; replay with the same key and body → the stored response plus `Idempotent-Replay: true`; a concurrent duplicate → 409 with `Retry-After: 1`; the same key with a different body → 422; a 5xx response is not stored; Redis stopped → 503 with `Retry-After: 5`
+- [ ] T077 Implement the `idempotency(redis)` middleware for POST, PUT, and PATCH in apps/api/src/middleware/idempotency.ts: key `idem:{method}:{path}:{key}` plus the SHA-256 body hash; `SET NX` 60 s in-progress marker; wrap `res.json` / `res.send` and store status and body for 24 h on `finish` (skip 5xx); fail closed on Redis errors (depends on T076)
+- [ ] T078 Write the AuthService tests in packages/core/src/services/auth/AuthService.test.ts: valid credentials → JWT (8 h, claims `userId`, `role`, `agentId` / `investorId`); wrong password, unknown user, or inactive user → the same generic `ValidationError("Invalid username or password")`
+- [ ] T079 Implement `IAuthService` and `AuthService` (bcryptjs compare; jose sign) in packages/core/src/services/auth/ (depends on T078)
+- [ ] T080 Create the routers: `createHealthRouter` (`GET /health` → `{ status, db, redis }` via `SELECT 1` and `PING`) in apps/api/src/routes/health.router.ts; `createSessionsRouter` (`POST /sessions` → 201, `GET /me`) in apps/api/src/routes/sessions.router.ts; `createJobsRouter` (`GET /jobs/:jobId`) in apps/api/src/routes/jobs.router.ts
+- [ ] T081 Create `createContainer(env)` in apps/api/src/container.ts (Prisma, Redis, cipher, clock, uow, geo, storage, simulation, CRM mirror reader, error reporter, services; `Object.freeze`; `dispose()`), `createApp(container)` in apps/api/src/app.ts (fixed middleware order; routers mounted at `/api/v1`), and apps/api/src/server.ts (parse env → container → app → listen `0.0.0.0:4000`; dispose on SIGTERM and SIGINT)
+
+### Worker skeleton (apps/worker)
+
+- [ ] T082 Create apps/worker/src/env.ts (Zod; fail fast) and apps/worker/src/container.ts: Prisma, Redis, cipher, clock, uow, the job registry, `OutboxRelay`, `DeliveryDispatcher`, `ICrmProvider` and `IMessagingProvider` chosen by `CRM_PROVIDER` and `MESSAGING_PROVIDER` (only `sandbox` implemented; any other value fails startup with a clear message), `ISellerContactReader`, and the error reporter
+- [ ] T083 Implement the loops in apps/worker/src/loops/: job-poller.ts (every 1 s: `reclaimStale`, then claim and run handlers; failures go through `translateWorkerError`), outbox-relay.ts (every 1 s `OutboxRelay.tick()`), delivery-consumers.ts (BullMQ Worker on `deliveries` with a custom backoff from `deliveryRetry`; on final failure, move to the `deliveries-dlq` queue and mark NEEDS_ATTENTION). Add apps/worker/src/error-translator.ts and apps/worker/src/main.ts (graceful shutdown: stop polling, let in-flight jobs finish, close BullMQ, dispose)
+
+### Design system foundation (packages/ui)
+
+- [ ] T084 Create the semantic token names (`SEMANTIC_TOKENS` as const, re-exporting `REQUIRED_SEMANTIC_TOKENS` and the contrast checker from `@clever/contracts/brand`) in packages/ui/src/tokens/semantic.ts, the domain status → tone map from [design-tokens.md](./contracts/design-tokens.md) in packages/ui/src/tokens/status-tones.ts (StatusPill takes a domain status, never a color), and the Tailwind 4 bridge in packages/ui/src/styles/theme.css (`@theme` maps every semantic token to its CSS variable, so utilities such as `bg-action-primary`, `text-muted`, `p-inset-md`, `rounded-control`, and `shadow-card` exist; the default palette is disabled)
+- [ ] T085 Create seed/brands/clever.json from the owner-supplied values: every supplied color as a primitive, plus the semantic mapping and the derived text shades exactly as listed under "Seeded brand values" (`clever`) in [design-tokens.md](./contracts/design-tokens.md); default type, space, radius, and shadow scales; `content` (display name, logo path `/brands/clever/logo.svg`, legal footer). It must pass `validateBrandTokenSet`
+- [ ] T086 [P] Build the React Aria primitives (`ref` as a prop, semantic utilities only, visible focus ring `ring-focus`) in packages/ui/src/primitives/: Button, TextField, NumberField, Select, ComboBox, DatePicker, Checkbox, CheckboxGroup, RadioGroup, Dialog, Table, Tabs, Badge, StatusPill, Toast, Card, Skeleton
+- [ ] T087 [P] Build the patterns in packages/ui/src/patterns/: FormSection, MoneyField (USD integer), StatusTimeline, ComparisonTable, EmptyState, LoadingState, ErrorState (each with an accessible name and `role="status"` or `role="alert"` as fitting)
+- [ ] T088 Write the hook test in packages/ui/src/hooks/useWizard.test.ts (`renderHook`): next and back move between steps; `next` is blocked while a step has errors; the announcement text changes on each step change; focus moves to the step heading
+- [ ] T089 Implement `useWizard` in packages/ui/src/hooks/useWizard.ts, then the templates in packages/ui/src/templates/: AppShell (role navigation, logo, and footer from props; skip link), ListPageTemplate, DetailPageTemplate, WizardTemplate (`aria-live="polite"` step announcements; keyboard only), ComparisonTemplate, TimelineTemplate; export everything from packages/ui/src/index.ts (depends on T086–T088)
+
+### Web skeleton (apps/web, port 3000)
+
+- [ ] T090 Create apps/web/src/env.ts (Zod: `API_URL`, `COOKIE_SECURE`, `DEFAULT_BRAND_ID`) and apps/web/src/container.ts (server-side `createApiClient` with `API_URL`)
+- [ ] T091 Write the BFF tests in apps/web/src/app/bff/bff.test.ts: a POST, PUT, PATCH, or DELETE whose `Origin` does not match the host → 403; a GET without Origin passes; the cookie token is forwarded as `Authorization: Bearer`; `Idempotency-Key` is passed through; the session route's login POST to the api carries an `Idempotency-Key`; the api's status and body are returned unchanged
+- [ ] T092 Implement the BFF in apps/web/src/app/bff/[...path]/route.ts (`await params`; cookie → bearer; Origin check on state-changing methods; forwards to `API_URL/api/v1/...`) and apps/web/src/app/bff/session/route.ts (POST: login through the api with the contracts client, which attaches the `Idempotency-Key`; set the `session` cookie HTTP-only, Secure (per `COOKIE_SECURE`), SameSite=Lax, 8 h; DELETE: clear it) (depends on T091)
+- [ ] T093 Create apps/web/src/providers.tsx (QueryClientProvider plus coordination contexts composed once), apps/web/src/lib/query-keys.ts (`["entity", id]` factories), and apps/web/src/lib/bff-client.ts (browser `createApiClient` pointed at `/bff`)
+- [ ] T094 Implement brand resolution once per request in apps/web/src/brand/resolve-brand.ts (demo `brand` cookie, else host mapping, else `DEFAULT_BRAND_ID`; fetch `GET /brands/:brandId/theme`), render the CSS variables in a `<style>` on `<html data-brand>` in apps/web/src/app/layout.tsx (import `@clever/ui/styles/theme.css`), and expose `BrandContentContext` through `useBrandContent()` in apps/web/src/brand/BrandContent.tsx
+- [ ] T095 Implement the brands API: `BrandService` (`list`, `getTheme(brandId)` → `toCssVariables` plus content) in packages/core/src/services/brand/, and `createBrandsRouter` (`GET /brands`, `GET /brands/:brandId/theme` with `ETag` = tokenVersion) in apps/api/src/routes/brands.router.ts
+
+**Checkpoint**: `pnpm test` passes offline. `pnpm test:integration` passes. api, worker, sandbox,
+and web start locally against Docker PostgreSQL and Redis; `/api/v1/health` reports `ok`.
+
+---
+
+## Phase 3: User Story 1 - Reviewer starts and explores the prototype (Priority: P1) 🎯 MVP
+
+**Goal**: One `docker compose up --build` on a fresh 2 GB x86_64 machine builds in ≤ 20 min,
+serves a home page within 5 min, seeds demo data once, and lets every demo account log in to
+its role workspace.
+
+**Independent Test**: Quickstart V1: clean build and start, timed; open
+http://localhost:3000; log in as each demo account; `docker compose restart` and confirm seed
+counts are unchanged.
+
+### Tests for User Story 1 (write first, must fail) ⚠️
+
+- [ ] T096 [P] [US1] Write the seed idempotency integration test in packages/core/test/integration/seed.int.test.ts: run the baseline seed twice and assert identical row counts for User, Agent, Investor, BuyBox, BuyBoxGeography, BuyBoxVersion, Brand, and ConfigEntry; every seeded brand passes `validateBrandTokenSet`; every demo user can log in with `demo1234`
+- [ ] T097 [P] [US1] Write the login hook test in apps/web/src/features/auth/useLogin.test.tsx (`renderHook`): success redirects to the role home (`/agent`, `/investor`, `/ops`); failure shows the generic message; double submit sends one request
+
+### Implementation for User Story 1
+
+- [ ] T098 [P] [US1] Create the seed fixtures in seed/fixtures/: agents.json (`agent.avery`, `agent.blake`, plus one more; brokerage; brand `clever`), investors.json (about 50 investors with varied buy boxes across the T067 markets, each with a `proofOfFundsExpiresAt`; `investor.summit` with two boxes, "Austin flips" and "Austin rentals", that both fit the V2 sample address; `investor.harbor` with one broad box; `investor.ridge` with a deliberately narrow one; at least one NATIONWIDE box, one STATES box, and one PAUSED box; and one investor whose proof of funds has expired, to show the stage 1 cut), users.json (the six demo accounts from [quickstart.md](./quickstart.md) plus users for the remaining investors), config.json (the T023 keys with defaults)
+- [ ] T099 [US1] Implement the modular seed: packages/core/prisma/seed/index.ts (runs every registered seed module in order inside a single advisory lock), packages/core/prisma/seed/baseline.ts (upserts by natural key: every file in seed/brands/ after `validateBrandTokenSet` (a failure stops the seed with the failing pairs named), config entries, agents, investors and buy boxes (each box validated with the T022 schema and written through the buy-box slice, so it gets its geography rows and a version 1 snapshot; boxes upsert by `(investorId, name)`, and an unchanged box is skipped so restarts add no versions), and users with bcrypt hashes of `demo1234`), and the `prisma.seed` entry in packages/core/package.json (depends on T096, T098)
+- [ ] T100 [US1] Write the multi-stage Dockerfile at the repo root: `deps` (pnpm fetch with a cache mount), `build` (`pnpm install --offline`, `prisma generate`, `NODE_OPTIONS=--max-old-space-size=1280 turbo run build --concurrency=1`), `prune` (`pnpm deploy --prod` per app or a pruned node_modules), and `runtime` (`node:24-bookworm-slim`, non-root user, Next.js standalone output copied, one image for all services)
+- [ ] T101 [US1] Write compose.yaml: `postgres` (postgres:17-alpine, `shared_buffers=64MB`, healthcheck `pg_isready`, named volume), `redis` (redis:7-alpine, `--maxmemory 64mb --save ""`, healthcheck), `sandbox` (same image, `pull_policy: never`, `env_file: .env`; starts once postgres is healthy; healthcheck `node -e "fetch('http://localhost:4100/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"`, because the slim image has no curl), `migrate` (the only service with `build:`; `image: investor-platform:local`; `env_file: .env`; command `prisma migrate deploy && prisma db seed`; depends on healthy postgres and healthy sandbox, because the seed writes photos through `IStorageProvider.put`), and `api`, `worker`, `web` (same image, `pull_policy: never`, `env_file: .env`, start after `migrate` completes successfully; the api healthcheck is the same `node -e fetch(...)` pattern against `http://localhost:4000/api/v1/health`; web waits for it; ports 3000, 4000, 4100; sandbox storage volume; every server listens on 0.0.0.0)
+- [ ] T102 [P] [US1] Write scripts/wait-for-home.sh (polls http://localhost:3000/ until 200, up to 300 s, prints elapsed seconds; exits 1 on timeout)
+- [ ] T103 [US1] Build the home page in apps/web/src/app/page.tsx: what the prototype demonstrates (the publish → match → offer → compare → accept → close loop, the outage demo, the white-label switch), the demo accounts table (from apps/web/src/content/demo-accounts.ts), links to sign in, the sandbox (`PUBLIC_SANDBOX_URL`), and the design-system page; brand name and footer come from `useBrandContent()`
+- [ ] T104 [US1] Build the login page in apps/web/src/app/login/page.tsx and `useLogin` in apps/web/src/features/auth/useLogin.ts (posts to `/bff/session`; uses TextField and Button; error shown in ErrorState) (depends on T097)
+- [ ] T105 [US1] Add role route protection in apps/web/src/middleware.ts (no session cookie → `/login`; role mismatch → that role's home) and the role layouts using AppShell with role navigation in apps/web/src/app/(agent)/agent/layout.tsx, apps/web/src/app/(investor)/investor/layout.tsx, apps/web/src/app/(ops)/ops/layout.tsx (sign out via `DELETE /bff/session`)
+- [ ] T106 [US1] Build the role home pages (welcome, the user's display name from `GET /me`, and links to the areas added by later stories, with EmptyState where a list is not built yet) in apps/web/src/app/(agent)/agent/page.tsx, apps/web/src/app/(investor)/investor/page.tsx, apps/web/src/app/(ops)/ops/page.tsx
+- [ ] T107 [US1] Write README.md: one-command start, ports, demo accounts table, tour by role, the Prototype Shortcuts table from [plan.md](./plan.md), test commands, a note that the app must be opened at `http://localhost` (use an SSH tunnel such as `ssh -L 3000:localhost:3000 -L 4100:localhost:4100 <vm>` for a remote VM), because the Secure session cookie is dropped over plain HTTP on any other host, with `COOKIE_SECURE=false` in `.env` as the fallback, and a placeholder section for the curl recipes (filled in T211)
+
+**Checkpoint**: Quickstart V1 passes. Every demo account logs in to its role shell. The role
+lists fill in as US2–US6 land.
+
+---
+
+## Phase 4: User Story 2 - Agent builds and publishes a listing package (Priority: P1)
+
+**Goal**: An agent creates a package (seller, property, expectations, photos, deadline),
+publishing is blocked with every failing field named, and publishing matches it against every
+active buy box. Matched investors get a privacy-safe view and one notification.
+
+**Independent Test**: Quickstart V2: as `agent.avery`, create and publish the sample package;
+the match count equals `seed/expected-matches.json`; the sandbox shows one email per matched
+investor within 1 minute; `investor.ridge` gets 404; `investor.summit` sees no seller PII in
+the page or the BFF JSON.
+
+### Tests for User Story 2 (write first, must fail) ⚠️
+
+- [ ] T108 [P] [US2] Write the PII contract test in packages/contracts/src/listing-package/views.pii.test.ts: `InvestorPackageView` and `InvestorPackageSummary` have no `fullName`, `email`, `phone`, `streetLine`, or `sellerContact` key (SC-006); `AgentPackageView` does have them
+- [ ] T109 [P] [US2] Write the ListingPackageService tests in packages/core/src/services/listing-package/ListingPackageService.test.ts (InMemory doubles, FakeClock): each property rule rejects with its field named (`beds` 0–20; `baths` 0–20 in 0.5 steps; `sqft` 100–20,000 (0 rejected); `lotSqft` > 0; `units` 2–500 and only for MULTI_FAMILY; `yearBuilt` 1800 to the current year; `zip` 5 digits and known to `IGeoProvider`; `state` 2 letters; `repairEstimate` ≥ 0); a DRAFT may leave type-dependent fields empty; `lat` / `lng` are set from `IGeoProvider.lookup(zip)`, never from input; seller `fullName` required, `email` valid if present, `phone` E.164 if present, email or phone required; `priceExpectationMin` ≤ `priceExpectationMax`, both > 0; `specialCircumstances` ≤ 2,000 chars; a second package for the same `addressHash` returns `duplicateWarning` with the existing ID; an agent can't read or edit another agent's package (404); an OPS read of `AgentPackageView` writes a `PII_ACCESSED` audit entry and the owning agent's read does not (XX.1); an update with a stale `version` → ConflictError; `undefined` fields in an update stay unchanged
+- [ ] T110 [P] [US2] Write the PublicationWorkflow tests in packages/core/src/workflows/publication/PublicationWorkflow.test.ts: publish with missing or invalid fields → ValidationError listing every failing field (including "at least 1 photo", `offerDeadline` > now and ≤ now + 30 days, `closingWindowStart` ≥ today and ≤ `closingWindowEnd`, `currentlyListed` set, at least one `eligiblePrograms` entry); the required fields depend on `propertyType` (FR-012): a LAND package publishes without beds, baths, sqft, year built, or condition but needs `lotSqft`, a MULTI_FAMILY package needs `units`, and any other type needs beds, baths, sqft, year built, and condition; the default deadline is now + `offerWindowHours`; a valid publish runs in one uow and sets ACCEPTING_OFFERS, `publishedAt`, and `listingVersion` 1, appends the ListingVersion snapshot (with `evaluatorVersion`), enqueues MATCH_PACKAGE (dedupe `MATCH_PACKAGE:{id}:{round}:{listingVersion}`) and CLOSE_OFFER_ROUND (`runAt` = deadline; dedupe `CLOSE_OFFER_ROUND:{id}:{round}:{deadline}`), writes `package.published` and `package.status_changed`, and audits PACKAGE_PUBLISHED; withdraw from DRAFT, ACCEPTING_OFFERS, or NO_OFFERS_RECEIVED → WITHDRAWN plus `package.withdrawn`; reopen → round + 1, `listingVersion` + 1 with a new snapshot, and a new MATCH_PACKAGE; extend deadline reschedules CLOSE_OFFER_ROUND; an illegal transition → ConflictError with `allowedNext`
+- [ ] T111 [P] [US2] Write the MatchingWorkflow tests for `evaluatePackage` in packages/core/src/workflows/matching/MatchingWorkflow.test.ts: stage 1 candidates come from `findCandidates` and stage 2 runs `evaluateBuyBox` on each; inactive investors, expired proof of funds, and PAUSED boxes never match (FR-024); one MatchEvaluation per matching box (with `buyBoxVersion`, `listingVersion`, `evaluatorVersion`, `clauseResults`) and none for non-matches; one Match row per investor per round, with `matchedBuyBoxIds` listing every matching box; exactly one `package.matched` per investor per round with `buyBoxNames[]` naming both of `investor.summit`'s boxes (FR-022); re-running the job inserts and sends nothing new; a material edit creates a new `listingVersion`, re-evaluates, notifies newly matched investors, and sends `package.changed` only to already-notified investors whose matched boxes check a changed field; an investor whose box stops matching keeps their Match row and access; zero matches → every active box is evaluated in memory and `ListingVersion.topExclusionReasons` lists the most common failing criterion labels; `matchedCount` is stored; each run is audited as MATCH_EVALUATED
+- [ ] T112 [P] [US2] Write the CLOSE_OFFER_ROUND handler test in packages/core/src/jobs/handlers/close-offer-round.handler.test.ts: at the deadline with 0 active offers → NO_OFFERS_RECEIVED plus `package.status_changed`; with ≥ 1 offer the status stays ACCEPTING_OFFERS; a stale job (deadline changed or round advanced) does nothing; running twice is safe
+- [ ] T113 [P] [US2] Write the PhotoService tests in packages/core/src/services/photo/PhotoService.test.ts: only `image/jpeg`, `image/png`, and `image/webp`; `sizeBytes` ≤ 10 MB; at most 20 photos; `position` 0–19 and unique per package; attach fails with a clear message if the storage object does not exist; a rejected photo does not change the rest of the package
+- [ ] T114 [P] [US2] Write the publish-and-match integration test in packages/core/test/integration/publish-match.int.test.ts: seed the baseline, publish the V2 sample package through the workflows, run the MATCH_PACKAGE handler, and assert matched investor IDs equal `seed/expected-matches.json`, Delivery rows exist for EMAIL and IN_APP per matched investor (exactly one EMAIL for `investor.summit`, whose two boxes both match), none exist for unmatched investors, and no outbox payload contains the seller's name or street line
+- [ ] T225 [P] [US2] Write the PII-at-rest integration test in packages/core/test/integration/pii-at-rest.int.test.ts (Testcontainers PostgreSQL 17): save a seller and property through their repositories, read the raw Seller and Property rows with `$queryRaw`, and assert `fullName`, `email`, `phone`, and `streetLine` start with `v1:` and contain none of the plaintext; reading through the repositories returns the original values (XII, XX.1)
+- [ ] T115 [P] [US2] Write the wizard hook tests in apps/web/src/features/listing-package/usePackageWizard.test.tsx and the upload hook tests in apps/web/src/features/listing-package/usePhotoUpload.test.tsx: a 400 `details.fields` maps each error to its step and field; a type or size error is shown before upload; the hook uploads with `fetch(upload.url, { method: upload.method, headers: upload.headers, body: file })` straight to storage (never through `/bff`); an expired instruction is requested again; a successful upload calls attach once
+
+### Implementation for User Story 2
+
+- [ ] T116 [P] [US2] Create the listing-package contracts in packages/contracts/src/listing-package/: `createPackageInputSchema` (seller, property, and expectations with the T109 rules), `updatePackageInputSchema` (separate; every field optional, `undefined` means unchanged; requires `version`), `publishInputSchema` (`{ offerDeadline?, version }`), `withdrawInputSchema`, `reopenInputSchema`, `extendDeadlineInputSchema`, the publish schema with type-dependent required fields (FR-012) built from the T022 registry so the wizard, the service, and matching agree, re-exporting `MATERIAL_FIELDS` from the registry (no hand-written list), `AgentPackageView`, `AgentPackageSummary`, `InvestorPackageView` (no PII fields: city, ZIP, neighborhood, property facts including `lotSqft` and `units`, the seller's expected price range, `currentlyListed`, `eligiblePrograms`, photos, timeline, deadline), and `InvestorPackageSummary`
+- [ ] T117 [P] [US2] Create the photo and match contracts: `photoUploadRequestSchema` (`contentType` enum, `sizeBytes` ≤ 10,485,760), `attachPhotoSchema` (`storageKey`, `position` 0–19), `photoUploadResponseSchema` (`{ storageKey, upload: UploadInstruction }`), and `PhotoView` in packages/contracts/src/listing-package/photo.ts; `MatchView` (`investorId`, `round`, `trigger`, `matchedBuyBoxes: [{ buyBoxId, name, buyBoxVersion, clauseResults[] }]`), `AgentMatchSummary` (`matchedCount`, `topExclusionReasons[]`), and `MatchExplanationView` (`matched`, `listingVersion`, `buyBoxes: [{ buyBoxId, name, buyBoxVersion, matched, clauseResults[], source: STORED | REPLAYED }]`, `replayedWithNewerRules`) in packages/contracts/src/match/
+- [ ] T118 [P] [US2] Create the seller slice in packages/core/src/repositories/seller/ (the mapper encrypts and decrypts `fullName`, `email`, and `phone` with `IPiiCipher`) and `PrismaSellerContactReaderImpl` (`ISellerContactReader`) in packages/core/src/providers/seller-contact/
+- [ ] T119 [P] [US2] Create the property slice in packages/core/src/repositories/property/ (the mapper encrypts `streetLine` and sets `addressHash` with the address hasher; `findActivePackageByAddressHash`)
+- [ ] T120 [P] [US2] Create the listing-package slice in packages/core/src/repositories/listing-package/: `create`, `findById`, `findForAgent(agentId, id)`, `listByAgent(agentId, status?)`, `listAll(status?)`, `update(id, version, patch)` (`WHERE id AND version`; 0 rows → ConflictError), `countActiveOffers(packageId, round)`
+- [ ] T121 [P] [US2] Create the photo slice in packages/core/src/repositories/photo/ and the match slice in packages/core/src/repositories/match/ (Match: `upsert` on `(packageId, investorId, round)` that adds to `matchedBuyBoxIds` and returns whether the row is new, `markNotified(listingVersion)`, `markDigested`, `listUndigested(investorId)`, `listByPackage`, `listMatchedForInvestor(investorId)`, `findOne(packageId, investorId, round)`; MatchEvaluation: `appendMany` (skips duplicates on the unique key), `findFor(packageId, listingVersion, buyBoxId, buyBoxVersion)`), and the listing-version slice in packages/core/src/repositories/listing-version/ (`append`, `findLatest(packageId, round)`, `setMatchSummary(id, matchedCount, topExclusionReasons)`, `listPublishedSince(date)` for the near-miss summary)
+- [ ] T122 [US2] Add the seller, property, listing-package, listing-version, photo, and match repositories to `UnitOfWorkRepositories` and `PrismaUnitOfWorkImpl`, add their InMemory doubles in packages/core/test/doubles/, and export them from the barrels (depends on T118–T121)
+- [ ] T123 [US2] Implement `IListingPackageService` and `ListingPackageService` (create (DRAFT, with duplicate warning), get (an OPS read audits `PII_ACCESSED`), list, update; a material update after publish, meaning a change to any field in `MATERIAL_FIELDS`, increments `listingVersion`, appends a ListingVersion snapshot, enqueues MATCH_PACKAGE, and returns a job handle) in packages/core/src/services/listing-package/ (depends on T109, T122)
+- [ ] T124 [US2] Implement `IPhotoService` and `PhotoService` (`requestUpload` → `{ storageKey, upload: UploadInstruction }` via `IStorageProvider.createUpload`; `attach`; `remove`) in packages/core/src/services/photo/ (depends on T113, T122)
+- [ ] T125 [US2] Implement `PublicationWorkflow` (publish, withdraw, reopen, extendDeadline) in packages/core/src/workflows/publication/PublicationWorkflow.ts, reading publish requirements from `ConfigEntry["packageFormSteps"]` (depends on T110, T122)
+- [ ] T126 [US2] Implement `MatchingWorkflow.evaluatePackage(packageId, round, listingVersion)` (stage 1 `findCandidates`, stage 2 `evaluateBuyBox`, MatchEvaluation and Match writes plus `package.matched` / `package.changed` events in one uow; the zero-match exclusion summary) in packages/core/src/workflows/matching/MatchingWorkflow.ts and the job handlers packages/core/src/jobs/handlers/match-package.handler.ts and packages/core/src/jobs/handlers/close-offer-round.handler.ts (depends on T111, T112, T122)
+- [ ] T127 [US2] Implement `InvestorPackageQueryService` (`listMatched(actor)` newest first with `offerDeadline`; `getForInvestor(actor, id)` → 404 unless a Match row exists for this investor, package, and current round; returns `InvestorPackageView` built field by field, never by spreading the entity) in packages/core/src/services/investor-package/ (depends on T108, T122)
+- [ ] T128 [US2] Implement `NotificationService` (`listMine`, `markRead`) in packages/core/src/services/notification/
+- [ ] T129 [US2] Create the api routers: `createListingPackagesRouter` (GET list, POST, GET `:id`, PATCH `:id`, POST `:id/publication`, `:id/withdrawal`, `:id/reopening`, PATCH `:id/offer-deadline`, GET `:id/matches`) in apps/api/src/routes/listing-packages.router.ts; `createPhotosRouter` (POST `:id/photo-uploads`, POST `:id/photos`, DELETE `:id/photos/:photoId`) in apps/api/src/routes/photos.router.ts; `createInvestorPackagesRouter` (GET `/investor/packages`, GET `/investor/packages/:id`) in apps/api/src/routes/investor-packages.router.ts; `createNotificationsRouter` in apps/api/src/routes/notifications.router.ts. Wire them in apps/api/src/container.ts and app.ts
+- [ ] T130 [US2] Implement `GET /package-form` (AGENT) → the `packageFormSteps` config (already in [contracts/api.md](./contracts/api.md)) in apps/api/src/routes/listing-packages.router.ts via `ConfigService` (IX: the wizard steps come from config)
+- [ ] T131 [US2] Register the MATCH_PACKAGE and CLOSE_OFFER_ROUND handlers and `PrismaSellerContactReaderImpl` in apps/worker/src/container.ts (US5 adds MATCH_BUY_BOX and SEND_MATCH_DIGESTS in T219 and T221)
+- [ ] T132 [P] [US2] Add the typed client modules in packages/contracts/src/client/listing-packages.ts, photos.ts, investor-packages.ts, and notifications.ts
+- [ ] T133 [US2] Build the agent package list (ListPageTemplate; status filter; StatusPill) in apps/web/src/app/(agent)/agent/packages/page.tsx with `usePackages` in apps/web/src/features/listing-package/usePackages.ts
+- [ ] T134 [US2] Build the new-package wizard (WizardTemplate driven by `GET /package-form`; steps seller, property, expectations, photos, review; the duplicate-address warning shown as a notice with a link to the existing package) in apps/web/src/app/(agent)/agent/packages/new/page.tsx, with `usePackageWizard` and `usePhotoUpload` in apps/web/src/features/listing-package/ (depends on T115)
+- [ ] T135 [US2] Build the agent package detail page (DetailPageTemplate: status; edit; publish with field errors; matched count; the "no matches" notice with `topExclusionReasons`; withdraw, reopen, and extend-deadline dialogs) in apps/web/src/app/(agent)/agent/packages/[id]/page.tsx
+- [ ] T136 [US2] Build the investor package list and the read-only privacy-safe detail page (city, ZIP, neighborhood, facts, photos via read URLs, timeline, deadline) in apps/web/src/app/(investor)/investor/packages/page.tsx and apps/web/src/app/(investor)/investor/packages/[id]/page.tsx; a 404 shows "not found"
+- [ ] T137 [US2] Add the notification inbox (badge count plus panel; `useNotifications` with polling) to the AppShell slot in apps/web/src/features/notifications/NotificationInbox.tsx
+- [ ] T138 [US2] Create seed/photos/ (small sample JPEGs, under 5 MB total) and the package seed module packages/core/prisma/seed/packages.ts (upserts by fixed keys: a DRAFT package, ACCEPTING_OFFERS packages for `agent.avery` and `agent.blake`, and a "no matches" package; photos are seeded directly through `IStorageProvider.put()` from seed/photos/*.jpg under fixed keys (`seed/<package>/<n>.jpg`; overwriting is idempotent), bypassing the browser upload contract, and matching Photo rows are upserted; compose starts the sandbox before `migrate` (T101); matches are computed with the same stage 1 `findCandidates` and stage 2 `evaluateBuyBox` functions as live matching, writing ListingVersion, Match, and MatchEvaluation rows directly with `notifiedAt` set and no outbox events, so seeding sends no messages), then register it in packages/core/prisma/seed/index.ts
+- [ ] T139 [US2] Generate seed/expected-matches.json (investor IDs per seeded package and for the V2 sample address) with a script in packages/core/prisma/seed/expected-matches.ts, and add the V2 sample address (Austin 78704, single-family, Fair condition) as the hint in the wizard config
+
+**Checkpoint**: Quickstart V2 passes. US1 still passes.
+
+---
+
+## Phase 5: User Story 3 - Investor reviews matched packages and submits an offer (Priority: P1)
+
+**Goal**: Matched investors see their packages with time left, submit one offer per package,
+and can revise or withdraw it before the deadline. Duplicates are impossible.
+
+**Independent Test**: Quickstart V3: as `investor.summit`, submit and revise an offer; the agent
+sees one offer at the latest revision with history; the same `Idempotency-Key` twice returns
+`Idempotent-Replay: true` with one offer; the "Deadline passed" package refuses submission.
+
+### Tests for User Story 3 (write first, must fail) ⚠️
+
+- [ ] T140 [P] [US3] Write the OfferService tests in packages/core/src/services/offer/OfferService.test.ts (FakeClock): `price` > 0; `paymentType` CASH or FINANCED; `closingDate` ≥ today; `earnestMoney` ≥ 0; `contingencies` subset of INSPECTION, FINANCING, APPRAISAL, TITLE, SALE_OF_HOME, and FINANCING is required if `paymentType = FINANCED`; `feesAndConcessions` ≥ 0; `expiresAt` > now; an investor without a Match row for the package and round → NotFoundError; after `offerDeadline` → BusinessRuleError "The offer deadline passed on …"; a second create while one is active → BusinessRuleError pointing to revise; revise writes OfferRevision n+1 (author INVESTOR) and requires `version`; withdraw works from ACTIVE or COUNTERED only; each write emits `offer.submitted` or `offer.revised`, audits OFFER_SUBMITTED or OFFER_REVISED, and schedules EXPIRE_OFFER at `expiresAt` (dedupe `EXPIRE_OFFER:{offerId}:{revision}`); another investor's offer → NotFoundError; an OPS or AGENT actor creating or revising an offer → ForbiddenError (FR-080)
+- [ ] T141 [P] [US3] Write the EXPIRE_OFFER handler test in packages/core/src/jobs/handlers/expire-offer.handler.test.ts: an ACTIVE or COUNTERED offer past `expiresAt` → EXPIRED; a job for an older revision does nothing; an accepted offer is untouched
+- [ ] T142 [P] [US3] Write the duplicate-offer integration test in packages/core/test/integration/duplicate-offer.int.test.ts: two concurrent creates for the same investor, package, and round → exactly one row; the loser gets BusinessRuleError (partial unique index); a withdrawn offer allows a new one
+- [ ] T143 [P] [US3] Write the offer form hook test in apps/web/src/features/offers/useOfferForm.test.tsx: one `Idempotency-Key` is created when the form opens and reused on double submit and retry; a new key is created after success; field errors map from `details.fields`
+
+### Implementation for User Story 3
+
+- [ ] T144 [P] [US3] Create the offer contracts in packages/contracts/src/offer/: `CONTINGENCIES` and `PAYMENT_TYPES` (as const), `createOfferInputSchema` (the T140 rules), `reviseOfferInputSchema` (separate; requires `version`), `OfferView` (includes `investorActive` for the deactivated-investor flag), `OfferRevisionView`, and `myOfferStatus` on `InvestorPackageSummary`
+- [ ] T145 [US3] Create the offer slice in packages/core/src/repositories/offer/ (offers plus revisions: `create` with revision 1, `revise(id, version, terms, author)`, `updateStatus(id, version, status)`, `findById`, `findActiveForInvestor(packageId, investorId, round)`, `listActiveByPackage(packageId, round)`, `listRevisions(offerId)`); add it to the unit of work, the InMemory doubles, and the barrels
+- [ ] T146 [US3] Implement `IOfferService` and `OfferService` (create, revise, withdraw, getRevisions, listForPackage (agent owner or OPS)) in packages/core/src/services/offer/ (depends on T140, T145)
+- [ ] T147 [US3] Implement the EXPIRE_OFFER handler in packages/core/src/jobs/handlers/expire-offer.handler.ts and register it in apps/worker/src/container.ts (depends on T141)
+- [ ] T148 [US3] Extend `PublicationWorkflow.withdraw` to set every open offer (ACTIVE, COUNTERED, BACKUP) to DECLINED with notifications, and make the CLOSE_OFFER_ROUND handler use `countActiveOffers` from the offer slice, in packages/core/src/workflows/publication/PublicationWorkflow.ts and its test
+- [ ] T149 [US3] Add `myOfferStatus` to `InvestorPackageQueryService.listMatched` in packages/core/src/services/investor-package/
+- [ ] T150 [US3] Create `createOffersRouter` (POST `/listing-packages/:id/offers`, PATCH `/offers/:offerId`, POST `/offers/:offerId/withdrawal`, GET `/offers/:offerId/revisions`, GET `/listing-packages/:id/offers` for the agent) in apps/api/src/routes/offers.router.ts, wired in container.ts and app.ts (the agent list route is already in [contracts/api.md](./contracts/api.md))
+- [ ] T151 [P] [US3] Add the typed client module packages/contracts/src/client/offers.ts
+- [ ] T152 [US3] Build the investor dashboard (matched packages newest first; a time-left countdown via `useCountdown` with an injectable clock; `myOfferStatus` badge) in apps/web/src/app/(investor)/investor/page.tsx and apps/web/src/features/offers/useCountdown.ts
+- [ ] T153 [US3] Add the offer panel to the investor package page: the offer form (MoneyField, DatePicker, CheckboxGroup for contingencies, RadioGroup for payment type), revise, a withdraw confirmation Dialog, revision history, and the deadline-passed notice, in apps/web/src/features/offers/OfferPanel.tsx and `useOfferForm` in apps/web/src/features/offers/useOfferForm.ts (depends on T143)
+- [ ] T154 [US3] Add the offers section to the agent package detail page (latest revision per investor, a revision history drawer, and an "investor deactivated" flag) in apps/web/src/features/offers/AgentOfferList.tsx
+- [ ] T155 [US3] Create the offer seed module packages/core/prisma/seed/offers.ts (offers on the seeded ACCEPTING_OFFERS packages; a "Deadline passed" package with a past deadline and one offer) and register it in the seed index
+
+**Checkpoint**: Quickstart V3 passes. US1 and US2 still pass.
+
+---
+
+## Phase 6: User Story 4 - Agent compares offers, the seller chooses, and the deal is tracked to close (Priority: P2)
+
+**Goal**: The agent compares offers by net proceeds and records accept, counter, or decline
+all; exactly one acceptance can win; the deal moves through milestones in order; a
+fallen-through deal can promote a backup that must reconfirm within 48 hours.
+
+**Independent Test**: Quickstart V4: as `agent.blake`, open the 6-offer package, sort by net
+proceeds, and accept the top offer; the winner sees seller details and the others see "Backup
+offer"; out-of-order milestones are refused; fall through, promote a backup, reconfirm as that
+investor; `pnpm test:integration -- accept-race` passes.
+
+### Tests for User Story 4 (write first, must fail) ⚠️
+
+- [ ] T156 [P] [US4] Write the net proceeds tests in packages/core/src/services/offer-comparison/net-proceeds.test.ts: `estimatedNetProceeds = price − feesAndConcessions − round(price × closingCostPct) − flatFees`, using `ConfigEntry["netProceeds"]`; the breakdown lists each subtracted item; `certaintyRank` = number of contingencies, with cash ahead of financed on ties
+- [ ] T157 [P] [US4] Write the OfferComparisonService tests in packages/core/src/services/offer-comparison/OfferComparisonService.test.ts: sorts by `netProceeds` (desc), `closingDate` (asc), and `certainty` (asc); includes ACTIVE, COUNTERED, and BACKUP offers; marks expired offers as not acceptable; returns the `assumptions` used; only the package's agent or OPS may call it
+- [ ] T158 [P] [US4] Write the DecisionWorkflow tests in packages/core/src/workflows/decision/DecisionWorkflow.test.ts: ACCEPT runs in one uow and sets the package and a new Deal to OFFER_ACCEPTED, the offer to ACCEPTED, and every other ACTIVE or COUNTERED offer to BACKUP; it emits `decision.accepted` with `backupOfferIds`, plus `package.closed_to_offers` for matched investors with no offer, and audits DECISION_RECORDED; ACCEPT of an expired offer → BusinessRuleError; ACCEPT when a deal is active → BusinessRuleError "This package already has an accepted offer"; COUNTER writes an AGENT revision, sets COUNTERED, and emits `offer.countered` for that investor only; DECLINE_ALL sets every open offer to DECLINED and emits `decision.declined_all`; an OPS actor recording any decision → ForbiddenError (FR-080: ops can see everything but cannot make seller decisions); a stale `version` → ConflictError
+- [ ] T159 [P] [US4] Write the counter-response tests in packages/core/src/services/offer/OfferService.counter.test.ts: ACCEPT adopts the counter terms as a new INVESTOR revision and sets ACTIVE; DECLINE sets ACTIVE again at the investor's last own revision and notifies the agent; a revision replaces the counter; only the offer's investor may respond
+- [ ] T160 [P] [US4] Write the DealLifecycleWorkflow tests in packages/core/src/workflows/deal-lifecycle/DealLifecycleWorkflow.test.ts (FakeClock):
+  - milestones only in order OFFER_ACCEPTED → UNDER_CONTRACT → INSPECTION → CLOSING → CLOSED; out of order → ConflictError with `allowedNext`; the package status mirrors the deal; each step emits `deal.milestone` and `package.status_changed` and audits DEAL_MILESTONE with the actor; CLOSED refuses every change;
+  - fall-through needs a reason, sets the deal and the winning offer to FELL_THROUGH, emits `deal.fell_through`, audits DEAL_FELL_THROUGH, and returns unexpired backups ranked by net proceeds;
+  - promote creates a Deal in PENDING_RECONFIRMATION with `reconfirmBy` = now + `reconfirmHours`, enqueues EXPIRE_RECONFIRMATION (dedupe `EXPIRE_RECONFIRMATION:{dealId}`), emits `deal.backup_promoted`, and audits BACKUP_PROMOTED; an expired backup can't be promoted;
+  - reconfirm CONFIRM → the deal and package go to OFFER_ACCEPTED and the offer to ACCEPTED; DECLINE or the timeout → RECONFIRM_DECLINED, the offer goes to DECLINED_TO_RECONFIRM, and the agent is notified;
+  - with no usable backups, reopen (round + 1, new MATCH_PACKAGE) or withdraw
+- [ ] T161 [P] [US4] Write the seller-reveal tests in packages/core/src/services/investor-package/InvestorPackageQueryService.reveal.test.ts: only the investor whose offer is ACCEPTED on the active deal gets `sellerContact` and `streetLine`; each reveal writes a PII_ACCESSED audit entry; after fall-through the same investor gets the PII-free view again; backup investors never get PII
+- [ ] T162 [P] [US4] Write the acceptance race integration test in packages/core/test/integration/accept-race.int.test.ts: two concurrent ACCEPT decisions for different offers on one package → exactly one succeeds and the other gets BusinessRuleError; one Deal row exists
+- [ ] T163 [P] [US4] Write the deal timer integration test in packages/core/test/integration/deal-lifecycle.int.test.ts: promote a backup, stop and recreate the job poller (a simulated restart), advance FakeClock 48 h, and assert EXPIRE_RECONFIRMATION runs once and the deal is RECONFIRM_DECLINED (FR-059)
+
+### Implementation for User Story 4
+
+- [ ] T164 [P] [US4] Create the comparison, decision, and deal contracts: `OfferComparisonRow` (with `breakdown`), `comparisonQuerySchema` (`sort`: `netProceeds` | `closingDate` | `certainty`) in packages/contracts/src/offer/comparison.ts; `DECISION_TYPES`, `createDecisionSchema` (`offerId` required for ACCEPT and COUNTER, `counterTerms` required for COUNTER, `version`) in packages/contracts/src/deal/decision.ts; `DealView` (`allowedNextMilestones[]`, `backups[]` for agent and OPS only), `milestoneInputSchema`, `fallThroughInputSchema` (`reason` 1–500 chars required), `promoteBackupSchema`, `counterResponseSchema`, `reconfirmationSchema`, and the investor `sellerContact` extension of `InvestorPackageView` in packages/contracts/src/deal/
+- [ ] T165 [P] [US4] Create the decision slice in packages/core/src/repositories/decision/ (append-only) and the deal slice in packages/core/src/repositories/deal/ (`create`, `findActiveByPackage`, `findById`, `update(id, version, patch)`, `listByPackage`); add both to the unit of work, the InMemory doubles, and the barrels
+- [ ] T166 [US4] Implement `computeNetProceeds(offer, assumptions)` and `certaintyRank(offer)` in packages/core/src/services/offer-comparison/net-proceeds.ts and `OfferComparisonService` in packages/core/src/services/offer-comparison/OfferComparisonService.ts (depends on T156, T157)
+- [ ] T167 [US4] Implement `DecisionWorkflow` (accept, counter, declineAll) in packages/core/src/workflows/decision/DecisionWorkflow.ts (depends on T158, T165)
+- [ ] T168 [US4] Implement `DealLifecycleWorkflow` (recordMilestone, fallThrough, promoteBackup, reconfirm, reopenAfterFallThrough, withdrawAfterFallThrough) in packages/core/src/workflows/deal-lifecycle/DealLifecycleWorkflow.ts, and the EXPIRE_RECONFIRMATION handler in packages/core/src/jobs/handlers/expire-reconfirmation.handler.ts registered in apps/worker/src/container.ts (depends on T160, T165)
+- [ ] T169 [US4] Add `respondToCounter`, BACKUP withdrawal, and extending a BACKUP offer's `expiresAt` (allowed after the deadline; no other field may change) to `OfferService` in packages/core/src/services/offer/OfferService.ts (already documented under `PATCH /offers/:offerId` in [contracts/api.md](./contracts/api.md)) (depends on T159)
+- [ ] T170 [US4] Implement the seller reveal in `InvestorPackageQueryService.getForInvestor` (via the seller slice; PII_ACCESSED audit) in packages/core/src/services/investor-package/ (depends on T161)
+- [ ] T171 [US4] Create the routers: `createComparisonRouter` (GET `/listing-packages/:id/offer-comparison`) in apps/api/src/routes/comparison.router.ts; `createDecisionsRouter` (POST `/listing-packages/:id/decisions`) in apps/api/src/routes/decisions.router.ts; `createDealsRouter` (GET `/listing-packages/:id/deal`, POST `/deals/:dealId/milestones`, POST `/deals/:dealId/fall-through`, POST `/listing-packages/:id/backup-promotions`) in apps/api/src/routes/deals.router.ts; and add POST `/offers/:offerId/counter-response` and `/offers/:offerId/reconfirmation` to apps/api/src/routes/offers.router.ts; wire everything in container.ts and app.ts
+- [ ] T172 [P] [US4] Add the typed client modules packages/contracts/src/client/comparison.ts, decisions.ts, and deals.ts
+- [ ] T173 [US4] Build the comparison page (ComparisonTemplate plus ComparisonTable for up to 10 offers; sort control; a breakdown popover explaining each subtraction; expired offers marked and not selectable) in apps/web/src/app/(agent)/agent/packages/[id]/compare/page.tsx
+- [ ] T174 [US4] Build the decision dialogs (accept with confirmation; counter with an offer-terms form; decline all with a note; a 409 shows "already has an accepted offer") in apps/web/src/features/decisions/DecisionDialogs.tsx; decisions are never optimistic (XIII)
+- [ ] T175 [US4] Build the deal tracker page (StatusTimeline; buttons only for `allowedNextMilestones`; a fall-through Dialog with a required reason; ranked backups with promote; reopen or withdraw when no backups remain) in apps/web/src/app/(agent)/agent/packages/[id]/deal/page.tsx
+- [ ] T176 [US4] Build the investor deal views: counter response (accept, revise, decline), a backup notice with withdraw and extend-expiry, a reconfirm page with a 48 h countdown, the deal status for the buyer, and a seller contact card for the winner, in apps/web/src/features/deals/ and apps/web/src/app/(investor)/investor/packages/[id]/page.tsx
+- [ ] T177 [US4] Create the deal seed module packages/core/prisma/seed/deals.ts (for `agent.blake`: a package with 6 offers; an accepted package with backups; one at INSPECTION; a FELL_THROUGH package with backups; a CLOSED package) and register it in the seed index
+
+**Checkpoint**: Quickstart V4 passes. US1–US3 still pass.
+
+---
+
+## Phase 7: User Story 5 - Investor manages their buy box (Priority: P2)
+
+**Goal**: Investors create, edit, pause, and resume one or more buy boxes with specific
+validation errors. Saving a box matches it against packages still accepting offers, and new
+matches reach the dashboard and a daily digest. Operations import the legacy spreadsheet:
+valid rows are upserted into one default box per investor, invalid rows are reported per row,
+and a re-import never duplicates.
+
+**Independent Test**: Quickstart V5: `investor.harbor` saving Min Price > Max Price is refused
+with the field named; a second harbor box that fits an open package puts it on the dashboard
+with no instant email, and the digest lists it; a paused box never matches; importing
+seed/legacy-investors.csv gives 26 imported and 4 rejected; a second import gives 0 imported,
+26 updated, and 4 rejected, with still one default box per investor.
+
+### Tests for User Story 5 (write first, must fail) ⚠️
+
+- [ ] T178 [P] [US5] Write the BuyBoxService tests in packages/core/src/services/buy-box/BuyBoxService.test.ts: an investor can create a second box; names are unique per investor; each T022 rule rejects with its field named (including an empty array and a geography mode that disagrees with its entries); a save increments `version`, appends a BuyBoxVersion, and enqueues MATCH_BUY_BOX (dedupe `MATCH_BUY_BOX:{buyBoxId}:{version}`) in the same uow when criteria or status change; a stale `version` → ConflictError; pause and resume are status changes; only the investor themselves (or OPS) can read or save their boxes; `list` returns the default box first
+- [ ] T218 [P] [US5] Write the MatchingWorkflow tests for `evaluateBuyBox` in packages/core/src/workflows/matching/MatchingWorkflow.buy-box.test.ts: a saved box is evaluated against every package still accepting offers (offer deadline not passed) and no other package; a new match creates a Match row with trigger BUY_BOX_CHANGE and one `package.matched` event whose targets are IN_APP only; an investor already matched to that package gets no second event, and the new box is added to `matchedBuyBoxIds`; a PAUSED box, an inactive investor, or expired proof of funds matches nothing; a box whose edit stops it matching leaves existing Match rows alone (FR-023)
+- [ ] T220 [P] [US5] Write the SEND_MATCH_DIGESTS handler test in packages/core/src/jobs/handlers/send-match-digests.handler.test.ts (FakeClock): one `investor.match_digest` event per investor with undigested BUY_BOX_CHANGE matches, listing each package with its matching box names; those matches get `digestedAt`; a second run the same day sends nothing; the handler schedules the next run at the next `matchDigest.hourUtc`; an investor with no undigested matches gets no event
+- [ ] T222 [P] [US5] Write the NearMissService tests in packages/core/src/services/buy-box/NearMissService.test.ts (stretch: cut first if time is short): for one box, replays the evaluator against the ListingVersions published in the last `nearMiss.windowDays`; counts packages that failed exactly one criterion, grouped by criterion key; drops any group with fewer than `nearMiss.minCount` (never below 5); the result holds no package IDs, addresses, or prices; only the box's owner (or OPS) can read it (FR-062)
+- [ ] T179 [P] [US5] Write the CSV parser tests in packages/core/src/workflows/investor-import/parse-legacy-csv.test.ts: headers match case-insensitively; unknown columns are returned for the summary; `Type` maps `Direct Buyer`, `Wholesaler`, and `iBuyer`; `Property Types` maps `SFR`, `Condo`, `Townhome`, `Multi`, `Manufactured`, and `Land`; `Markets` is `ALL` (NATIONWIDE), or `;`-separated state codes (STATES), or `;`-separated ZIP codes (ZIPS), and a row mixing states and ZIP codes is rejected; `Proof of Funds Expires` parses `YYYY-MM-DD` and blank means not verified; `Phone` normalizes to E.164; the defaults are `Close Within Days` 30, `Active` Y, and blank `Conditions` meaning any (null); range and min ≤ max failures come from the registry schema (T022), not the parser, and are reported with the CSV column name; the reasons read exactly like `row 7: Max Price (-5) must be ≥ 0`, `row 12: ZIP 00000 is not a valid ZIP code`, and `row 19: Email is required`; files over 5 MB or 10,000 rows are rejected
+- [ ] T180 [P] [US5] Write the InvestorImportWorkflow tests in packages/core/src/workflows/investor-import/InvestorImportWorkflow.test.ts: upsert by `Investor ID`, else by `Email`; each row creates or updates exactly one default buy box (`isDefault: true`, name "Legacy Import") and never touches the investor's other boxes; a changed or new default box gets a BuyBoxVersion and a MATCH_BUY_BOX job, and an unchanged one gets neither; each row in its own uow (a failing row leaves no partial investor or box); the batch counts are `imported`, `updated`, and `rejected`; `Job.progress` updates; IMPORT_COMPLETED is audited
+- [ ] T181 [P] [US5] Write the import integration test in packages/core/test/integration/investor-import.int.test.ts: importing seed/legacy-investors.csv gives 26 IMPORTED and 4 REJECTED with the expected reasons; a second run gives 0 IMPORTED, 26 UPDATED, and 4 REJECTED, and the Investor count, the BuyBox count (one default per imported investor), and the BuyBoxVersion count are unchanged
+
+### Implementation for User Story 5
+
+- [ ] T182 [P] [US5] Create `seed/legacy-investors.csv` per [contracts/investor-import.md](./contracts/investor-import.md): 30 rows; 26 valid; 4 invalid (a negative price, an unknown ZIP code, a missing email, and min price above max); `Markets` within the T067 ZIP list, plus a few rows using state codes and one using `ALL`; `Proof of Funds Expires` filled for most rows and blank for a few; one extra unknown column
+- [ ] T183 [P] [US5] Create the buy-box view contracts (`BuyBoxView` with `id`, `name`, `status`, `isDefault`, `strategy`, `geographyMode`, `states[]` or `zips[]`, every criterion, `version`, `updatedAt`; `NearMissSummary` `[{ criterionKey, label, count }]`) in packages/contracts/src/buy-box/view.ts, and the import contracts (`importUploadRequestSchema` (`sizeBytes` ≤ 5 MB) with the response `{ storageKey, upload: UploadInstruction }`, `startImportSchema` (`storageKey`, `fileName`), `ImportBatchView`, `ImportRowResultView`) in packages/contracts/src/investor/import.ts
+- [ ] T184 [US5] Create the import slice in packages/core/src/repositories/import/ (ImportBatch plus ImportRowResult: `createBatch`, `addRowResult`, `finalizeCounts`, `findBatchWithRows`); add it to the unit of work, the InMemory doubles, and the barrels
+- [ ] T185 [US5] Implement `IBuyBoxService` and `BuyBoxService` (`list`, `get`, `create`, `update` including pause and resume; each save enqueues MATCH_BUY_BOX in the same uow) in packages/core/src/services/buy-box/ (depends on T178)
+- [ ] T219 [US5] Implement `MatchingWorkflow.evaluateBuyBox(buyBoxId, buyBoxVersion)` in packages/core/src/workflows/matching/MatchingWorkflow.ts and the MATCH_BUY_BOX handler in packages/core/src/jobs/handlers/match-buy-box.handler.ts, registered in apps/worker/src/container.ts; set `trigger` on `package.matched` and route BUY_BOX_CHANGE to IN_APP only in `EVENT_TARGETS` (depends on T126, T218)
+- [ ] T221 [US5] Implement the SEND_MATCH_DIGESTS handler in packages/core/src/jobs/handlers/send-match-digests.handler.ts (registered in apps/worker/src/container.ts; on startup the worker enqueues the next daily run if none is queued, using the dedupe key `SEND_MATCH_DIGESTS:{date}`), the `investor.match_digest` event and its EMAIL template, and `POST /ops/match-digests` (OPS, 202, enqueues a run now) in its own router factory apps/api/src/routes/match-digests.router.ts, wired in container.ts and app.ts, so it does not wait for US6's ops router (depends on T220)
+- [ ] T223 [US5] Implement `NearMissService` in packages/core/src/services/buy-box/NearMissService.ts, `GET /investor/buy-boxes/:id/near-misses` in apps/api/src/routes/buy-box.router.ts, and a "Missed by one criterion" panel on the buy box editor that shows only the returned groups (stretch: cut first if time is short) (depends on T222, T187, T188)
+- [ ] T186 [US5] Implement `parseLegacyCsv(buffer, geo)` in packages/core/src/workflows/investor-import/parse-legacy-csv.ts (column parsing only: headers, `;` lists, enum names, dates, phone, ZIP lookup; it maps each row to the buy box input and validates that input with `createBuyBoxInputSchema` from T022, translating each failing field path to its CSV column name through a `CRITERION_COLUMNS` map, e.g. `repairMax` → `Max Repairs`; it holds no range or min ≤ max rules of its own, XIX.3) and `InvestorImportWorkflow` (`requestUpload`, `start` → 202 `{ jobId, batchId }` enqueuing IMPORT_INVESTORS with dedupe `IMPORT_INVESTORS:{batchId}`, `run(batchId)` reading the file via `IStorageProvider.read`) in packages/core/src/workflows/investor-import/InvestorImportWorkflow.ts, plus the IMPORT_INVESTORS handler in packages/core/src/jobs/handlers/import-investors.handler.ts registered in apps/worker/src/container.ts (depends on T179, T180, T184)
+- [ ] T187 [US5] Create `createBuyBoxRouter` (GET and POST `/investor/buy-boxes`, GET and PUT `/investor/buy-boxes/:id`) in apps/api/src/routes/buy-box.router.ts and `createInvestorImportsRouter` (POST `/ops/investor-imports/uploads`, POST `/ops/investor-imports`, GET `/ops/investor-imports/:batchId`) in apps/api/src/routes/investor-imports.router.ts; wire them in container.ts and app.ts; add typed client modules packages/contracts/src/client/buy-box.ts and investor-imports.ts
+- [ ] T188 [US5] Build the investor buy boxes list (name, status, strategy, default badge; add box; pause and resume) in apps/web/src/app/(investor)/investor/buy-boxes/page.tsx and the editor in apps/web/src/app/(investor)/investor/buy-boxes/[id]/page.tsx, with fields generated from the T022 registry form metadata (FormSection groups: where (nationwide, states, or ZIP codes), property types, price, year built, beds and baths, size and units, condition, repairs, closing speed, listed homes, programs; each criterion can be left blank for "any"; field-level errors; a notice that changes apply to new packages and to packages still accepting offers), with `useBuyBoxForm` in apps/web/src/features/buy-box/useBuyBoxForm.ts
+- [ ] T189 [US5] Build the ops import page (the browser uploads the CSV with the returned `UploadInstruction` via `fetch`; progress by polling `GET /jobs/:jobId`; a summary of imported, updated, and rejected; a table of row results with reasons; ignored columns listed) in apps/web/src/app/(ops)/ops/imports/page.tsx
+
+**Checkpoint**: Quickstart V5 passes. US1–US4 still pass.
+
+---
+
+## Phase 8: User Story 6 - Operations sees what happened and recovers from failures (Priority: P3)
+
+**Goal**: Operations get a per-package timeline, a "why (not) matched" explanation, the
+delivery list with "needs attention" and manual retry, outage switches, and a CRM comparison
+that proves the one-way sync converges.
+
+**Independent Test**: Quickstart V6: set CRM `down` and messaging `garbage`, publish and accept
+(both succeed), watch deliveries go to Retrying and then Needs attention, switch the services
+back up and retry; within 5 minutes the CRM comparison is all in sync with no duplicate
+messages; restarting the worker loses nothing.
+
+### Tests for User Story 6 (write first, must fail) ⚠️
+
+- [ ] T190 [P] [US6] Write the status-event coverage test in packages/core/src/workflows/status-events.test.ts: a table-driven check that every PackageStatus and DealStatus transition performed by PublicationWorkflow, DecisionWorkflow, DealLifecycleWorkflow, and the CLOSE_OFFER_ROUND handler writes `package.status_changed` (and `deal.*` where listed) in the same uow (FR-077); extend the same table to every OfferStatus transition (withdraw, expire, backup, declined, declined-to-reconfirm) and assert each transition also writes an `AuditLog` entry with the actor, and that a refused transition writes one with outcome `REJECTED` (XII)
+- [ ] T191 [P] [US6] Write the ops service tests in packages/core/src/services/ops/: TimelineService.test.ts (merges audit entries, matches, offers, and delivery attempts for one package in time order; OPS only), MatchExplanationService.test.ts (for an investor with two boxes, each box is reported; a matched box returns its stored MatchEvaluation with `source: STORED`; a non-matched box is replayed with the BuyBoxVersion live at the latest ListingVersion's `createdAt`, not the current box, with `source: REPLAYED`; editing the box after publish does not change the answer; `replayedWithNewerRules` is true only when the current `EVALUATOR_VERSION` differs from the ListingVersion's; OPS only; FR-074), CrmComparisonService.test.ts (in sync when the CRM status equals the platform status; otherwise `pendingDeliveryId` points to the newest unsent CRM delivery), DeliveryOpsService.test.ts (retry only from NEEDS_ATTENTION; sets PENDING with attempts 0, re-enqueues, and audits DELIVERY_RETRIED; `retryAll` does the same for every NEEDS_ATTENTION delivery, optionally filtered by target, and returns the count), SimulationService.test.ts (OPS only; passes the mode through)
+- [ ] T192 [US6] Write the outage recovery integration test in packages/core/test/integration/outage-recovery.int.test.ts (sandbox app in-process, BullMQ on Testcontainers Redis, the `deliveryRetry` config shortened for the test): with CRM `down` and messaging `garbage`, publishing and accepting succeed; deliveries move to RETRYING and then NEEDS_ATTENTION; after switching to `up` and a manual retry, everything is SENT, the sandbox has each idempotency key exactly once, and every CRM record equals the platform status; stopping and restarting the dispatcher mid-retry loses and duplicates nothing (SC-007, SC-012)
+
+### Implementation for User Story 6
+
+- [ ] T193 [P] [US6] Create the ops contracts in packages/contracts/src/ops/: `TimelineEntry` (`occurredAt`, `kind`: audit | match | offer | delivery, `summary`, `outcome`, `actor?`), `DeliveryView` (with `lastError` redacted), `CrmComparisonRow` (`packageId`, `platformStatus`, `crmStatus`, `inSync`, `pendingDeliveryId?`), `SIMULATION_SERVICES` (`crm`, `messaging`, `storage`), `SIMULATION_MODES` (`up`, `down`, `slow`, `garbage`), and `simulationInputSchema`
+- [ ] T194 [US6] Implement `TimelineService`, `MatchExplanationService` (`explain(actor, packageId, investorId)` → `MatchExplanationView`, replaying non-matches from the ListingVersion and BuyBoxVersion snapshots with the registry evaluator), `DeliveryOpsService` (list by status, retry, retryAll), `CrmComparisonService` (via `ICrmMirrorReader`), and `SimulationService` (via `ISimulationControlProvider`) in packages/core/src/services/ops/ (depends on T191)
+- [ ] T195 [US6] Create `createOpsRouter` (GET `/ops/listing-packages/:id/timeline`, GET `/ops/listing-packages/:id/matches/:investorId`, GET `/ops/deliveries`, POST `/ops/deliveries/:id/retry` → 202, POST `/ops/deliveries/retry-all` → 202 `{ count }`, GET `/ops/crm-comparison`, GET `/ops/simulations`, PUT `/ops/simulations/:service`, GET `/ops/config`, PUT `/ops/config/:key`) in apps/api/src/routes/ops.router.ts, wired in container.ts and app.ts; add the typed client module packages/contracts/src/client/ops.ts
+- [ ] T196 [US6] Build the ops home (every package with status, offer count, and failing-delivery count) in apps/web/src/app/(ops)/ops/page.tsx and the ops package page with the timeline (TimelineTemplate) and the "Why not matched?" panel (pick an investor → each of their buy boxes with its failing criteria and expected and actual values, a "replayed" label on non-matches, and a notice when `replayedWithNewerRules` is true) in apps/web/src/app/(ops)/ops/packages/[id]/page.tsx
+- [ ] T197 [US6] Build the deliveries page (filter by status; Needs attention first; the error shown; a retry button; a "Retry all" button for Needs attention; a "Send digests now" button calling `POST /ops/match-digests`; auto-refresh) in apps/web/src/app/(ops)/ops/deliveries/page.tsx
+- [ ] T198 [US6] Build the simulations page (a mode RadioGroup per service with the current state) in apps/web/src/app/(ops)/ops/simulations/page.tsx, the CRM comparison page (in-sync badge, or a link to the pending delivery) in apps/web/src/app/(ops)/ops/crm/page.tsx, and the config editor (JSON per key with server validation errors shown) in apps/web/src/app/(ops)/ops/config/page.tsx
+
+**Checkpoint**: Quickstart V6 passes. US1–US5 still pass.
+
+---
+
+## Phase 9: Design System and White-Label (FR-090 to FR-097, cross-cutting)
+
+**Purpose**: The second brand, the brand switcher, the living style guide, ops theme updates,
+and the automated brand checks. The foundation (tokens, primitives, templates) is in Phase 2.
+
+- [ ] T199 [P] Write the per-brand test in packages/core/src/services/brand/seed-brands.test.ts: every file in seed/brands/ passes `brandTokenSetSchema` and `validateBrandTokenSet` (SC-015, part of `pnpm test`)
+- [ ] T200 [P] Write the BrandService.updateTheme tests in packages/core/src/services/brand/BrandService.test.ts: OPS only; a missing token → ValidationError naming it; a failing pair → ValidationError naming both tokens and the ratio; success increments `tokenVersion` and audits CONFIG_CHANGED
+- [ ] T201 Create seed/brands/brand-beta.json from the owner-supplied partner values plus the derived shades listed under "Seeded brand values" (`brand-beta`) in [design-tokens.md](./contracts/design-tokens.md) (`action.primary` `#0F766E`, hover `#115E59`, `focus.ring` and `brand.accent` `#0D9488`, `text.muted` `#4B5563`; pill controls and 4px cards), a fictional name, logo, and legal footer; add the logos apps/web/public/brands/brand-beta/logo.svg and apps/web/public/brands/clever/logo.svg
+- [ ] T202 Implement `BrandService.updateTheme` in packages/core/src/services/brand/BrandService.ts and `PUT /ops/brands/:brandId/theme` in apps/api/src/routes/brands.router.ts (depends on T200)
+- [ ] T203 Build the brand switcher (a Select listing `GET /brands`; sets the `brand` cookie; `router.refresh()`) in apps/web/src/brand/BrandSwitcher.tsx, shown in AppShell and on the home page (FR-093)
+- [ ] T204 Build the living style guide at apps/web/src/app/design-system/page.tsx: every semantic token with its swatch or sample and its resolved value, every primitive and pattern in each state (default, hover, focus, disabled, error, loading, empty), every template with sample content, and the brand switcher (FR-097)
+- [ ] T205 Build the ops theme editor (paste or upload a token set JSON; the server's missing-token and failing-pair errors are listed) in apps/web/src/app/(ops)/ops/brands/page.tsx (FR-095)
+- [ ] T206 Run `pnpm lint` across apps/web and packages/ui and fix every raw style value (SC-014); confirm there are no brand names, colors, or logos in source files outside seed/ and apps/web/public/brands/ (XVI)
+- [ ] T207 Compare every screen side by side with cleveroffers.com (SC-013) and adjust primitives in seed/brands/clever.json only where they differ, keeping the AA text shades; re-run T199
+
+**Checkpoint**: Quickstart V7 passes.
+
+---
+
+## Phase 10: Polish & Cross-Cutting Concerns
+
+**Purpose**: End-to-end proof, security checks, delivery limits, and the submission package.
+
+- [ ] T208 [P] Write the end-to-end integration test in packages/core/test/integration/end-to-end.int.test.ts: publish → match → offer → accept → milestones → CLOSED, with CRM deliveries SENT and the sandbox CRM record CLOSED (R18, SC-010)
+- [ ] T209 [P] Write the log redaction integration test in packages/core/test/integration/log-redaction.int.test.ts: capture api and worker pino output during the end-to-end flow (including a failed delivery) and assert no seeded seller name, email, phone, or street line appears (FR-032, SC-006)
+- [ ] T210 [P] Review the api security settings in apps/api/src/app.ts: helmet defaults, `x-powered-by` disabled, a 1 MB JSON limit, no CORS (the browser only talks to the BFF); and in the BFF, cookie flags and the Origin check on every state-changing method
+- [ ] T211 Fill the README curl recipes (login, idempotent POST replay showing `Idempotent-Replay: true`, the 409 in-progress case, health) and copy the current Prototype Shortcuts table from [plan.md](./plan.md) into README.md
+- [ ] T212 [P] Write scripts/verify-limits.sh: a clean `docker builder prune -af`, a timed `docker compose build` (fails if over 20 min), `docker compose up -d`, scripts/wait-for-home.sh (fails if over 5 min), and `docker stats --no-stream` (prints the total memory); document running it on a 2 GB x86_64 VM in README.md
+- [ ] T213 [P] Write scripts/package-zip.sh: build investor-platform.zip from tracked files only (excluding `.git`, `node_modules`, `.next`, `dist`, and `specs` if not wanted), and fail if the zip exceeds 100 MB
+- [ ] T214 Run the full quickstart (V1–V7) on a clean 2 GB x86_64 Linux VM and record the build time, startup time, and memory in README.md
+- [ ] T215 Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm test:integration` from the root package.json, and fix anything that fails in the reported files
+
+---
+
+## Dependencies & Execution Order
+
+### Phase dependencies
+
+- **Setup (Phase 1)**: no dependencies.
+- **Foundational (Phase 2)**: depends on Setup; blocks every story.
+- **US1 (Phase 3)**: depends on Foundational. It is the MVP gate: if the reviewer can't start
+  it, nothing else is seen.
+- **US2 (Phase 4)**: depends on Foundational. It reuses the US1 seed baseline and role shells,
+  but its tests run without US1's Docker files.
+- **US3 (Phase 5)**: depends on US2 (offers need published, matched packages).
+- **US4 (Phase 6)**: depends on US3 (comparison needs offers).
+- **US5 (Phase 7)**: depends on Foundational (the Criterion Registry, evaluators, and the
+  investor and buy-box slices). Most of it can run in parallel with US2–US4, but the
+  buy-box-side matching (T218, T219) extends US2's MatchingWorkflow (T126), and its "not matched
+  after the edit" check needs US2's publish. T222 and T223 (near-miss) are a stretch.
+- **US6 (Phase 8)**: depends on US2 (timeline and deliveries need packages). Its outage test
+  T192 uses US4's accept, so finish US4 first or limit T192 to publish until US4 lands.
+- **Design system (Phase 9)**: depends on Foundational and runs in parallel with any story.
+  T207 is a visual check against cleveroffers.com.
+- **Polish (Phase 10)**: depends on every phase you intend to ship.
+
+### Story dependency graph
+
+```text
+Setup → Foundational ─┬─ US1 (MVP gate) ───────────────────────────┐
+                      ├─ US2 → US3 → US4 ─┬─ US6 ──────────────────┼─ Polish
+                      ├─ US5 ─────────────┘                        │
+                      └─ Design system ────────────────────────────┘
+```
+
+### Within each story
+
+- Tests first; confirm they fail (XVII.2).
+- Contracts → repository slices → unit-of-work wiring → services and workflows → job handlers
+  → routers and container wiring → client modules → screens → seed module.
+- Each story ends at a checkpoint that re-runs the earlier stories' quickstart steps.
+
+## Parallel Opportunities
+
+- Setup: T002–T013 and T015 in parallel after T001.
+- Foundational: the contracts tasks (T016–T028), the shared repository slices (T044–T052),
+  the provider ports (T059), the UI primitives and patterns (T086, T087), and the sandbox tests
+  (T069) are independent files.
+- Every story's test tasks marked [P] can be written together.
+- US5 and Phase 9 can be staffed in parallel with US2–US4.
+
+### Parallel example: User Story 2
+
+```text
+# Tests together:
+T108 views.pii.test.ts · T109 ListingPackageService.test.ts · T110 PublicationWorkflow.test.ts
+T111 MatchingWorkflow.test.ts · T112 close-offer-round.handler.test.ts · T113 PhotoService.test.ts
+T114 publish-match.int.test.ts · T115 usePackageWizard / usePhotoUpload tests
+
+# Then contracts and slices together:
+T116 listing-package contracts · T117 photo and match contracts
+T118 seller slice · T119 property slice · T120 listing-package slice · T121 photo and match slices
+```
+
+### Parallel example: User Story 4
+
+```text
+T156 net-proceeds.test.ts · T157 OfferComparisonService.test.ts · T158 DecisionWorkflow.test.ts
+T159 OfferService.counter.test.ts · T160 DealLifecycleWorkflow.test.ts · T161 reveal test
+T162 accept-race.int.test.ts · T163 deal-lifecycle.int.test.ts
+then T164 contracts ∥ T165 decision and deal slices
+```
+
+## Implementation Strategy
+
+### MVP first
+
+1. Phases 1 and 2.
+2. Phase 3 (US1): the zip starts on a 2 GB machine and every demo account logs in.
+3. **Stop and validate** with quickstart V1 on a clean VM. This is the assignment's hard gate.
+
+### Incremental delivery
+
+1. US2 → V2 (one package, many matched investors, privacy-safe).
+2. US3 → V3 (offers flow back; duplicates impossible). The core hypothesis is now demonstrable.
+3. US4 → V4 (compare, accept, close, backups).
+4. US5 → V5 (buy box editing and the legacy import).
+5. US6 → V6 (failure behavior and diagnosability).
+6. Phase 9 → V7 (white-label), then Phase 10.
+
+Re-run V1 after each increment, because every story adds to the build and the seed.
+
+## Notes
+
+- [P] means different files and no dependency on an unfinished task.
+- A task that extends a file created in an earlier story names that file. Run it after the
+  earlier task.
+- The contract changes these tasks rely on (the upload instruction, `read`, `ICrmMirrorReader`,
+  `ISellerContactReader`, `GET /package-form`, the agent offer list, and the backup-expiry
+  extension) were written into [contracts/](./contracts/) before implementation, so the
+  contracts stay the source of truth (V).
+- Commit after each task or logical group, once the user asks for commits.

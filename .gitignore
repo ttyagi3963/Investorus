@@ -1,0 +1,28 @@
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+coverage/
+next-env.d.ts
+*.tsbuildinfo
+
+# Generated Prisma client
+packages/core/src/generated/
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+
+# Local-only environment overrides.
+# The root .env holds demo defaults and IS committed on purpose (the assignment forbids
+# required secrets); never put real credentials in it.
+.env.local
+.env.*.local
+
+# Release artifact
+investor-platform.zip

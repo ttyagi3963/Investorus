@@ -1,0 +1,25 @@
+{
+  "name": "@clever/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Durable job runner, outbox relay, and BullMQ delivery consumers.",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch --env-file=../../.env src/main.ts",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@clever/contracts": "workspace:*",
+    "@clever/core": "workspace:*",
+    "bullmq": "^5.81.5",
+    "pino": "^10.4.0"
+  },
+  "devDependencies": {
+    "@clever/config": "workspace:*",
+    "tsx": "^4.23.15"
+  }
+}

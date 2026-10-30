@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Workspace library (emits JS + declarations)",
+  "extends": "./node.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationMap": true
+  }
+}

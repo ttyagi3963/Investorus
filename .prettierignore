@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.next/
+.turbo/
+coverage/
+pnpm-lock.yaml
+packages/core/src/generated/
+.specify/
+.claude/
+specs/
+*.md

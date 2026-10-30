@@ -141,7 +141,7 @@ introduce no new violations. Design checks made:
 ```text
 specs/001-investor-platform-prototype/
 ├── plan.md              # This file
-├── research.md          # Phase 0: decisions R1–R22
+├── research.md          # Phase 0: decisions R1–R23
 ├── data-model.md        # Phase 1: entities, constraints, state machines, privacy matrix
 ├── quickstart.md        # Phase 1: run and validation guide (V1–V7)
 ├── contracts/
@@ -256,6 +256,28 @@ requires. Two additions:
   necessary.
 - The client-side `packages/ui` design system. It is shared so Clever's other portals can adopt
   it, it imports only `@clever/contracts` types, and it holds no brand values.
+
+## Anti-Corruption Layer (ACL) & Boundary Insulation
+
+External integrations (HubSpot, Google Sheets, object storage such as S3, email and SMS) sit
+behind an **anti-corruption layer at the perimeter** of the application:
+- `@clever/core` depends only on our own contracts: the port interfaces (`ICrmProvider`,
+  `IStorageProvider`, `IMessagingProvider`, ...) and the Zod schemas in `@clever/contracts`.
+- Vendor quirks are handled inside one adapter class each (`*Impl`) and translated into our
+  own types and `InfrastructureError`:
+  - model and enum mapping (our package status → HubSpot deal stage; legacy sheet columns →
+    buy box criteria);
+  - rate limits, timeouts, and HTTP errors;
+  - response validation;
+  - ordering (`409 STALE`, or `lastSyncedAt` in a HubSpot adapter).
+- Each adapter is tested against its port contract. Lint keeps `*Impl` imports in
+  `container.ts` only.
+
+This is what enables the **strangler fig migration**: legacy tools shrink one capability at a
+time (Sheets → investor list, Zapier → outreach, HubSpot deal stages → transaction status)
+while the core logic stays untouched. Each step is gated by parity evidence, such as the CRM
+comparison screen. The full adapter table and migration steps are in
+[research.md](./research.md) R23.
 
 ## Complexity Tracking
 

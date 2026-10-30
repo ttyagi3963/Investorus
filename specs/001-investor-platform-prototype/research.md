@@ -500,3 +500,69 @@ export const createListingPackageRouter = ({ listingPackageService }: ApiContain
 The worker container wires `ICrmProvider` and `IMessagingProvider` (selected by `CRM_PROVIDER`
 and `MESSAGING_PROVIDER`), the job handlers, and the outbox relay. It shares
 `@clever/core/adapters` but not the api's container.
+
+## R23. Anti-Corruption Layer (ACL) & Boundary Insulation (Principles I, IV, VI, XIV, XVIII)
+
+- **Decision**: every outside system (HubSpot, Google Sheets, object storage such as S3, email
+  and SMS vendors) sits behind an **anti-corruption layer at the perimeter** of the hexagon,
+  not inside or "on top of" the core. `@clever/core` services and workflows depend only on our
+  own contracts:
+  - the port interfaces (`ICrmProvider`, `ICrmMirrorReader`, `IMessagingProvider`,
+    `IStorageProvider`, `IGeoProvider`, ...) defined in `packages/core`;
+  - the Zod schemas and domain types in `@clever/contracts` (including the Criterion Registry
+    schemas, XIX).
+  No vendor type, SDK, field name, status value, or error code crosses into the core.
+
+  ```text
+   Outside world             ACL (perimeter adapters)                Core (our contracts)
+   ─────────────             ────────────────────────                ────────────────────
+   HubSpot          ◀──▶  HubspotCrmProviderImpl (production)  ─┐
+   Sandbox CRM      ◀──▶  SandboxCrmProviderImpl (prototype)   ─┴─▶ ICrmProvider
+   Google Sheets     ──▶  parseLegacyCsv + CRITERION_COLUMNS   ───▶ buy box input schema (T022)
+   S3 / sandbox     ◀──▶  S3 / SandboxStorageProviderImpl      ───▶ IStorageProvider + UploadInstruction
+   SendGrid/Twilio  ◀──▶  *MessagingProviderImpl               ───▶ IMessagingProvider
+  ```
+
+- **What the ACL absorbs** (each concern lives in one adapter class, never in services):
+
+  | Vendor quirk | Where it is handled | What the core sees |
+  | --- | --- | --- |
+  | Model mapping (our `PackageStatus` → HubSpot deal stage and properties; legacy sheet columns → buy box criteria) | The adapter or parser, with an explicit mapping table | Only our enums and schemas |
+  | Ordering (a delayed retry must not overwrite a newer status) | Sandbox: `409 STALE` on an older `occurredAt`. HubSpot: a stored `lastSyncedAt` property compared in the adapter | `{ result: "APPLIED" \| "STALE" }`; STALE is recorded as SENT (superseded) |
+  | Rate limits, timeouts, 5xx | 5 s timeout per call; 408 / 429 / 5xx mapped to a retryable `InfrastructureError` | Retries with backoff in the delivery dispatcher (contracts/events.md) |
+  | Malformed or unexpected responses | Zod validation of every response (VI) | `InfrastructureError`; primary data is never written from a bad response |
+  | Vendor error codes and SDK exceptions | Caught and translated inside the adapter (IV) | Our `InfrastructureError` hierarchy only (VII) |
+  | Seller PII the CRM needs | Only the CRM adapter loads it, through `ISellerContactReader`, with a `PII_ACCESSED` audit entry | Outbox payloads stay PII-free (FR-032) |
+  | Upload mechanics (presigned S3 PUT vs. the sandbox HMAC URL) | The storage adapter | The vendor-neutral `UploadInstruction` `{ url, method, headers, expiresAt }` |
+
+- **"The core does not care as long as the contract is met"**, made verifiable rather than
+  assumed: every adapter has its own tests proving it honors the port contract (sandbox
+  adapters: T065, T069; a production HubSpot adapter would add tests against recorded HubSpot
+  responses before go-live). Lint keeps adapters out of the core: `*Impl` classes are
+  importable only from `container.ts` (R22).
+
+- **Link to the Strangler Fig migration**: the ACL is the seam; the strangler fig is the
+  rollout. Each step changes which system sits behind a contract, or which system owns a
+  capability, while services, routes, the outbox, and the database stay untouched:
+
+  | Step | Legacy that shrinks | What changes | Exit check before the next step |
+  | --- | --- | --- | --- |
+  | 0. Shadow | Nothing yet | The platform matches packages in parallel; results are compared with today's manual investor list | Match lists agree on real packages |
+  | 1. Investor list | Google Sheets | Investors and buy boxes imported (idempotent, re-runnable); the sheet becomes read-only | Import report clean; no edits to the sheet |
+  | 2. Matching and outreach | Zapier outreach Zaps | Outbox deliveries replace the Zaps, which are switched off one by one | No "needs attention" backlog; investors receive packages |
+  | 3. Offers | Email and manual offer tracking | Offers, comparison, and decisions in the platform | Agents record every decision in the platform |
+  | 4. Transaction status | HubSpot deal stages for this workflow | The platform owns status; HubSpot keeps a one-way mirror (`CRM_PROVIDER=hubspot`) | CRM comparison in sync over an agreed period |
+  | 5. Retire | HubSpot workflows for this flow | The mirror is kept only while other teams read it | Remaining HubSpot consumers confirmed |
+
+  The prototype demonstrates the mechanisms each step relies on: the one-way CRM sync (legacy
+  users keep working), the CRM comparison screen (parity evidence before cutover), the
+  idempotent import (safe to repeat during the overlap), and outbox delivery with retries (the
+  replacement for Zaps). Moving one market or capability at a time with a cutover switch is a
+  production step and is not built in the prototype.
+
+- **Rationale**: the core is written once against stable contracts, so a vendor change,
+  outage, or retirement is contained in one adapter class. That is what makes a gradual,
+  low-risk migration possible.
+- **Alternatives considered**: calling vendor SDKs from services (vendor models and errors
+  leak into business logic, and every vendor change touches the core); a big-bang cutover from
+  HubSpot and Sheets (high revenue risk, with no parity evidence before the switch).

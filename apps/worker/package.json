@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Durable job runner, outbox relay, and BullMQ delivery consumers.",
+  "description": "Durable job runner and outbox relay (constitution VIII, XVIII).",
   "files": [
     "dist"
   ],
@@ -18,7 +18,6 @@
   "dependencies": {
     "@clever/contracts": "workspace:*",
     "@clever/core": "workspace:*",
-    "bullmq": "^5.81.5",
     "pino": "^10.4.0"
   },
   "devDependencies": {

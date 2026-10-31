@@ -1,0 +1,22 @@
+# Accepted gitleaks findings. Each entry is reviewed, not a blanket allowlist.
+#
+# .env holds DEMO VALUES ONLY. The assignment requires the prototype to start with no secrets
+# or outside accounts, so working defaults are committed on purpose (see the header of .env and
+# the README "Prototype Shortcuts"). These four keys were generated for this prototype and
+# protect nothing real. In production they come from a secrets manager or KMS.
+#
+# Reviewed 2026-10-30. History format is commit:file:rule:line; the second block covers scans of
+# the working tree (gitleaks dir / --pre-commit), which have no commit. A change to any of these
+# .env lines produces a new fingerprint, which must be reviewed and added here on purpose.
+
+# JWT_SECRET, ADDRESS_HASH_KEY, SANDBOX_INTERNAL_TOKEN, STORAGE_SIGNING_KEY (git history)
+f4f30576b4fb367ddf8b0ad4ad3d4679e85cac61:.env:generic-api-key:16
+f4f30576b4fb367ddf8b0ad4ad3d4679e85cac61:.env:generic-api-key:18
+f4f30576b4fb367ddf8b0ad4ad3d4679e85cac61:.env:generic-api-key:27
+f4f30576b4fb367ddf8b0ad4ad3d4679e85cac61:.env:generic-api-key:28
+
+# The same four values in the working tree
+.env:generic-api-key:16
+.env:generic-api-key:18
+.env:generic-api-key:27
+.env:generic-api-key:28

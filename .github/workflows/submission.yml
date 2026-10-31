@@ -66,13 +66,15 @@ jobs:
           sudo mv gitleaks /usr/local/bin/gitleaks
           rm gitleaks.tar.gz
 
-      # The accepted demo keys in .env are listed in .gitleaksignore (working-tree format).
+      # Scanned from inside the unzipped folder, so findings are named relative to it and the
+      # zip's own .gitleaksignore (the accepted demo keys in .env) applies, the copy Clever gets.
       - name: Secret scan of the unzipped submission
         run: |
           mkdir -p /tmp/unzipped
           unzip -q "$ZIP" -d /tmp/unzipped
-          cp .gitleaksignore /tmp/unzipped/ 2> /dev/null || true
-          gitleaks dir /tmp/unzipped --redact --no-banner --verbose
+          cd /tmp/unzipped
+          test -f .gitleaksignore || echo "::warning title=Secret scan::the zip has no .gitleaksignore"
+          gitleaks dir . --redact --no-banner --verbose
 
       - name: Rehearse - unzip and docker compose up --build in 2 GB / 2 CPUs
         run: bash scripts/submission/rehearse.sh "$ZIP"

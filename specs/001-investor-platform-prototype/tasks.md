@@ -708,7 +708,11 @@ Setup → Foundational ─┬─ US1 (MVP gate) ──────────�
 ### Within each story
 
 - Tests first; confirm they fail (XVII.2).
-- Contracts → repository slices → unit-of-work wiring → services and workflows → job handlers
+- Test only the rules that matter (XV, test selection): list the task's rules, give each
+  important one a single test, and skip tests of libraries, types, cosmetics, or rules already
+  covered. A test task's wording ("tests for X") names the scope, not a quota.
+- Prisma model and migration first, then contracts shaped from it (see the fields in the
+  database before writing a contract) → repository slices → unit-of-work wiring → services and workflows → job handlers
   → routers and container wiring → client modules → screens → seed module.
 - Each story ends at a checkpoint that re-runs the earlier stories' quickstart steps.
 

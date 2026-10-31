@@ -386,10 +386,27 @@ Two explicit test tiers, kept in separate suites:
   3. Job execution and onboarding engine (hardest to debug).
 - Do NOT over-test framework internals, presentational components, or type-level code.
   Test behavior, not implementation details.
+- **Test selection: only rules that matter get a test.** A test MUST guard a rule whose
+  silent breakage would matter: a security or privacy guarantee (no PII, hashes, or secrets
+  in views, events, or logs), a data invariant (a database CHECK or unique rule), a field
+  that must not change, a business rule a service owns, or a security limit. Before writing
+  a task's tests, list the rules the task introduces and keep only those; each rule gets
+  one test.
+  - Tests MUST NOT re-test library or framework behavior (Zod parsing and stripping,
+    `.partial()`, Prisma, React), what the type checker already rejects, cosmetic
+    normalization (trimming, casing), or a rule another test already covers.
+  - Exact-boundary pairs (40 vs 41 characters) are written only when the boundary is
+    itself the rule.
+  - A rule that guards a feature the product does not have yet (for example a password
+    limit when there is no sign-up) gets its test when that feature arrives.
+  - A test that is weak or redundant is deleted, not kept as a precaution.
+  - A schema file gets tests only for the rules it encodes; behavior is tested once, in the
+    service that owns it.
 
 **Rationale**: Interface-based mocking keeps the unit suite fast and verifies behavior
 without infrastructure coupling, while a real ephemeral database proves the guarantees
-that only the database can provide.
+that only the database can provide. A small suite of tests that each guard a real rule is
+read, trusted, and kept green; padding hides the tests that matter and slows every change.
 
 ### XVI. Brand-Safe Implementation
 
@@ -585,4 +602,4 @@ in conflict with other documentation, this constitution prevails.
 - **Complexity Justification**: Deviations MUST be documented with a justification
   referencing the overridden principle.
 
-**Version**: 7.1.0 | **Ratified**: 2026-04-10 | **Last Amended**: 2026-10-30
+**Version**: 7.2.0 | **Ratified**: 2026-04-10 | **Last Amended**: 2026-10-31

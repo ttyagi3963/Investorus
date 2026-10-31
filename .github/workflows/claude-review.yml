@@ -86,6 +86,13 @@ jobs:
                - X and XVI: no brand names, colors, or copy hard-coded in source.
                - XI: accessible UI (labels, keyboard use, announced state changes).
                - XV and XVII.2: behavior changes come with tests; no global fake timers.
+               - XV test selection: each new test guards a rule that matters. Flag tests that
+                 re-test Zod, Prisma, or React, repeat what the type checker rejects, test
+                 cosmetic normalization or non-rule boundaries, or duplicate another test, and
+                 suggest deleting them. Flag a missing test for an important rule as blocking.
+               - CLAUDE.md "Writing code": each new file opens with a 1–3 line comment on what it
+                 does and why; a new contract has its Prisma table in the same or an earlier PR;
+                 no code, exports, dependencies, or checks for features or cases that don't exist.
                - Governance: a deviation needs a Complexity Tracking entry in plan.md.
             5. For each real problem, post an inline comment on the exact line with
                mcp__github_inline_comment__create_inline_comment, and pass `confirmed: true`.

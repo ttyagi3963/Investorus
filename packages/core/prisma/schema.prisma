@@ -1,0 +1,51 @@
+// The database schema: the real definition of every table (data-model.md, locked entities).
+// Tables are added as each sprint needs them (T236 User and Agent, T238 Seller; T031 the rest).
+// Rules Prisma cannot express, such as CHECKs, are hand-written in the migration SQL.
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Login roles. INVESTOR and User.investorId arrive with the Investor table in Sprint 2.
+enum Role {
+  AGENT
+  OPS
+}
+
+// A login account. CHECK User_role_link_check (migration): an AGENT has agentId, OPS has none.
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         Role
+  displayName  String
+  agentId      String?  @unique
+  agent        Agent?   @relation(fields: [agentId], references: [id])
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// The person behind an AGENT login; owns listing packages. Email is how the seed and ops find them.
+model Agent {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  brokerage String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User?
+}
+
+// The homeowner's contact details for one listing package. fullName, email, and phone hold
+// AES-256-GCM ciphertext (key version prefix), encrypted and decrypted only in the repository
+// mapper. No agent here: the package links seller and agent. CHECK Seller_contact_check
+// (migration): email or phone is present.
+model Seller {
+  id        String   @id @default(cuid())
+  fullName  String
+  email     String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

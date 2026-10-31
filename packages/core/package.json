@@ -17,6 +17,7 @@
   "files": [
     "dist",
     "prisma",
+    "prisma.config.ts",
     "scripts"
   ],
   "scripts": {

@@ -41,7 +41,7 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | Method | Path | Role | Body / Response | Spec |
 | --- | --- | --- | --- | --- |
 | GET | `/listing-packages` | AGENT (own), OPS (all) | `?status=` → `AgentPackageSummary[]` | Story 2 |
-| POST | `/listing-packages` | AGENT | `CreatePackageInput` (seller, property, expectations) → 201 `AgentPackageView` (DRAFT); includes `duplicateWarning?` | FR-010, FR-013 |
+| POST | `/listing-packages` | AGENT | `CreatePackageInput` (seller, property, expectations) → 201 `AgentPackageView` (DRAFT); an address with an active package (any agent) → 409 `DUPLICATE_ACTIVE_LISTING`, with `details.existingPackageId` only if the caller owns it (the same check runs when an edit changes the address) | FR-010, FR-013 |
 | GET | `/listing-packages/:id` | AGENT (own), OPS | → `AgentPackageView` (full, with PII) | |
 | PATCH | `/listing-packages/:id` | AGENT (own) | `UpdatePackageInput` (partial; `undefined` = unchanged) + `version` → 200 | 202 with a re-match job if a material field changed after publish |
 | POST | `/listing-packages/:id/publication` | AGENT (own) | `{ offerDeadline?, version }` → 202 `{ jobId }` (MATCH_PACKAGE) | 400 lists invalid fields (FR-012) |

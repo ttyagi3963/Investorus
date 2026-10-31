@@ -83,12 +83,185 @@ story and so have no story label.
 
 ---
 
+## Sprint 0: Delivery Pipeline (after Phase 1, before Phase 2)
+
+**Purpose**: Every later task arrives as a pull request that CI, the Claude review, and a human
+reviewer check before it merges (constitution XVII), and the reviewer's one-command Docker start
+is rehearsed on every merge instead of only at the end.
+
+**Confidentiality**: the assignment says to treat its data and information as confidential and
+to use it only for this exercise. The GitHub repository is **private**, and nothing reaches it
+until T226 is done.
+
+**Development model: trunk-based** (decided 2026-10-31). `main` is the trunk, and it is always
+releasable: every merge must leave the zip starting with one command (T233 checks this).
+- Work happens on short-lived branches cut from `main`, one task or a small group of tasks each,
+  merged through a pull request within about a day, then deleted. There are no `develop`,
+  long-lived feature, or release branches.
+- Branches rebase on `main` rather than merging it in, and PRs merge by squash, so `main` reads as
+  one commit per task.
+- A story bigger than one PR merges in slices that are safe on their own: tests and contracts
+  first, then services, then routes and screens. A slice that would show unfinished work to a
+  user stays switched off behind a config flag (`ConfigEntry`, constitution IX and XVI) until the
+  story is complete; a flag is removed once its story ships.
+- A red `main` stops new merges until it is fixed or the breaking commit is reverted.
+- A release is a tag on `main` (for example the submitted zip), not a branch.
+
+- [X] T226 Make the repo safe to publish (local only; done 2026-10-30):
+  - `assignment.md`, `project_structure_and_orchestration_blueprint.md`, and
+    `table-reasoningg.md` removed from every commit (`git filter-branch --index-filter`, then
+    reflog expiry and `git gc --prune=now`); `git log --all` and `git rev-list --all --objects`
+    no longer find them. `assignment.md` stays on disk only, ignored by .gitignore. A
+    pre-rewrite backup bundle was kept outside the repo;
+  - gitleaks 8.30.1 over the full history, the uncommitted changes, and every committable file:
+    the only findings were the four demo keys in `.env` (`JWT_SECRET`, `ADDRESS_HASH_KEY`,
+    `SANDBOX_INTERNAL_TOKEN`, `STORAGE_SIGNING_KEY`), confirmed as demo values and recorded with
+    their fingerprints in `.gitleaksignore`; all three scans are now clean;
+  - no phone numbers, street addresses, personal emails, or mystery-shop lead details in any
+    file or commit. The commit author email is kept on purpose (owner's decision);
+  - `.gitattributes` forces LF (`* text=auto eol=lf`) and no tracked file has CRLF; .gitignore
+    covers `node_modules/`, `.next/`, `dist/`, `.turbo/`, and `coverage/` at every depth
+- [X] T227 Push to GitHub (done 2026-10-31): https://github.com/ttyagi3963/Investorus is
+  **private** (switched before any push; a signed-out API request gets 404). `main` tracks
+  `origin/main`, and GitHub has the same three commits as `git log` with none of the files T226
+  removed. Issues and Dependabot alerts are on; secret scanning is not offered for this private
+  repository, so the gitleaks check (T226, and CI later) covers it
+- [X] T228 Set up the kanban board, mirroring this section (tasks.md stays the single source of
+  truth; the board never holds a task that is not here):
+  - run scripts/board/sync-sprint0.mjs (prerequisites in its header: install `gh`,
+    `gh auth login`, `gh auth refresh -s project`). `--print-tasks` checks the parsing, a plain
+    run is a dry run, and `--apply` makes the changes. It is safe to re-run, because issues are
+    matched by their `T### ` title prefix;
+  - it creates a **private** GitHub Projects board "Investorus" linked to the repository (private
+    because the specs describe Clever's confidential scenario; reviewers are invited instead);
+  - Status columns: Backlog, Ready, In progress, In review, Done;
+  - custom fields: Task ID, Sprint, Phase, User story, Parallel;
+  - labels `task`, `sprint-0`, `parallel`, and `board-test`;
+  - one issue per Sprint 0 task, with the full task text and a pointer back to this file. Done
+    tasks (T226) are created closed and placed in Done. Later phases are added when their
+    sprint is planned;
+  - on the board (Settings → Workflows), turn on **Auto-add to project** (filter
+    `repo:<owner>/Investorus is:issue`), **Item closed** → Done, and **Pull request merged** →
+    Done. A PR that says `Closes #N` moves the task's card to Done when it merges;
+  - verify with `--test-workflows`: a new issue is auto-added, and closing it moves it to Done.
+  Done 2026-10-31: private board https://github.com/users/ttyagi3963/projects/1 holds the Sprint 0 tasks
+  (T226 in Done, the rest in Backlog), and `--test-workflows` passed both checks
+  (depends on T227)
+- [X] T229 Write the baseline CI workflow in .github/workflows/ci.yml (branch `t229-baseline-ci`): (merged 2026-10-31 as PR #14)
+  - runs on every pull request and every push to `main`; `permissions: contents: read`; every
+    third-party action pinned to a full commit SHA; one concurrency group per PR, so a new push
+    cancels the stale run (runs on `main` are never cancelled); no secrets;
+  - shared setup in .github/actions/setup: pnpm from `packageManager`, Node 24 with the pnpm
+    store cached, `pnpm install --frozen-lockfile`;
+  - four jobs, each its own check. `lint-typecheck`: `pnpm lint` and `pnpm typecheck` through
+    Turbo, with `eslint-plugin-jsx-a11y` recommended rules on apps/web and packages/ui
+    (packages/config/eslint/jsx-a11y.test.js proves an `<img>` without `alt` fails).
+    `unit-tests`: `pnpm test`, offline, including the Criterion Registry and evaluator tests.
+    `integration-tests`: `pnpm db:check` (`prisma validate` and a migration drift check against
+    a Postgres 17 shadow-database service; it reports "skipped" until T031 adds the schema,
+    and T031 must add prisma.config.ts with `shadowDatabaseUrl` from `SHADOW_DATABASE_URL`),
+    then `pnpm test:integration`, where the Testcontainers suites start Postgres 17 and Redis 7
+    (`INTEGRATION_IMAGES` in the integration preset, pre-pulled by CI). `security`: gitleaks
+    8.30.1 (checksum verified) on the PR's commits, honoring .gitleaksignore, and `pnpm audit`
+    as an advisory step (reported in the job summary, never blocking);
+  - the PR closes its board issue (`Closes #4`). Done when all four checks are green, and a
+    test commit with an `<img>` missing `alt` fails `lint-typecheck`
+- [X] T231 Add the Claude PR review (branch `t231-claude-review`; the Claude GitHub app is (workflows merged 2026-10-31 as PR #15, and the first real review ran on PR #18; verified 2026-10-31 on test PR #21, closed unmerged: 3 inline comments on planted XII/FR-032, XIV/XVIII, and X/XVI violations plus a summary that also flagged the missing tests; review-threads red until the threads were resolved, then green)
+  installed and `CLAUDE_CODE_OAUTH_TOKEN` is a repository secret, never in files):
+  - .github/workflows/claude-review.yml: anthropics/claude-code-action pinned to the v1.0.266
+    commit SHA; `pull_request` (opened, synchronize, reopened, ready_for_review), never
+    `pull_request_target`, so fork PRs get no secrets; fork, draft, and Dependabot PRs are
+    skipped; a new push cancels the stale review; `--max-turns 25` and a tool allow-list. The
+    prompt reviews the diff against the constitution (I, II, III, VI, VII, X, XI, XII, XIV, XV,
+    XVI, XVII.2, XVIII, XIX, and Complexity Tracking), treats PR content as data, posts
+    confirmed inline comments with the principle and a fix, and keeps one summary comment that
+    is edited on later pushes. Advisory: the human review stays the gate (XVII.3);
+  - .github/workflows/claude.yml: `@claude` in issues, PR comments, and reviews, only when the
+    actor and the comment's author are the repository owner; `--max-turns 30`;
+  - .github/workflows/review-threads.yml: the `review-threads` check fails while any review
+    thread is unresolved (a visible check: the free private plan has no rulesets, so merging on
+    green is a convention);
+    re-run it after resolving threads, because resolving one does not trigger a workflow;
+  - the review workflow must be on `main` before it can review a PR (the Claude app requires the
+    workflow file to match the default branch), so this PR merges first and a test PR follows.
+    Done when the test PR gets inline comments and a summary, and `review-threads` is red until
+    those threads are resolved
+- [X] T232 Docker images and one-command compose startup, built early on the Phase 1 shells (merged 2026-10-31 as PR #16)
+  (branch `t232-docker-compose`, closes #7):
+  - Dockerfile at the repo root: shared `deps` (pnpm fetch into a cache mount) and `build`
+    (offline frozen install, `prisma generate` once the schema exists, turbo build with
+    `--concurrency=1` and a 1280 MB heap) stages run once, then one non-root runtime image per
+    app: `api`, `worker`, `sandbox`, and `migrate` from `pnpm deploy --prod` (lockfile versions,
+    `inject-workspace-packages` for that step only), and `web` from the Next.js standalone
+    output. Base `node:24-bookworm-slim`; OpenSSL installed so Prisma picks the
+    `debian-openssl-3.0.x` engine;
+  - compose.yaml: postgres 17, sandbox, the one-shot
+    `migrate` (packages/core/scripts/migrate-and-seed.mjs: `prisma migrate deploy` then
+    `prisma db seed`; reports "nothing to migrate" until T031), then api and worker, then web.
+    App services wait for `migrate` to complete successfully. Every server listens on 0.0.0.0;
+    web 3000, api 4000, and sandbox 4100 are published. Only postgres has a compose healthcheck
+    (migrate needs a ready database); the app services are ordered by start, and in production
+    the orchestrator (ECS and the load balancer) checks the api's `/api/v1/health` route. Redis is
+    left out until the worker queues need it: T082 adds it back (redis 7, `noeviction`, no
+    persistence, healthcheck `redis-cli ping`);
+  - Sprint 0 shells (tests first): api `GET /api/v1/health`, sandbox placeholder page at `/`,
+    worker heartbeat file. T070, T081, and T083 replace them;
+  - README.md with the start command, ports, and the six demo accounts (`demo1234`), marked as
+    arriving with User Story 1 (T089–T092, T099);
+  - measured 2026-10-31 on a fresh clone with an empty build cache: build and start 97 s, home
+    page 200 right after; about 145 MB of memory in use. No separate `docker-build` CI job: the submission rehearsal (T233) builds every image on PRs that
+    touch the startup files.
+- [X] T102 [P] Write scripts/wait-for-home.sh (polls http://localhost:3000/ until 200, up to 300 s, prints elapsed seconds; exits 1 on timeout) (moved to Sprint 0: built for the rehearsal, T233)
+- [X] T213 [P] Write scripts/package-zip.sh: build investor-platform.zip from tracked files only (excluding `.git`, `node_modules`, `.next`, `dist`, and `specs` if not wanted), and fail if the zip exceeds 100 MB (moved to Sprint 0: built for the rehearsal, T233)
+- [X] T233 Write the submission rehearsal job (branch `t233-submission-rehearsal`, closes #8): (merged 2026-10-31 as PR #18; on GitHub's runner: build 167 s, home page 3 s, program memory peak 903 MB, 0 OOM kills)
+  .github/workflows/submission.yml on pushes to `main`, on demand, and on PRs that touch the
+  startup files (Dockerfile, compose, .env, lockfile and package manifests, README, the scripts);
+  - scripts/package-zip.sh (T213) builds the zip with `git archive` from HEAD;
+  - scripts/submission/check_zip.py: ≤ 100 MB zipped, ≤ 20,000 entries (folders counted),
+    ≤ 500 MB unzipped, compose.yaml and .env at the top level, no dependency or build folders,
+    no file over 5 MB, no assignment.md; warns at 80% of a limit;
+  - gitleaks on the unzipped submission;
+  - scripts/submission/rehearse.sh: proves the cap (a 2.6 GB canary must be killed), then
+    Docker-in-Docker with 2 GB, no swap, and 2 pinned cores (pinned, because tools size thread
+    pools from the visible core count); unzips into an empty folder and runs only
+    `docker compose up --build`; build ≤ 20 min, GET / ≤ 5 min; signs in with each README demo
+    account (skipped with a notice until the sign-in route exists, required after); reports
+    program memory, the kernel peak, and out-of-memory kills (must be 0);
+  - uploads the tested zip as-is (`archive: false`) only after every check passes, with its
+    SHA-256 in the summary.
+  Measured 2026-10-31 locally (2 GB, 2 cores, cold): build 114 s, home page 3 s, program memory
+  peak 822 MB, 0 OOM kills. The first rehearsals failed (OOM in `pnpm fetch`: one worker thread per
+  visible core); fixed in T232 with `PNPM_MAX_WORKERS=2`. It cannot be a *required* check on the
+  free private plan (no rulesets): the gate is by convention. Done when the job is green on GitHub
+- [X] T234 [P] Repo hygiene: (merged 2026-10-31 as PR #19; Dependabot runs: actions, docker, and compose found nothing to update; the npm run waits on pnpm's minimumReleaseAge for eslint 10.14.0, which is not blocking)
+  - .github/pull_request_template.md: the task ID, a constitution checklist (tests written first,
+    boundaries, PII, outbox, Complexity Tracking entry for any deviation with its approval), and
+    how it was verified;
+  - .github/CODEOWNERS (the repository owner for every path);
+  - .github/dependabot.yml (npm, github-actions, and docker; weekly; grouped minor and patch
+    updates);
+  - README.md status badges for CI and the submission rehearsal;
+  - short-lived branch naming `t###-short-summary`, rebased on `main`; one task or small group
+    of tasks per PR, merged within about a day (trunk-based development, above)
+
+**Checkpoint**: every pull request runs CI, the Claude review, and the review-threads check, and
+merges only when all are green and it is approved (by convention: the free private plan has no
+rulesets); every merge to `main` produces a tested zip that starts with one command within
+the time limits.
+
+---
+
 ## Phase 2: Foundational (Blocking Prerequisites)
 
 **Purpose**: Contracts, database, core infrastructure, the outbox and job engine, providers,
 the sandbox, and app skeletons that every story needs.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete.
+
+**Phase rule**: Phase 2 starts only after Sprint 0 is complete, and no work starts outside its
+phase. A task that belongs to a later phase moves there instead of being pulled forward. Every
+task merges through the Sprint 0 pipeline (CI, Claude review, review threads, and the submission
+rehearsal on `main`).
 
 ### Contracts (packages/contracts)
 
@@ -111,17 +284,18 @@ the sandbox, and app skeletons that every story needs.
 
 ### Database (packages/core/prisma)
 
-- [ ] T031 Write packages/core/prisma/schema.prisma for every entity in [data-model.md](./data-model.md): User, Agent, Brand, Seller, Property, ListingPackage, ListingVersion, Photo, Investor, BuyBox, BuyBoxGeography, BuyBoxVersion, Match, MatchEvaluation, Offer, OfferRevision, Decision, Deal, Job, OutboxEvent, Delivery, Notification, AuditLog, ImportBatch, ImportRowResult, ConfigEntry. Include CUID ids, `createdAt` / `updatedAt` (append-only tables have `createdAt` only), `version Int` on ListingPackage, BuyBox, Offer, and Deal, `listingVersion Int` on ListingPackage, every buy box criterion as its own typed nullable column (enum arrays for `propertyTypes`, `conditionsAccepted`, `programsAccepted`; no criteria or clauses JSON), the nullable type-dependent Property fields (`beds`, `baths`, `sqft`, `yearBuilt`, `condition`, plus `lotSqft`, `units`, `lat`, `lng`), `ListingPackage.currentlyListed` and `eligiblePrograms`, `Investor.proofOfFundsExpiresAt`, `onDelete: Cascade` on parent-child relations (never on AuditLog or history), the unique constraints (User.username; Investor.externalRef and email; BuyBox `(investorId, name)`; BuyBoxGeography `(buyBoxId, kind, value)`; BuyBoxVersion `(buyBoxId, version)`; ListingVersion `(packageId, listingVersion)`; Match `(packageId, investorId, round)`; MatchEvaluation `(packageId, listingVersion, buyBoxId, buyBoxVersion)`; Photo `(packageId, position)`; OfferRevision `(offerId, revision)`; Deal.offerId; Delivery `(outboxEventId, target, recipientRef)`; ConfigEntry `(key, brandId)`), and the indexes (Property `(zip)` and `(addressHash)`; ListingPackage `(agentId, status)` and `(status, offerDeadline)`; BuyBox `(investorId)` and `(status)`; BuyBoxGeography `(kind, value)`; Match `(investorId)`; Job `(status, runAt)`; Delivery `(status)`; AuditLog `(entityType, entityId, occurredAt)`). BuyBox.investorId is **not** unique (1:N). Use the driver-adapters preview feature if the pinned Prisma version needs it
+- [ ] T031 Write packages/core/prisma/schema.prisma for every entity in [data-model.md](./data-model.md): User, Agent, Brand, Seller, Property, ListingPackage, ListingVersion, Photo, Investor, BuyBox, BuyBoxGeography, BuyBoxVersion, Match, MatchEvaluation, Offer, OfferRevision, Decision, Deal, Job, OutboxEvent, Delivery, Notification, AuditLog, ImportBatch, ImportRowResult, ConfigEntry. Include CUID ids, `createdAt` / `updatedAt` (append-only tables have `createdAt` only), `version Int` on ListingPackage, BuyBox, Offer, and Deal, `listingVersion Int` on ListingPackage, every buy box criterion as its own typed nullable column (enum arrays for `propertyTypes`, `conditionsAccepted`, `programsAccepted`; no criteria or clauses JSON), the nullable type-dependent Property fields (`beds`, `baths`, `sqft`, `yearBuilt`, `condition`, plus `lotSqft`, `units`, `lat`, `lng`), `ListingPackage.currentlyListed`, `eligiblePrograms`, and `addressHash` (a copy of the Property's), `Investor.proofOfFundsExpiresAt`, `onDelete: Cascade` on parent-child relations (never on AuditLog or history), the unique constraints (User.username, User.agentId, and User.investorId; Agent.email; ListingPackage.propertyId and ListingPackage.sellerId; Investor.externalRef and email; BuyBox `(investorId, name)`; BuyBoxGeography `(buyBoxId, kind, value)`; BuyBoxVersion `(buyBoxId, version)`; ListingVersion `(packageId, listingVersion)`; Match `(packageId, investorId, round)`; MatchEvaluation `(packageId, listingVersion, buyBoxId, buyBoxVersion)`; Photo `(packageId, position)`; OfferRevision `(offerId, revision)`; Deal.offerId; Delivery `(outboxEventId, target, recipientRef)`; ConfigEntry `(key, brandId)`), and the indexes (Property `(zip)` and `(addressHash)`; ListingPackage `(agentId, status)` and `(status, offerDeadline)`; BuyBox `(investorId)` and `(status)`; BuyBoxGeography `(kind, value)`; Match `(investorId)`; Job `(status, runAt)`; Delivery `(status)`; AuditLog `(entityType, entityId, occurredAt)`). BuyBox.investorId is **not** unique (1:N). Use the driver-adapters preview feature if the pinned Prisma version needs it
 - [ ] T032 Generate the initial migration, then append the SQL Prisma cannot express, in packages/core/prisma/migrations/20261030000000_init/migration.sql:
-  - the partial unique indexes: ListingPackage `(propertyId)` WHERE status IN the active statuses; Offer `(packageId, investorId, round)` WHERE status IN (`ACTIVE`, `COUNTERED`, `BACKUP`, `ACCEPTED`); Deal `(packageId)` WHERE status NOT IN (`FELL_THROUGH`, `CLOSED`, `RECONFIRM_DECLINED`); Job `(type, dedupeKey)` WHERE status IN (`QUEUED`, `PROCESSING`); OutboxEvent `(relayedAt)` WHERE relayedAt IS NULL;
-  - the User CHECK (AGENT ⇒ agentId, INVESTOR ⇒ investorId, OPS ⇒ neither);
+  - the Property CHECK (`propertyType = 'MULTI_FAMILY' OR units IS NULL`);
+  - the partial unique indexes: ListingPackage `(addressHash)` WHERE status NOT IN (`CLOSED`, `WITHDRAWN`) (FR-013); Offer `(packageId, investorId, round)` WHERE status IN (`ACTIVE`, `COUNTERED`, `BACKUP`, `ACCEPTED`); Deal `(packageId)` WHERE status NOT IN (`FELL_THROUGH`, `CLOSED`, `RECONFIRM_DECLINED`); Job `(type, dedupeKey)` WHERE status IN (`QUEUED`, `PROCESSING`); OutboxEvent `(relayedAt)` WHERE relayedAt IS NULL;
+  - the User CHECK (AGENT ⇒ agentId, INVESTOR ⇒ investorId, OPS ⇒ neither), and the Seller CHECK (`email` or `phone` is not null);
   - BuyBox: a partial unique `(investorId)` WHERE `isDefault`; CHECKs for every min ≤ max pair (price, year built, beds, baths, sqft, units), `cardinality(...) > 0` on each non-null enum array, `closeWithinDays` 7–120, and `repairMax` ≥ 0 (XIX.2);
   - a deferred constraint trigger on BuyBox and BuyBoxGeography that rejects a geography mode that disagrees with its rows (NATIONWIDE with any row; STATES without a STATE row or with a ZIP row; ZIPS without a ZIP row or with a STATE row);
   - a trigger that raises on UPDATE or DELETE of AuditLog, and the same for BuyBoxVersion, MatchEvaluation, and ListingVersion (ListingVersion allows only the one-time set of `matchedCount` and `topExclusionReasons`);
   - `CREATE SCHEMA IF NOT EXISTS sandbox` (the sandbox also creates it on boot)
   (depends on T031)
 - [ ] T033 Create `createPrismaClient(databaseUrl)` (driver adapter `PrismaPg`, the URL from validated env only) in packages/core/src/infra/prisma-client.ts and `createRedisClient(redisUrl)` (ioredis, `maxRetriesPerRequest: null` for BullMQ) in packages/core/src/infra/redis-client.ts; export both from packages/core/src/adapters.ts
-- [ ] T034 Write the database constraint integration test in packages/core/test/integration/schema.int.test.ts (Testcontainers PostgreSQL 17, `prisma migrate deploy`): each partial unique index rejects a second active row and allows one after the first becomes inactive; AuditLog UPDATE and DELETE raise, and so do BuyBoxVersion, MatchEvaluation, and ListingVersion updates (except the one-time match summary); the User CHECK holds; BuyBox rejects an inverted price range (the case Clever's own form lets through), an empty property-type array, and a second default box per investor; the geography trigger rejects each inconsistent mode at commit; an investor can hold two buy boxes; deleting a ListingPackage cascades Photos and Matches
+- [ ] T034 Write the database constraint integration test in packages/core/test/integration/schema.int.test.ts (Testcontainers PostgreSQL 17, `prisma migrate deploy`): each partial unique index rejects a second active row and allows one after the first becomes inactive; AuditLog UPDATE and DELETE raise, and so do BuyBoxVersion, MatchEvaluation, and ListingVersion updates (except the one-time match summary); the User CHECK holds, and a second User with the same `agentId` or `investorId` is rejected; a second Agent with the same email is rejected; a Seller with neither email nor phone is rejected; a Property with `units` set on a non-MULTI_FAMILY type is rejected; a second ListingPackage pointing at the same Property is rejected; a second ListingPackage pointing at the same Seller is rejected; a second ListingPackage with the same `addressHash` is rejected while the first is not CLOSED or WITHDRAWN (including FELL_THROUGH) and allowed once it is; BuyBox rejects an inverted price range (the case Clever's own form lets through), an empty property-type array, and a second default box per investor; the geography trigger rejects each inconsistent mode at commit; an investor can hold two buy boxes; deleting a ListingPackage cascades Photos and Matches
 
 ### Core infrastructure (packages/core)
 
@@ -197,7 +371,7 @@ the sandbox, and app skeletons that every story needs.
 
 ### Worker skeleton (apps/worker)
 
-- [ ] T082 Create apps/worker/src/env.ts (Zod; fail fast) and apps/worker/src/container.ts: Prisma, Redis, cipher, clock, uow, the job registry, `OutboxRelay`, `DeliveryDispatcher`, `ICrmProvider` and `IMessagingProvider` chosen by `CRM_PROVIDER` and `MESSAGING_PROVIDER` (only `sandbox` implemented; any other value fails startup with a clear message), `ISellerContactReader`, and the error reporter
+- [ ] T082 Create apps/worker/src/env.ts (Zod; fail fast) and apps/worker/src/container.ts: Prisma, Redis, cipher, clock, uow, the job registry, `OutboxRelay`, `DeliveryDispatcher`, `ICrmProvider` and `IMessagingProvider` chosen by `CRM_PROVIDER` and `MESSAGING_PROVIDER` (only `sandbox` implemented; any other value fails startup with a clear message), `ISellerContactReader`, and the error reporter; add the `redis` service back to compose.yaml (redis:7-alpine, `--maxmemory 64mb --maxmemory-policy noeviction --save ""`, healthcheck `redis-cli ping`) and make api and worker depend on it being healthy
 - [ ] T083 Implement the loops in apps/worker/src/loops/: job-poller.ts (every 1 s: `reclaimStale`, then claim and run handlers; failures go through `translateWorkerError`), outbox-relay.ts (every 1 s `OutboxRelay.tick()`), delivery-consumers.ts (BullMQ Worker on `deliveries` with a custom backoff from `deliveryRetry`; on final failure, move to the `deliveries-dlq` queue and mark NEEDS_ATTENTION). Add apps/worker/src/error-translator.ts and apps/worker/src/main.ts (graceful shutdown: stop polling, let in-flight jobs finish, close BullMQ, dispose)
 
 ### Design system foundation (packages/ui)
@@ -241,10 +415,9 @@ counts are unchanged.
 ### Implementation for User Story 1
 
 - [ ] T098 [P] [US1] Create the seed fixtures in seed/fixtures/: agents.json (`agent.avery`, `agent.blake`, plus one more; brokerage; brand `clever`), investors.json (about 50 investors with varied buy boxes across the T067 markets, each with a `proofOfFundsExpiresAt`; `investor.summit` with two boxes, "Austin flips" and "Austin rentals", that both fit the V2 sample address; `investor.harbor` with one broad box; `investor.ridge` with a deliberately narrow one; at least one NATIONWIDE box, one STATES box, and one PAUSED box; and one investor whose proof of funds has expired, to show the stage 1 cut), users.json (the six demo accounts from [quickstart.md](./quickstart.md) plus users for the remaining investors), config.json (the T023 keys with defaults)
-- [ ] T099 [US1] Implement the modular seed: packages/core/prisma/seed/index.ts (runs every registered seed module in order inside a single advisory lock), packages/core/prisma/seed/baseline.ts (upserts by natural key: every file in seed/brands/ after `validateBrandTokenSet` (a failure stops the seed with the failing pairs named), config entries, agents, investors and buy boxes (each box validated with the T022 schema and written through the buy-box slice, so it gets its geography rows and a version 1 snapshot; boxes upsert by `(investorId, name)`, and an unchanged box is skipped so restarts add no versions), and users with bcrypt hashes of `demo1234`), and the `prisma.seed` entry in packages/core/package.json (depends on T096, T098)
-- [ ] T100 [US1] Write the multi-stage Dockerfile at the repo root: `deps` (pnpm fetch with a cache mount), `build` (`pnpm install --offline`, `prisma generate`, `NODE_OPTIONS=--max-old-space-size=1280 turbo run build --concurrency=1`), `prune` (`pnpm deploy --prod` per app or a pruned node_modules), and `runtime` (`node:24-bookworm-slim`, non-root user, Next.js standalone output copied, one image for all services)
-- [ ] T101 [US1] Write compose.yaml: `postgres` (postgres:17-alpine, `shared_buffers=64MB`, healthcheck `pg_isready`, named volume), `redis` (redis:7-alpine, `--maxmemory 64mb --save ""`, healthcheck), `sandbox` (same image, `pull_policy: never`, `env_file: .env`; starts once postgres is healthy; healthcheck `node -e "fetch('http://localhost:4100/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"`, because the slim image has no curl), `migrate` (the only service with `build:`; `image: investor-platform:local`; `env_file: .env`; command `prisma migrate deploy && prisma db seed`; depends on healthy postgres and healthy sandbox, because the seed writes photos through `IStorageProvider.put`), and `api`, `worker`, `web` (same image, `pull_policy: never`, `env_file: .env`, start after `migrate` completes successfully; the api healthcheck is the same `node -e fetch(...)` pattern against `http://localhost:4000/api/v1/health`; web waits for it; ports 3000, 4000, 4100; sandbox storage volume; every server listens on 0.0.0.0)
-- [ ] T102 [P] [US1] Write scripts/wait-for-home.sh (polls http://localhost:3000/ until 200, up to 300 s, prints elapsed seconds; exits 1 on timeout)
+- [ ] T099 [US1] Implement the modular seed: packages/core/prisma/seed/index.ts (runs every registered seed module in order inside a single advisory lock), packages/core/prisma/seed/baseline.ts (upserts by natural key: every file in seed/brands/ after `validateBrandTokenSet` (a failure stops the seed with the failing pairs named), config entries, agents, investors and buy boxes (each box validated with the T022 schema and written through the buy-box slice, so it gets its geography rows and a version 1 snapshot; boxes upsert by `(investorId, name)`, and an unchanged box is skipped so restarts add no versions), and users with bcrypt hashes of `demo1234`), and the `prisma.seed` entry in packages/core/package.json (depends on T096, T098); the seed must run in the `migrate` image as plain JavaScript (no tsx there), through the seed command in prisma.config.ts
+- [ ] T100 [US1] Write the multi-stage Dockerfile at the repo root: `deps` (pnpm fetch with a cache mount), `build` (`pnpm install --offline`, `prisma generate`, `NODE_OPTIONS=--max-old-space-size=1280 turbo run build --concurrency=1`), `prune` (`pnpm deploy --prod` per app or a pruned node_modules), and `runtime` (`node:24-bookworm-slim`, non-root user, Next.js standalone output copied, one image for all services) (extends the Dockerfile started in T232); follow-up: `prisma` is a production dependency of @clever/core, so the api and worker images (about 840 MB) carry the Prisma CLI that only `migrate` needs; moving it to a dev dependency and installing it in the `migrate` image alone would shrink them
+- [ ] T101 [US1] Write compose.yaml: `postgres` (postgres:17-alpine, `shared_buffers=64MB`, healthcheck `pg_isready`, named volume), `redis` (redis:7-alpine, `--maxmemory 64mb --save ""`, healthcheck), `sandbox` (same image, `pull_policy: never`, `env_file: .env`; starts once postgres is healthy; healthcheck `node -e "fetch('http://localhost:4100/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"`, because the slim image has no curl), `migrate` (the only service with `build:`; `image: investor-platform:local`; `env_file: .env`; command `prisma migrate deploy && prisma db seed`; depends on healthy postgres and healthy sandbox, because the seed writes photos through `IStorageProvider.put`), and `api`, `worker`, `web` (same image, `pull_policy: never`, `env_file: .env`, start after `migrate` completes successfully; the api healthcheck is the same `node -e fetch(...)` pattern against `http://localhost:4000/api/v1/health`; web waits for it; ports 3000, 4000, 4100; sandbox storage volume; every server listens on 0.0.0.0) (extends the compose.yaml started in T232, adding `migrate` and the seed)
 - [ ] T103 [US1] Build the home page in apps/web/src/app/page.tsx: what the prototype demonstrates (the publish → match → offer → compare → accept → close loop, the outage demo, the white-label switch), the demo accounts table (from apps/web/src/content/demo-accounts.ts), links to sign in, the sandbox (`PUBLIC_SANDBOX_URL`), and the design-system page; brand name and footer come from `useBrandContent()`
 - [ ] T104 [US1] Build the login page in apps/web/src/app/login/page.tsx and `useLogin` in apps/web/src/features/auth/useLogin.ts (posts to `/bff/session`; uses TextField and Button; error shown in ErrorState) (depends on T097)
 - [ ] T105 [US1] Add role route protection in apps/web/src/middleware.ts (no session cookie → `/login`; role mismatch → that role's home) and the role layouts using AppShell with role navigation in apps/web/src/app/(agent)/agent/layout.tsx, apps/web/src/app/(investor)/investor/layout.tsx, apps/web/src/app/(ops)/ops/layout.tsx (sign out via `DELETE /bff/session`)
@@ -270,7 +443,7 @@ the page or the BFF JSON.
 ### Tests for User Story 2 (write first, must fail) ⚠️
 
 - [ ] T108 [P] [US2] Write the PII contract test in packages/contracts/src/listing-package/views.pii.test.ts: `InvestorPackageView` and `InvestorPackageSummary` have no `fullName`, `email`, `phone`, `streetLine`, or `sellerContact` key (SC-006); `AgentPackageView` does have them
-- [ ] T109 [P] [US2] Write the ListingPackageService tests in packages/core/src/services/listing-package/ListingPackageService.test.ts (InMemory doubles, FakeClock): each property rule rejects with its field named (`beds` 0–20; `baths` 0–20 in 0.5 steps; `sqft` 100–20,000 (0 rejected); `lotSqft` > 0; `units` 2–500 and only for MULTI_FAMILY; `yearBuilt` 1800 to the current year; `zip` 5 digits and known to `IGeoProvider`; `state` 2 letters; `repairEstimate` ≥ 0); a DRAFT may leave type-dependent fields empty; `lat` / `lng` are set from `IGeoProvider.lookup(zip)`, never from input; seller `fullName` required, `email` valid if present, `phone` E.164 if present, email or phone required; `priceExpectationMin` ≤ `priceExpectationMax`, both > 0; `specialCircumstances` ≤ 2,000 chars; a second package for the same `addressHash` returns `duplicateWarning` with the existing ID; an agent can't read or edit another agent's package (404); an OPS read of `AgentPackageView` writes a `PII_ACCESSED` audit entry and the owning agent's read does not (XX.1); an update with a stale `version` → ConflictError; `undefined` fields in an update stay unchanged
+- [ ] T109 [P] [US2] Write the ListingPackageService tests in packages/core/src/services/listing-package/ListingPackageService.test.ts (InMemory doubles, FakeClock): each property rule rejects with its field named (`beds` 0–20; `baths` 0–20 in 0.5 steps; `sqft` 100–20,000 (0 rejected); `lotSqft` > 0 on any type; `units` 2–500 and only for MULTI_FAMILY; `yearBuilt` 1800 to the current year; `zip` 5 digits and known to `IGeoProvider`; `city`, `state`, and the default `neighborhood` come from `IGeoProvider.lookup(zip)` and any typed city or state is ignored; each package gets its own Property row and its own Seller row; `repairEstimate` ≥ 0); a DRAFT may leave type-dependent fields empty; `lat` / `lng` are set from `IGeoProvider.lookup(zip)`, never from input; seller `fullName` required, `email` valid if present, `phone` E.164 if present, email or phone required; `priceExpectationMin` ≤ `priceExpectationMax`, both > 0; `specialCircumstances` ≤ 2,000 chars; a package for an `addressHash` that has an active package (not CLOSED or WITHDRAWN) → `BusinessRuleError` code `DUPLICATE_ACTIVE_LISTING`, with `details.existingPackageId` when the caller owns the existing package and no package ID or agent name when another agent does; an edit that changes the address runs the same check and updates `ListingPackage.addressHash` in the same uow; a repository unique violation on that index (simultaneous creates) is translated to the same error; an agent can't read or edit another agent's package (404); an OPS read of `AgentPackageView` writes a `PII_ACCESSED` audit entry and the owning agent's read does not (XX.1); an update with a stale `version` → ConflictError; `undefined` fields in an update stay unchanged
 - [ ] T110 [P] [US2] Write the PublicationWorkflow tests in packages/core/src/workflows/publication/PublicationWorkflow.test.ts: publish with missing or invalid fields → ValidationError listing every failing field (including "at least 1 photo", `offerDeadline` > now and ≤ now + 30 days, `closingWindowStart` ≥ today and ≤ `closingWindowEnd`, `currentlyListed` set, at least one `eligiblePrograms` entry); the required fields depend on `propertyType` (FR-012): a LAND package publishes without beds, baths, sqft, year built, or condition but needs `lotSqft`, a MULTI_FAMILY package needs `units`, and any other type needs beds, baths, sqft, year built, and condition; the default deadline is now + `offerWindowHours`; a valid publish runs in one uow and sets ACCEPTING_OFFERS, `publishedAt`, and `listingVersion` 1, appends the ListingVersion snapshot (with `evaluatorVersion`), enqueues MATCH_PACKAGE (dedupe `MATCH_PACKAGE:{id}:{round}:{listingVersion}`) and CLOSE_OFFER_ROUND (`runAt` = deadline; dedupe `CLOSE_OFFER_ROUND:{id}:{round}:{deadline}`), writes `package.published` and `package.status_changed`, and audits PACKAGE_PUBLISHED; withdraw from DRAFT, ACCEPTING_OFFERS, or NO_OFFERS_RECEIVED → WITHDRAWN plus `package.withdrawn`; reopen → round + 1, `listingVersion` + 1 with a new snapshot, and a new MATCH_PACKAGE; extend deadline reschedules CLOSE_OFFER_ROUND; an illegal transition → ConflictError with `allowedNext`
 - [ ] T111 [P] [US2] Write the MatchingWorkflow tests for `evaluatePackage` in packages/core/src/workflows/matching/MatchingWorkflow.test.ts: stage 1 candidates come from `findCandidates` and stage 2 runs `evaluateBuyBox` on each; inactive investors, expired proof of funds, and PAUSED boxes never match (FR-024); one MatchEvaluation per matching box (with `buyBoxVersion`, `listingVersion`, `evaluatorVersion`, `clauseResults`) and none for non-matches; one Match row per investor per round, with `matchedBuyBoxIds` listing every matching box; exactly one `package.matched` per investor per round with `buyBoxNames[]` naming both of `investor.summit`'s boxes (FR-022); re-running the job inserts and sends nothing new; a material edit creates a new `listingVersion`, re-evaluates, notifies newly matched investors, and sends `package.changed` only to already-notified investors whose matched boxes check a changed field; an investor whose box stops matching keeps their Match row and access; zero matches → every active box is evaluated in memory and `ListingVersion.topExclusionReasons` lists the most common failing criterion labels; `matchedCount` is stored; each run is audited as MATCH_EVALUATED
 - [ ] T112 [P] [US2] Write the CLOSE_OFFER_ROUND handler test in packages/core/src/jobs/handlers/close-offer-round.handler.test.ts: at the deadline with 0 active offers → NO_OFFERS_RECEIVED plus `package.status_changed`; with ≥ 1 offer the status stays ACCEPTING_OFFERS; a stale job (deadline changed or round advanced) does nothing; running twice is safe
@@ -299,7 +472,7 @@ the page or the BFF JSON.
 - [ ] T131 [US2] Register the MATCH_PACKAGE and CLOSE_OFFER_ROUND handlers and `PrismaSellerContactReaderImpl` in apps/worker/src/container.ts (US5 adds MATCH_BUY_BOX and SEND_MATCH_DIGESTS in T219 and T221)
 - [ ] T132 [P] [US2] Add the typed client modules in packages/contracts/src/client/listing-packages.ts, photos.ts, investor-packages.ts, and notifications.ts
 - [ ] T133 [US2] Build the agent package list (ListPageTemplate; status filter; StatusPill) in apps/web/src/app/(agent)/agent/packages/page.tsx with `usePackages` in apps/web/src/features/listing-package/usePackages.ts
-- [ ] T134 [US2] Build the new-package wizard (WizardTemplate driven by `GET /package-form`; steps seller, property, expectations, photos, review; the duplicate-address warning shown as a notice with a link to the existing package) in apps/web/src/app/(agent)/agent/packages/new/page.tsx, with `usePackageWizard` and `usePhotoUpload` in apps/web/src/features/listing-package/ (depends on T115)
+- [ ] T134 [US2] Build the new-package wizard (WizardTemplate driven by `GET /package-form`; steps seller, property, expectations, photos, review; a `DUPLICATE_ACTIVE_LISTING` error shown as an accessible error notice on the property step, linking to the existing package only when `details.existingPackageId` is present, otherwise telling the agent to contact operations) in apps/web/src/app/(agent)/agent/packages/new/page.tsx, with `usePackageWizard` and `usePhotoUpload` in apps/web/src/features/listing-package/ (depends on T115)
 - [ ] T135 [US2] Build the agent package detail page (DetailPageTemplate: status; edit; publish with field errors; matched count; the "no matches" notice with `topExclusionReasons`; withdraw, reopen, and extend-deadline dialogs) in apps/web/src/app/(agent)/agent/packages/[id]/page.tsx
 - [ ] T136 [US2] Build the investor package list and the read-only privacy-safe detail page (city, ZIP, neighborhood, facts, photos via read URLs, timeline, deadline) in apps/web/src/app/(investor)/investor/packages/page.tsx and apps/web/src/app/(investor)/investor/packages/[id]/page.tsx; a 404 shows "not found"
 - [ ] T137 [US2] Add the notification inbox (badge count plus panel; `useNotifications` with polling) to the AppShell slot in apps/web/src/features/notifications/NotificationInbox.tsx
@@ -493,7 +666,6 @@ and the automated brand checks. The foundation (tokens, primitives, templates) i
 - [ ] T210 [P] Review the api security settings in apps/api/src/app.ts: helmet defaults, `x-powered-by` disabled, a 1 MB JSON limit, no CORS (the browser only talks to the BFF); and in the BFF, cookie flags and the Origin check on every state-changing method
 - [ ] T211 Fill the README curl recipes (login, idempotent POST replay showing `Idempotent-Replay: true`, the 409 in-progress case, health) and copy the current Prototype Shortcuts table from [plan.md](./plan.md) into README.md
 - [ ] T212 [P] Write scripts/verify-limits.sh: a clean `docker builder prune -af`, a timed `docker compose build` (fails if over 20 min), `docker compose up -d`, scripts/wait-for-home.sh (fails if over 5 min), and `docker stats --no-stream` (prints the total memory); document running it on a 2 GB x86_64 VM in README.md
-- [ ] T213 [P] Write scripts/package-zip.sh: build investor-platform.zip from tracked files only (excluding `.git`, `node_modules`, `.next`, `dist`, and `specs` if not wanted), and fail if the zip exceeds 100 MB
 - [ ] T214 Run the full quickstart (V1–V7) on a clean 2 GB x86_64 Linux VM and record the build time, startup time, and memory in README.md
 - [ ] T215 Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm test:integration` from the root package.json, and fix anything that fails in the reported files
 
@@ -504,7 +676,10 @@ and the automated brand checks. The foundation (tokens, primitives, templates) i
 ### Phase dependencies
 
 - **Setup (Phase 1)**: no dependencies.
-- **Foundational (Phase 2)**: depends on Setup; blocks every story.
+- **Sprint 0**: depends on Setup; runs before Foundational. T226 must finish before T227 (no
+  push until the repo is safe). After Sprint 0, every task merges to `main` through a pull request
+  from a short-lived branch (trunk-based development).
+- **Foundational (Phase 2)**: depends on Setup and Sprint 0; blocks every story.
 - **US1 (Phase 3)**: depends on Foundational. It is the MVP gate: if the reviewer can't start
   it, nothing else is seen.
 - **US2 (Phase 4)**: depends on Foundational. It reuses the US1 seed baseline and role shells,
@@ -596,4 +771,6 @@ Re-run V1 after each increment, because every story adds to the build and the se
   `ISellerContactReader`, `GET /package-form`, the agent offer list, and the backup-expiry
   extension) were written into [contracts/](./contracts/) before implementation, so the
   contracts stay the source of truth (V).
-- Commit after each task or logical group, once the user asks for commits.
+- Commit after each task or logical group, once the user asks for commits. After Sprint 0,
+  each task or small group is one pull request from a short-lived `t###-short-summary` branch
+  off `main`, merged by squash within about a day (trunk-based development, Sprint 0).

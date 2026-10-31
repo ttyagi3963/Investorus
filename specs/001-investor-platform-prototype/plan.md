@@ -292,6 +292,11 @@ comparison screen. The full adapter table and migration steps are in
 | Shortcut | Production approach |
 | --- | --- |
 | Encryption key and JWT secret committed in `.env` | KMS or a secrets manager; key rotation via the cipher's key-version prefix |
+| Each listing package has its own Property row; rows for the same physical home are linked only by `addressHash` | A shared physical-home record (parcel or APN) linking every listing of one house |
+| A homeowner who sells a second property becomes a second Seller record | Identity resolution that links or merges duplicate sellers |
+| Each listing package has its own Seller row (`ListingPackage.sellerId` unique), so one homeowner's sales are not grouped | A Person or Contact record that groups a homeowner's per-listing Seller rows, so the seller dashboard can sign them in once and show every sale; the same pattern as the physical-home record for Property |
+| One login per investor (User ↔ Investor is 1:1) | Several Users per investor company, with offers and audit entries recording the acting user (for example `submittedByUserId`) |
+| No seller access; the agent presents offers | Read-only seller dashboard: a SELLER role and unique `User.sellerId`, magic-link sign-in (so `passwordHash` becomes nullable or moves to a credentials table); Seller data unchanged |
 | Username/password demo auth, 8 h JWT, no refresh or MFA | SSO for agents and ops (Okta/Google), magic link or passkeys for investors, short-lived tokens with rotation |
 | Sandbox stand-ins for CRM, email/SMS, storage | HubSpot, SendGrid/Twilio, and S3 provider implementations behind the same ports |
 | Static ZIP code list for the seeded markets | Address validation and geocoding provider |

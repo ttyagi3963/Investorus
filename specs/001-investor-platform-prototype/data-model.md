@@ -31,7 +31,11 @@
 
 ## Identity and roles
 
-### User
+### User (locked 2026-10-30)
+A login account. Roles are AGENT, INVESTOR, and OPS. Sellers have no User today (see the spec
+assumption "No seller view"); a seller dashboard would add a SELLER role and `sellerId` without
+changing Seller data.
+
 | Field | Type | Rules |
 | --- | --- | --- |
 | id | cuid | |
@@ -39,18 +43,22 @@
 | passwordHash | string | bcrypt |
 | role | `AGENT` \| `INVESTOR` \| `OPS` | |
 | displayName | string | 1–80 chars |
-| agentId | cuid? | set if role = AGENT (1:1 → Agent) |
-| investorId | cuid? | set if role = INVESTOR (1:1 → Investor) |
+| agentId | cuid? | → Agent; **unique**; set if role = AGENT (1:1) |
+| investorId | cuid? | → Investor; **unique**; set if role = INVESTOR (1:1, one login per investor in the prototype) |
 | active | boolean | default true |
 
-DB CHECK: an AGENT has `agentId` set; an INVESTOR has `investorId` set; OPS has neither.
+Plus `createdAt` and `updatedAt` (conventions).
 
-### Agent
+DB constraints: unique `username`, unique `agentId`, unique `investorId` (each allows many NULLs,
+which is correct here); CHECK: an AGENT has `agentId` set; an INVESTOR has `investorId` set; OPS
+has neither.
+
+### Agent (locked 2026-10-30)
 | Field | Type | Rules |
 | --- | --- | --- |
 | id | cuid | |
 | name | string | |
-| email | string | valid email |
+| email | string | valid email; **unique** (how ops, the seed, and the CRM sync identify an agent) |
 | brokerage | string | |
 | brandId | string | references Brand |
 
@@ -67,38 +75,51 @@ DB CHECK: an AGENT has `agentId` set; an INVESTOR has `investorId` set; OPS has 
 
 ## Sellers, properties, packages
 
-### Seller
+### Seller (locked 2026-10-30)
+A contact record for the homeowner. It stores no agent: the representing agent is
+`ListingPackage.agentId` on each package, so relisting with a different agent is a new package,
+not an edit here. Access to seller details is checked through package ownership (FR-080).
+
 | Field | Type | Rules |
 | --- | --- | --- |
 | id | cuid | |
-| agentId | cuid → Agent | the representing agent |
 | fullName 🔒 | string | required |
 | email 🔒 | string? | valid email if present |
-| phone 🔒 | string? | E.164 if present; email or phone is required |
+| phone 🔒 | string? | E.164 if present |
 
-### Property
+Plus `createdAt` and `updatedAt` (conventions). DB CHECK: `email IS NOT NULL OR phone IS NOT NULL`
+(an empty encrypted field is still NULL, so the database can enforce it).
+
+### Property (locked 2026-10-30)
+One Property per listing package: the home as it was listed for that package. A relist creates a
+new package with a new Property, so an earlier package keeps its own facts. Rows for the same
+physical home are linked only by `addressHash` (FR-013). Like Seller, a Property has no agent of
+its own; it is reached through its package (`ListingPackage.propertyId`, unique).
+
 | Field | Type | Rules |
 | --- | --- | --- |
 | id | cuid | |
 | streetLine 🔒 | string | required |
 | addressHash | string | HMAC of the normalized full address; used for the duplicate-listing warning (FR-013) without decrypting |
-| city | string | |
-| state | string | 2-letter |
-| zip | string | 5 digits; must exist in the geo reference set (`IGeoProvider`) |
-| neighborhood | string? | |
+| zip | string | 5 digits; must exist in the geo reference set (`IGeoProvider`); the only location field the agent enters besides the street line |
+| city | string | derived from `zip` via `IGeoProvider.lookup`; never typed |
+| state | string | 2-letter; derived from `zip`; never typed (so STATE buy boxes cannot miss on a typo) |
+| neighborhood | string? | default from `IGeoProvider.lookup`; the agent may edit it (display only, not matched on) |
 | lat / lng | decimal? | the ZIP centroid from `IGeoProvider.lookup`, set when the ZIP is saved; agents never type it |
 | propertyType | `SINGLE_FAMILY` \| `CONDO` \| `TOWNHOME` \| `MULTI_FAMILY` \| `MANUFACTURED` \| `LAND` | |
 | beds | int? | 0–20; required at publish unless LAND |
 | baths | decimal(3,1)? | 0–20, in 0.5 steps; required at publish unless LAND |
 | sqft | int? | living area, 100–20,000 (0 is rejected); required at publish unless LAND |
-| lotSqft | int? | > 0; required at publish for LAND |
-| units | int? | 2–500; required at publish for MULTI_FAMILY, null otherwise |
+| lotSqft | int? | > 0; allowed for any type; required at publish for LAND |
+| units | int? | 2–500; only for MULTI_FAMILY (DB CHECK); required at publish for MULTI_FAMILY |
 | yearBuilt | int? | 1800 to the current year; required at publish unless LAND |
 | condition | `EXCELLENT` \| `GOOD` \| `FAIR` \| `POOR` \| `DISTRESSED` (nullable) | required at publish unless LAND |
 | repairEstimate | int (USD)? | ≥ 0 |
 
-Fields are nullable so a DRAFT can be saved incomplete. Range rules are DB CHECKs; the
-type-dependent "required at publish" rules are enforced by the publish schema (FR-012).
+Plus `createdAt` and `updatedAt` (conventions). Fields are nullable so a DRAFT can be saved
+incomplete and LAND can omit building facts. Range rules are DB CHECKs, plus
+`propertyType = 'MULTI_FAMILY' OR units IS NULL`. The type-dependent "required at publish" rules
+are enforced by the publish schema (FR-012).
 
 Index: `(zip)`, `(addressHash)`.
 
@@ -107,8 +128,9 @@ Index: `(zip)`, `(addressHash)`.
 | --- | --- | --- |
 | id | cuid | |
 | agentId | cuid → Agent | owner; agents see only their own |
-| sellerId | cuid → Seller | |
-| propertyId | cuid → Property | |
+| sellerId | cuid → Seller | **unique** (one package per Seller) |
+| propertyId | cuid → Property | **unique** (one package per Property) |
+| addressHash | string | copy of `Property.addressHash`, written in the same unit of work whenever the address is saved; never typed; backs the duplicate-address block (FR-013) |
 | brandId | string → Brand | metadata only, never a branch condition (XVI) |
 | status | PackageStatus | see the state machine below |
 | round | int | starts at 1; +1 each time the package is reopened |
@@ -129,9 +151,18 @@ re-runs matching.
 Indexes:
 - `(agentId, status)`
 - `(status, offerDeadline)`
-- Partial unique on `(propertyId)` where status in active statuses (prevents two active
-  packages for one property). A different property record with the same `addressHash` only
-  produces a warning (FR-013).
+- Unique `(propertyId)`: one package per Property (Property locked 2026-10-30).
+- Unique `(sellerId)`: one package per Seller, so each Seller row belongs to exactly one agent.
+  The listing agreement ties a seller to an agent, so the link lives here: each package has one
+  agent and one seller, which gives "one agent per sale". A returning homeowner gets a new Seller
+  row per package (Maria sells Elm St with Agent A, later Oak St with Agent B: two rows). Without
+  this, a shared row would let Agent B's edit to her phone change Agent A's listing, bypassing the
+  per-package access check (FR-080). The Seller table itself is unchanged.
+- Partial unique `(addressHash)` WHERE status NOT IN (`CLOSED`, `WITHDRAWN`): one active package
+  per address, across all agents (FR-013, decided 2026-10-30). FELL_THROUGH counts as active
+  because a backup offer can revive it. The service checks first so it can return a clear
+  `BusinessRuleError` (409, code `DUPLICATE_ACTIVE_LISTING`); the index catches simultaneous
+  creates. `details.existingPackageId` is included only when the caller owns that package.
 
 ### Photo
 | Field | Type | Rules |

@@ -5,7 +5,7 @@ Limits (from the submission instructions):
   - the zip is at most 100 MB;
   - it holds at most 20,000 files and 500 MB once unzipped;
   - compose.yaml is at the top level;
-  - installed dependencies and build output are left out.
+  - installed dependencies, build output, and large media are left out.
 Also checked, in case the zip is ever made by hand from the working folder:
   - the committed .env with working defaults is at the top level;
   - assignment.md (confidential, gitignored) is not included.
@@ -25,6 +25,7 @@ MB = 1024 * 1024
 MAX_ZIP_BYTES = 100 * MB
 MAX_ENTRIES = 20_000
 MAX_UNZIPPED_BYTES = 500 * MB
+MAX_FILE_BYTES = 5 * MB  # "large media": the seed photos are under 5 MB in total (T138)
 FORBIDDEN_DIRS = {"node_modules", "dist", ".next", ".turbo", "coverage"}
 FORBIDDEN_FILES = {"assignment.md"}
 
@@ -67,6 +68,9 @@ def main(path: str) -> int:
             failures.append(f"build output or dependencies included: {n}")
         if parts and parts[-1] in FORBIDDEN_FILES:
             failures.append(f"confidential file included: {n}")
+    for i in infos:
+        if i.file_size > MAX_FILE_BYTES:
+            failures.append(f"large file ({human(i.file_size)} > {human(MAX_FILE_BYTES)}): {i.filename}")
 
     lines = [
         f"## Submission zip check: {os.path.basename(path)}",

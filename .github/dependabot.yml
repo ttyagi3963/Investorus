@@ -1,0 +1,68 @@
+# Dependabot version updates (T234). Weekly, grouped so the trunk gets a few reviewable PRs
+# instead of one per package. Every Dependabot PR runs the full pipeline: CI, and the submission
+# rehearsal when the lockfile or images change. The Claude review skips Dependabot PRs, which
+# get no secrets.
+#
+# Major versions are held back where the project pins a line on purpose:
+# - typescript stays on 5.9 (typescript-eslint does not support 7 yet);
+# - the node base image stays on 24 (the LTS line in package.json "engines");
+# - postgres stays on 17 (the version the schema and tests target).
+
+version: 2
+
+updates:
+  - package-ecosystem: npm # pnpm workspace: root package.json and pnpm-lock.yaml
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    labels: [dependencies]
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/setup
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(ci)"
+    labels: [dependencies]
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker # Dockerfile base images
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(docker)"
+    labels: [dependencies]
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: docker-compose # images in compose.yaml
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(docker)"
+    labels: [dependencies]
+    ignore:
+      - dependency-name: postgres
+        update-types: [version-update:semver-major]

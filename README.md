@@ -14,7 +14,7 @@ docker compose up --build
 
 Then open **http://localhost:3000**.
 
-On first start, Compose builds the images, starts PostgreSQL and Redis, runs the database
+On first start, Compose builds the images, starts PostgreSQL, runs the database
 migrations and the seed data automatically, and then starts the apps. Later starts reuse the
 built images and the stored data, and the seed adds no duplicates.
 

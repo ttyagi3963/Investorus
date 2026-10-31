@@ -1,9 +1,11 @@
 # One-command start (T232; T101 extends it): `docker compose up --build`, nothing else.
 #
-# Start order: postgres and redis (healthchecked) → sandbox → migrate (migrations and seed,
-# then exits) → api and worker → web. Every server listens on 0.0.0.0 inside its container.
-# Only postgres and redis have healthchecks (pg_isready, redis-cli ping): migrate must not run
-# before the database accepts connections. The app services are ordered by start only.
+# Start order: postgres (healthchecked) → sandbox → migrate (migrations and seed, then exits) →
+# api and worker → web. Every server listens on 0.0.0.0 inside its container. Only postgres has
+# a healthcheck (pg_isready): migrate must not run before the database accepts connections. The
+# app services are ordered by start only.
+#
+# Redis is added back when the worker's queues need it (T082, T083; constitution XVIII).
 #
 # Settings come from the committed .env file. It holds demo values only and needs no secrets
 # or outside accounts.
@@ -25,18 +27,6 @@ services:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U clever -d investor_platform"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    # BullMQ needs noeviction; nothing is persisted, so restarts start clean.
-    command:
-      ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction", "--save", ""]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -80,8 +70,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
-        condition: service_healthy
     ports:
       - "4000:4000"
     restart: unless-stopped
@@ -95,8 +83,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
-        condition: service_healthy
     restart: unless-stopped
 
   web:

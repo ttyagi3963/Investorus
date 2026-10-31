@@ -15,12 +15,9 @@ export const createPropertyInputSchema = z
     sqft: z.number().int().min(100).max(20_000).optional(),
     lotSqft: z.number().int().positive().optional(),
     units: z.number().int().min(2).max(500).optional(),
-    yearBuilt: z
-      .number()
-      .int()
-      .min(1800)
-      .refine((year) => year <= new Date().getFullYear(), "Cannot be in the future")
-      .optional(),
+    // "Not in the future" needs today's date, so the database CHECK enforces it (and the service
+    // will, with the clock port); a schema must not read the wall clock (constitution XV).
+    yearBuilt: z.number().int().min(1800).optional(),
     condition: z.enum(PROPERTY_CONDITIONS).optional(),
     repairEstimate: z.number().int().min(0).optional(),
   })

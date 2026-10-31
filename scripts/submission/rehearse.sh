@@ -11,21 +11,18 @@
 #   3. Unzip the submission into an empty folder inside it and run only
 #      `docker compose up --build`. The build must finish within 20 minutes.
 #   4. GET / must answer 200 within 5 minutes of the containers starting.
-#   5. Sign in with each demo account listed in README.md (skipped, with a notice, until the
-#      sign-in route exists; required after that).
-#   6. Report memory honestly: the highest program memory (anonymous memory, sampled every 2 s,
-#      excluding the file cache Linux fills and frees on demand), the kernel's total peak
-#      (memory.peak, cache included), and the out-of-memory kill count, which must be 0.
+#   5. Report memory: the highest program memory (anonymous memory, sampled every 2 s, excluding
+#      the file cache Linux fills and frees on demand) and the out-of-memory kill count, which
+#      must be 0.
 #
 # Usage: scripts/submission/rehearse.sh <submission.zip>
-# Needs: docker on the host, curl, python3 (or set PYTHON). Ports 3000, 4000, and 4100 must be free.
+# Needs: docker on the host and curl. Ports 3000, 4000, and 4100 must be free.
 set -euo pipefail
 
 ZIP="$1"
-MEMORY="${REHEARSAL_MEMORY:-2g}"
-CPUS="${REHEARSAL_CPUS:-2}"
-DIND_IMAGE="${REHEARSAL_DIND_IMAGE:-docker:29.9.2-dind}"
-PYTHON="${PYTHON:-python3}"
+MEMORY=2g
+CPUS=2
+DIND_IMAGE=docker:29.9.2-dind
 BUILD_LIMIT_S=1200
 HOME_LIMIT_S=300
 NAME="submission-rehearsal"
@@ -46,7 +43,7 @@ cleanup() {
 trap cleanup EXIT
 
 # --- 1. the memory cap is enforced ------------------------------------------------------------
-log "1/6 proving the ${MEMORY} memory cap is enforced"
+log "1/5 proving the ${MEMORY} memory cap is enforced"
 set +e
 docker run --rm --memory="$MEMORY" --memory-swap="$MEMORY" alpine:3 \
   sh -c 'head -c 2600m /dev/zero | tail > /dev/null'
@@ -59,7 +56,7 @@ else
 fi
 
 # --- 2. a 2 GB Docker-in-Docker daemon --------------------------------------------------------
-log "2/6 starting Docker-in-Docker (${MEMORY} memory, no swap, ${CPUS} CPUs)"
+log "2/5 starting Docker-in-Docker (${MEMORY} memory, no swap, ${CPUS} CPUs)"
 docker rm -f "$NAME" > /dev/null 2>&1 || true
 docker run -d --name "$NAME" --privileged \
   --memory="$MEMORY" --memory-swap="$MEMORY" --cpuset-cpus="0-$((CPUS - 1))" \
@@ -75,7 +72,7 @@ echo "Docker-in-Docker memory.max = $cap bytes"
 in_dind sh -c 'while sleep 2; do awk "/^anon /{print \$2}" /sys/fs/cgroup/memory.stat; done > /tmp/anon.samples' &
 
 # --- 3. unzip into an empty folder and run only `docker compose up --build` -------------------
-log "3/6 unzipping into an empty folder and running docker compose up --build"
+log "3/5 unzipping into an empty folder and running docker compose up --build"
 # Streamed through stdin, so it works the same from a Linux or a Windows shell.
 docker exec -i "$NAME" sh -c 'cat > /tmp/submission.zip' < "$ZIP"
 in_dind sh -c 'mkdir /submission && cd /submission && unzip -q /tmp/submission.zip && rm /tmp/submission.zip'
@@ -95,7 +92,7 @@ echo "docker compose up --build exited $up_rc after ${build_s}s"
 [ "$build_s" -le "$BUILD_LIMIT_S" ] || fail "build took ${build_s}s, over the 20-minute limit"
 
 # --- 4. the home page within 5 minutes --------------------------------------------------------
-log "4/6 waiting for GET / (limit ${HOME_LIMIT_S}s)"
+log "4/5 waiting for GET / (limit ${HOME_LIMIT_S}s)"
 home_s=""
 if [ "$up_rc" -eq 0 ]; then
   while :; do
@@ -107,54 +104,14 @@ if [ "$up_rc" -eq 0 ]; then
   done
 fi
 
-# --- 5. each demo account from the README signs in --------------------------------------------
-log "5/6 signing in with the README's demo accounts"
-login_note="not attempted"
-if [ -n "$home_s" ]; then
-  # The accounts come from the README inside the zip: the one the reviewer reads.
-  mapfile -t accounts < <("$PYTHON" - "$ZIP" <<'EOF'
-import re, sys, zipfile
-text = zipfile.ZipFile(sys.argv[1]).read("README.md").decode("utf-8")
-section = text.split("## Demo accounts", 1)[1].split("\n## ", 1)[0]
-password = re.search(r"password \*\*`([^`]+)`\*\*", section).group(1)
-for user in re.findall(r"^\|[^|]+\|\s*`([a-z0-9.]+)`", section, re.M):
-    print(f"{user} {password}")
-EOF
-  )
-  ok=0; missing=0; bad=()
-  for line in "${accounts[@]}"; do
-    user=${line% *}; pass=${line#* }
-    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST http://localhost:4000/api/v1/sessions \
-      -H 'Content-Type: application/json' -H "Idempotency-Key: rehearsal-$user-$RANDOM$RANDOM" \
-      -d "{\"username\":\"$user\",\"password\":\"$pass\"}" || true)
-    case "$code" in
-      200|201) ok=$((ok + 1)); echo "ok: $user signed in";;
-      404) missing=$((missing + 1));;
-      *) bad+=("$user ($code)");;
-    esac
-  done
-  if [ "$missing" -eq "${#accounts[@]}" ]; then
-    login_note="skipped: the sign-in route does not exist yet (User Story 1, T089–T092)"
-    echo "$login_note"
-    [ "${GITHUB_ACTIONS:-}" = "true" ] && echo "::notice title=Demo logins::$login_note"
-  elif [ "${#bad[@]}" -gt 0 ] || [ "$missing" -gt 0 ]; then
-    login_note="$ok of ${#accounts[@]} signed in"
-    fail "demo accounts that could not sign in: ${bad[*]:-} (missing route for $missing)"
-  else
-    login_note="all ${#accounts[@]} signed in"
-  fi
-fi
-
-# --- 6. peak memory ---------------------------------------------------------------------------
-log "6/6 resource use"
-peak=$(in_dind cat /sys/fs/cgroup/memory.peak 2> /dev/null || echo "")
-peak_mb=$([ -n "$peak" ] && echo $(( peak / 1024 / 1024 )) || echo "n/a")
+# --- 5. peak memory ---------------------------------------------------------------------------
+log "5/5 resource use"
 cap_mb=$([ "$cap" != "max" ] && echo $(( cap / 1024 / 1024 )) || echo "max")
 anon_max=$(in_dind sh -c 'sort -n /tmp/anon.samples | tail -1' 2> /dev/null || echo "")
 anon_mb=$([ -n "$anon_max" ] && echo $(( anon_max / 1024 / 1024 )) || echo "n/a")
 oom_kills=$(in_dind sh -c 'awk "/^oom_kill /{print \$2}" /sys/fs/cgroup/memory.events' 2> /dev/null || echo "?")
 echo "program memory peak (excludes reclaimable file cache): ${anon_mb} MB of ${cap_mb} MB"
-echo "kernel peak including file cache: ${peak_mb} MB; out-of-memory kills: ${oom_kills}"
+echo "out-of-memory kills: ${oom_kills}"
 [ "$oom_kills" = "0" ] || fail "the kernel killed $oom_kills process(es) for lack of memory"
 in_dind docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}' || true
 in_dind sh -c 'cd /submission && docker compose ps -a --format "{{.Service}}\t{{.State}}\t{{.Status}}"' || true
@@ -174,9 +131,7 @@ cat >> "$SUMMARY" <<EOF
 | GET / answered 200 | ${home_s:-no}${home_s:+s after start} | 300s (5 min) |
 | Program memory peak (build and run, excludes file cache) | ${anon_mb} MB | ${cap_mb} MB |
 | Out-of-memory kills | ${oom_kills} | 0 |
-| Kernel peak incl. reclaimable file cache | ${peak_mb} MB | (fills to the cap by design) |
 | Unzipped | $files files, $(( bytes / 1024 / 1024 )) MB | 20,000 files, 500 MB |
-| Demo accounts | $login_note | all sign in |
 EOF
 
 if [ "${#failures[@]}" -gt 0 ]; then

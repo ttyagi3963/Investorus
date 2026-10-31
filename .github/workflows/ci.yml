@@ -57,8 +57,7 @@ jobs:
       - name: Set up Node, pnpm, and dependencies
         uses: ./.github/actions/setup
 
-      # Offline by design (constitution XV): no database, network, or containers. Includes the
-      # Criterion Registry and evaluator tests.
+      # Offline by design (constitution XV): no database, network, or containers.
       - name: Unit tests
         run: pnpm test
 
@@ -68,7 +67,7 @@ jobs:
     timeout-minutes: 30
     services:
       # Shadow database for the migration drift check. The integration tests themselves start
-      # their own throwaway Postgres 17 and Redis 7 containers through Testcontainers.
+      # their own throwaway containers through Testcontainers.
       shadow-db:
         image: postgres:17-alpine
         env:
@@ -93,17 +92,10 @@ jobs:
       - name: Set up Node, pnpm, and dependencies
         uses: ./.github/actions/setup
 
-      - name: Pull the test images (Postgres 17, Redis 7)
-        run: |
-          docker pull postgres:17-alpine
-          docker pull redis:7-alpine
-
       - name: Prisma validate and migration drift check
         run: pnpm db:check
 
-      # Constraint and trigger tests (including the AuditLog triggers), the fast-check
-      # pre-filter safety test, and the other *.int.test.ts suites.
-      - name: Integration tests (Testcontainers)
+      - name: Integration tests (*.int.test.ts, Testcontainers)
         run: pnpm test:integration
 
   security:

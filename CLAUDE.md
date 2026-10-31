@@ -72,7 +72,7 @@ Docker-in-Docker machine.
 - Tests come first and must fail without the change.
 - Unit tests stub the network; fake timers only inside the test files that need them, set up
   and torn down per file, never globally.
-- Integration tests are `*.int.test.ts` and start their own Postgres 17 and Redis 7 containers.
+- Integration tests are `*.int.test.ts` and start their own Postgres 17 containers.
 
 ## Hard constraints
 

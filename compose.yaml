@@ -1,7 +1,7 @@
 # One-command start (T232; T101 extends it): `docker compose up --build`, nothing else.
 #
-# Start order: postgres (healthchecked) → sandbox → migrate (migrations and seed, then exits) →
-# api and worker → web. Every server listens on 0.0.0.0 inside its container. Only postgres has
+# Start order: postgres (healthchecked) → migrate (migrations and seed, then exits) → api and
+# worker → web. The sandbox has no dependencies and starts at once. Every server listens on 0.0.0.0 inside its container. Only postgres has
 # a healthcheck (pg_isready): migrate must not run before the database accepts connections. The
 # app services are ordered by start only.
 #
@@ -38,9 +38,6 @@ services:
       target: sandbox
     image: investor-platform-sandbox:local
     env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
     ports:
       - "4100:4100"
     volumes:
@@ -56,9 +53,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      # The seed stores sample photos through the sandbox's storage API (T138).
-      sandbox:
-        condition: service_started
     restart: "no"
 
   api:

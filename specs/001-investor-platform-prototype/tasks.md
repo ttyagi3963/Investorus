@@ -267,7 +267,8 @@ personal details are encrypted in the database, and nothing goes out to investor
 - **Photos are optional on a draft**, and **a draft can be edited later**: the agent can come
   back to change the seller, the property, the price, or the photos (`PATCH` with `version`).
   Changing the address re-runs the duplicate-address check.
-- **Not in Sprint 1:** Redis and the idempotency middleware (T076–T077, with T082), branding and
+- **Not in Sprint 1:** Redis and the idempotency middleware (T076–T077, with T082; a deviation
+  from XX.2, recorded in plan.md Complexity Tracking), branding and
   themes (neutral default tokens only), publishing and matching, the config-driven wizard
   (T130), the home page (T103), JWT revocation, refresh tokens, MFA, and SSO (prototype
   shortcuts, plan.md).

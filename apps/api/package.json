@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Express 5 HTTP API (port 4000).",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch --env-file=../../.env src/server.ts",

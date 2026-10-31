@@ -339,8 +339,10 @@ all pending deliveries complete.
   - every property type except land: beds, baths, square footage, year built, and condition;
   - land: lot size;
   - multifamily: unit count.
-- **FR-013**: The system MUST warn the agent when an active package already exists for the same
-  address.
+- **FR-013**: The system MUST block a package for an address that already has an active package
+  (any status except Closed or Withdrawn), whichever agent owns it, so investors never see one
+  home twice. If the existing package is the agent's own, the message links to it; otherwise the
+  message names no agent or package and tells the agent to contact operations.
 - **FR-014**: Packages MUST move only through defined statuses, and every change MUST be recorded
   with who made it and when:
   - Draft → Accepting offers → Offer accepted → Under contract → Inspection → Closing → Closed
@@ -510,9 +512,13 @@ all pending deliveries complete.
 
 - **Agent**: A licensed real estate agent who represents a seller. Owns listing packages.
 - **Seller**: The homeowner the agent represents. Has contact details that are private by default.
-  The seller does not log in.
-- **Property**: The home being sold: address, type, physical details (including lot size for
-  land and unit count for multifamily), condition, and repair estimate.
+  The seller does not log in. The representing agent is recorded on each listing package, not on
+  the seller, so a seller has one agent per sale. Each listing package has its own seller record,
+  so one agent's edits to a seller's details never change another agent's listing.
+- **Property**: The home being sold, as listed for one package: address, type, physical details
+  (including lot size and, for multifamily, unit count), condition, and repair estimate. Each
+  listing package has its own Property, so a relist keeps the earlier package's facts unchanged.
+  City and state come from the ZIP code, not from typing.
 - **Listing Package**: The agent's presentation of a property to investors: property details,
   photos, seller expectations, timeline, listed-for-sale status, suitable offer programs, offer
   deadline, and status. Belongs to one agent and one property. Each publish or material edit
@@ -595,7 +601,12 @@ all pending deliveries complete.
 - **Roles with working screens**: agent, investor, and operations. Loan officers and the existing
   agent portal are out of scope.
 - **No seller view**: sellers never log in or receive links; the agent presents offers and
-  records decisions, matching the assignment's "one person, their agent" model.
+  records decisions. This is the spec's reading of the assignment's "one person, their agent"
+  line, recorded as Clarification Q3 (checklists/requirements.md); the assignment itself does not mention seller logins. A read-only
+  seller dashboard is a planned extension: a SELLER role linked to the existing Seller record,
+  with magic-link sign-in, and no change to Seller data.
+- **One login per investor**: each investor company has exactly one User. Team logins (several
+  people acting for one investor) are a planned extension.
 - **Milestones are recorded by the agent** (operations can also record them). There is no
   automatic feed from title or escrow companies.
 - **CRM sync is one way** (platform → CRM) during the transition. Retiring the CRM for this

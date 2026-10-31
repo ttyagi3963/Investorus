@@ -1,0 +1,139 @@
+// The database schema: the real definition of every table (data-model.md, locked entities).
+// Tables are added as each sprint needs them (Sprint 1: T236, T238, T240; T031 the rest).
+// Rules Prisma cannot express, such as CHECKs, are hand-written in the migration SQL.
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Login roles. INVESTOR and User.investorId arrive with the Investor table in Sprint 2.
+enum Role {
+  AGENT
+  OPS
+}
+
+// A login account. CHECK User_role_link_check (migration): an AGENT has agentId, OPS has none.
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         Role
+  displayName  String
+  agentId      String?  @unique
+  agent        Agent?   @relation(fields: [agentId], references: [id])
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// The person behind an AGENT login; owns listing packages. Email is how the seed and ops find them.
+model Agent {
+  id        String           @id @default(cuid())
+  name      String
+  email     String           @unique
+  brokerage String
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  user      User?
+  packages  ListingPackage[]
+}
+
+// The homeowner's contact details for one listing package. fullName, email, and phone hold
+// AES-256-GCM ciphertext (key version prefix), encrypted and decrypted only in the repository
+// mapper. No agent here: the package links seller and agent. CHECK Seller_contact_check
+// (migration): email or phone is present.
+model Seller {
+  id        String          @id @default(cuid())
+  fullName  String
+  email     String?
+  phone     String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  package   ListingPackage?
+}
+
+enum PropertyType {
+  SINGLE_FAMILY
+  CONDO
+  TOWNHOME
+  MULTI_FAMILY
+  MANUFACTURED
+  LAND
+}
+
+enum PropertyCondition {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  DISTRESSED
+}
+
+// The home as listed for one package (a relist gets a new row). streetLine holds ciphertext;
+// addressHash (HMAC of the normalized address) finds duplicates without decrypting. city and
+// state come from the ZIP. Facts are nullable so a draft can be incomplete; range CHECKs and
+// "units only for multi-family" are in the migration. lat/lng and the zip and addressHash
+// indexes arrive with matching, the first queries that need them.
+model Property {
+  id             String             @id @default(cuid())
+  streetLine     String
+  addressHash    String
+  zip            String
+  city           String
+  state          String
+  neighborhood   String?
+  propertyType   PropertyType
+  beds           Int?
+  baths          Decimal?           @db.Decimal(3, 1)
+  sqft           Int?
+  lotSqft        Int?
+  units          Int?
+  yearBuilt      Int?
+  condition      PropertyCondition?
+  repairEstimate Int?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  package        ListingPackage?
+}
+
+// Sprint 1 packages are drafts only; the other statuses arrive with publishing.
+enum PackageStatus {
+  DRAFT
+}
+
+// A listing package: one agent, one seller, one property (both unique). addressHash copies the
+// property's, so one address can have only one package (FR-013; it becomes a partial unique on
+// active statuses when packages can close). CHECK ListingPackage_price_check: 0 < min <= max.
+model ListingPackage {
+  id                  String        @id @default(cuid())
+  agentId             String
+  agent               Agent         @relation(fields: [agentId], references: [id])
+  sellerId            String        @unique
+  seller              Seller        @relation(fields: [sellerId], references: [id])
+  propertyId          String        @unique
+  property            Property      @relation(fields: [propertyId], references: [id])
+  addressHash         String        @unique
+  status              PackageStatus @default(DRAFT)
+  priceExpectationMin Int
+  priceExpectationMax Int
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  photos              Photo[]
+
+  @@index([agentId, status])
+}
+
+// One uploaded photo of a package; the image itself is in the storage provider under
+// storageKey. Deleted with its package. CHECKs: JPEG/PNG/WebP, 1 byte to 10 MB, position 0-19.
+model Photo {
+  id          String         @id @default(cuid())
+  packageId   String
+  package     ListingPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  storageKey  String
+  contentType String
+  sizeBytes   Int
+  position    Int
+  createdAt   DateTime       @default(now())
+
+  @@unique([packageId, position])
+}

@@ -4,12 +4,9 @@
 //
 // The drift check replays prisma/migrations into a throwaway shadow database and compares the
 // result with schema.prisma. It needs SHADOW_DATABASE_URL (CI provides a Postgres 17 service),
-// and prisma.config.ts must pass it on as `datasource.shadowDatabaseUrl` (written with T031).
-//
-// Until the schema exists (T031), the check reports that it was skipped instead of failing.
+// which prisma.config.ts passes on as `datasource.shadowDatabaseUrl`.
 
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
 
 const SCHEMA = "prisma/schema.prisma";
 const MIGRATIONS = "prisma/migrations";
@@ -25,19 +22,8 @@ function fail(message) {
   process.exit(1);
 }
 
-if (!existsSync(SCHEMA)) {
-  const message = `Skipped: no ${SCHEMA} yet (it arrives with T031). Nothing to validate.`;
-  console.log(inCi ? `::notice title=Prisma check::${message}` : message);
-  process.exit(0);
-}
-
 console.log("1/2 prisma validate");
 prisma(["validate", "--schema", SCHEMA]);
-
-if (!existsSync(MIGRATIONS))
-  fail(`${SCHEMA} exists but ${MIGRATIONS} does not. Create the first migration.`);
-if (!process.env.SHADOW_DATABASE_URL)
-  fail("SHADOW_DATABASE_URL is not set; the drift check needs a shadow database.");
 
 console.log(
   "2/2 migration drift check (migrations replayed into the shadow database vs. schema.prisma)",

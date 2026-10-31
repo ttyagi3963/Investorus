@@ -176,7 +176,7 @@ packages/
 │   ├── package.json         # "exports": "." + one subpath per folder (@clever/contracts/offer, …)
 │   └── src/
 │       ├── index.ts         # root barrel
-│       ├── common/          # ids, money, pagination, DomainError hierarchy      (each folder has index.ts)
+│       ├── common/          # money, pagination, DomainError hierarchy           (each folder has index.ts)
 │       ├── listing-package/ # schemas, views (AgentPackageView, InvestorPackageView), status map
 │       ├── investor/  buy-box/  match/  offer/  deal/  brand/
 │       ├── events/          # outbox event discriminated union

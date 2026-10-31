@@ -12,6 +12,18 @@
     "./seller": {
       "types": "./dist/seller/index.d.ts",
       "import": "./dist/seller/index.js"
+    },
+    "./property": {
+      "types": "./dist/property/index.d.ts",
+      "import": "./dist/property/index.js"
+    },
+    "./listing-package": {
+      "types": "./dist/listing-package/index.d.ts",
+      "import": "./dist/listing-package/index.js"
+    },
+    "./photo": {
+      "types": "./dist/photo/index.d.ts",
+      "import": "./dist/photo/index.js"
     }
   },
   "files": [

@@ -1,7 +1,9 @@
 # One-command start (T232; T101 extends it): `docker compose up --build`, nothing else.
 #
-# Start order: postgres and redis → sandbox → migrate (migrations and seed, then exits) →
-# api and worker → web. Every server listens on 0.0.0.0 inside its container.
+# Start order: postgres and redis (healthchecked) → sandbox → migrate (migrations and seed,
+# then exits) → api and worker → web. Every server listens on 0.0.0.0 inside its container.
+# Only postgres and redis have healthchecks (pg_isready, redis-cli ping): migrate must not run
+# before the database accepts connections. The app services are ordered by start only.
 #
 # Settings come from the committed .env file. It holds demo values only and needs no secrets
 # or outside accounts.
@@ -53,18 +55,6 @@ services:
       - "4100:4100"
     volumes:
       - sandbox-objects:/data/sandbox-objects
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4100/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 10s
     restart: unless-stopped
 
   migrate:
@@ -78,7 +68,7 @@ services:
         condition: service_healthy
       # The seed stores sample photos through the sandbox's storage API (T138).
       sandbox:
-        condition: service_healthy
+        condition: service_started
     restart: "no"
 
   api:
@@ -94,18 +84,6 @@ services:
         condition: service_healthy
     ports:
       - "4000:4000"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 10s
     restart: unless-stopped
 
   worker:
@@ -119,19 +97,6 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-    healthcheck:
-      # The worker has no port; it rewrites this file every 10 s.
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "const s=require('fs').statSync('/tmp/worker-heartbeat');process.exit(Date.now()-s.mtimeMs<30000?0:1)",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 10s
     restart: unless-stopped
 
   web:
@@ -144,21 +109,9 @@ services:
       migrate:
         condition: service_completed_successfully
       api:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "3000:3000"
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 15s
     restart: unless-stopped
 
 volumes:

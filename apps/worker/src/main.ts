@@ -1,5 +1,5 @@
-// Entry point. Sprint 0 shell (T232): stays alive and writes a heartbeat file for the container
-// healthcheck. T082 adds env parsing and the container, and T083 the job and outbox loops with
+// Entry point. Sprint 0 shell (T232): stays alive and writes a heartbeat file, a liveness signal
+// a healthcheck or operator can read. T082 adds env parsing and the container, and T083 the job and outbox loops with
 // graceful shutdown.
 import { writeFileSync } from "node:fs";
 import { startHeartbeat } from "./heartbeat.js";

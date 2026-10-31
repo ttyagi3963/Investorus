@@ -16,6 +16,8 @@ Closes #___ <!-- the task's board issue; closes it, and moves its card to Done, 
 ## Constitution checklist
 
 - [ ] Tests were written first and fail without the change (XVII.2); no global fake timers (XV)
+- [ ] Each test guards a rule that matters; none re-test a library, the type checker, or a
+      rule already covered (XV, test selection)
 - [ ] Dependencies point inward; `*Impl` classes are imported only in `container.ts` (I, XIV)
 - [ ] Routes only translate; services validate input with Zod and own the rules (II, III, VI)
 - [ ] No seller PII in events, logs, or investor views; sensitive actions are audited (XII)

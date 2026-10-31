@@ -81,8 +81,9 @@ CLARIFICATION items remain.
 
 *GATE: Must pass before Phase 0 research. Re-checked after Phase 1 design (below).*
 
-Constitution v7.1.0 (`.specify/memory/constitution.md`). XIX was amended on 2026-10-30 (JSON
+Constitution v7.2.0 (`.specify/memory/constitution.md`). XIX was amended on 2026-10-30 (JSON
 Logic in JSONB → Criterion Registry with typed columns); this plan was updated the same day.
+XV gained the test-selection rule on 2026-10-31 (7.2.0): only rules that matter get a test.
 
 | # | Principle | Status | How this plan complies |
 | --- | --- | --- | --- |
@@ -100,7 +101,7 @@ Logic in JSONB → Criterion Registry with typed columns); this plan was updated
 | XII | Security, privacy, audit | ✅ | AES-256-GCM PII fields. HTTP-only, Secure, SameSite=Lax cookie managed by the BFF. CSRF blocked by an `Origin` check on state-changing BFF routes. Zod validation plus parameterized queries (Prisma) and React escaping against injection and XSS. No raw payment data (no payments in scope). Immutable audit table (DB trigger). Env validated at each composition root. Observability only in the translators. |
 | XIII | State management | ✅ | React Query for server state (keys `["entity", id]`, explicit invalidation). Context only for coordination. No optimistic updates for offers or decisions. |
 | XIV | Integration boundaries | ✅ | Every outside service behind a port ([contracts/providers.md](./contracts/providers.md)). Presigned uploads. The provider is selected by env. |
-| XV | Testing | ✅ | Two tiers: offline unit tests and ephemeral-PostgreSQL integration tests. Time-dependent tests use `FakeClock` plus `vi.useFakeTimers()` scoped to the test file (`beforeEach` / `afterEach`); no global fake timers (XV as amended in 7.0.0; research R18). |
+| XV | Testing | ✅ | Two tiers: offline unit tests and ephemeral-PostgreSQL integration tests. Time-dependent tests use `FakeClock` plus `vi.useFakeTimers()` scoped to the test file (`beforeEach` / `afterEach`); no global fake timers (XV as amended in 7.0.0; research R18). Test selection (7.2.0): each test guards one rule that matters; no tests of libraries, types, cosmetics, or rules already covered. |
 | XVI | Brand-safe | ✅ | No brand names, colors, or logos in source. Clever and partner values live only in `seed/brands/*.json` → DB. Lint bans raw hex values, arbitrary values, and default palette classes. Test fixtures use synthetic `brand-alpha` / `brand-gamma`. |
 | XVII | AI guardrails | ✅ | This spec and plan precede code. Tasks are ordered test-first. `pnpm test` plus the integration tier gate review. |
 | XVIII | Transactional outbox | ✅ | Outbox row in the same transaction. Worker relay → BullMQ → provider, with backoff, DLQ, and `NEEDS_ATTENTION`. Redis used only for outbound delivery and idempotency. |

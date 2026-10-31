@@ -49,6 +49,14 @@ Turborepo monorepo:
 - Buy box criteria come from the Criterion Registry (constitution XIX).
 - No brand names, colors, or copy in source; brand tokens come from the theming layer.
 
+## Writing code
+
+- Every new file starts with a 1–3 line comment saying what the file does and why it exists.
+- Database first: write the Prisma model and its migration before the contracts for that entity,
+  and shape the contract from the table's actual fields. No contract without its table.
+- Build only what the current task uses: no empty folders, unused exports, dependencies, or
+  script steps for features that do not exist yet, and no checks for cases that cannot happen.
+
 ## Commands
 
 pnpm is not installed globally; `npx -y pnpm@10.34.9 <command>` works.
@@ -70,6 +78,13 @@ Docker-in-Docker machine.
 ## Testing
 
 - Tests come first and must fail without the change.
+- Test only the rules that matter (constitution XV, test selection). Before writing tests, list
+  the rules the task introduces and give each important one a single test: privacy and
+  secrets, data invariants, fields that must not change, service business rules, and
+  security limits.
+- Do not test Zod, Prisma, or React themselves, what TypeScript already rejects, cosmetic
+  normalization, exact boundaries (unless the boundary is the rule), or a rule that is
+  already covered. Delete weak or redundant tests instead of keeping them.
 - Unit tests stub the network; fake timers only inside the test files that need them, set up
   and torn down per file, never globally.
 - Integration tests are `*.int.test.ts` and start their own Postgres 17 and Redis 7 containers.

@@ -1,0 +1,166 @@
+# Baseline CI (T229). Every pull request and every push to main runs four jobs, each its own
+# check: lint-typecheck, unit-tests, integration-tests, and security. The branch ruleset (T230)
+# requires the first four to pass before a PR can merge.
+#
+# Third-party actions are pinned to full commit SHAs (the tag is in the comment beside each).
+# No secrets are used.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per PR (or per branch for pushes). A new push to a PR cancels its stale run; runs on
+  # main are never cancelled, so every commit on the trunk keeps its own result.
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TURBO_TELEMETRY_DISABLED: "1"
+
+jobs:
+  lint-typecheck:
+    name: lint-typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node, pnpm, and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Lint (ESLint, including boundary and jsx-a11y rules)
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node, pnpm, and dependencies
+        uses: ./.github/actions/setup
+
+      # Offline by design (constitution XV): no database, network, or containers. Includes the
+      # Criterion Registry and evaluator tests.
+      - name: Unit tests
+        run: pnpm test
+
+  integration-tests:
+    name: integration-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      # Shadow database for the migration drift check. The integration tests themselves start
+      # their own throwaway Postgres 17 and Redis 7 containers through Testcontainers.
+      shadow-db:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: shadow
+          POSTGRES_PASSWORD: shadow
+          POSTGRES_DB: shadow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shadow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      SHADOW_DATABASE_URL: postgresql://shadow:shadow@localhost:5432/shadow
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node, pnpm, and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Pull the test images (Postgres 17, Redis 7)
+        run: |
+          docker pull postgres:17-alpine
+          docker pull redis:7-alpine
+
+      - name: Prisma validate and migration drift check
+        run: pnpm db:check
+
+      # Constraint and trigger tests (including the AuditLog triggers), the fast-check
+      # pre-filter safety test, and the other *.int.test.ts suites.
+      - name: Integration tests (Testcontainers)
+        run: pnpm test:integration
+
+  security:
+    name: security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out (full history, for the commit range)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks 8.30.1 (checksum verified)
+        run: |
+          curl -fsSLo gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum --check -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      # A PR scans its own commits; a push to main scans the pushed commits (or the whole history
+      # when there is no earlier commit). Accepted findings are listed in .gitleaksignore.
+      - name: Secret scan (gitleaks)
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [ -z "$PUSH_BEFORE" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            range=""
+          else
+            range="$PUSH_BEFORE..$PUSH_AFTER"
+          fi
+          echo "Scanning commits: ${range:-full history}"
+          gitleaks git . --log-opts="$range" --redact --no-banner --verbose
+
+      - name: Set up Node, pnpm, and dependencies
+        uses: ./.github/actions/setup
+
+      # Advisory only: known vulnerabilities are reported in the job summary but do not block the
+      # merge. Dependabot (T234) opens the update PRs.
+      - name: Dependency audit (advisory)
+        continue-on-error: true
+        run: |
+          status=0
+          pnpm audit --audit-level high > audit.txt 2>&1 || status=$?
+          cat audit.txt
+          {
+            echo "## pnpm audit (advisory)"
+            echo '```'
+            cat audit.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then echo "::warning title=pnpm audit::High or critical advisories found (advisory, not blocking)."; fi
+          exit "$status"

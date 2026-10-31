@@ -3,6 +3,12 @@
 // do not compete for the reviewer-sized machine.
 import { defineConfig } from "vitest/config";
 
+// The container images every integration test starts, matching compose.yaml. CI pre-pulls them.
+export const INTEGRATION_IMAGES = Object.freeze({
+  postgres: "postgres:17-alpine",
+  redis: "redis:7-alpine",
+});
+
 export function integrationConfig() {
   return defineConfig({
     test: {

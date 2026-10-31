@@ -16,7 +16,10 @@ ARG NODE_IMAGE=node:24-bookworm-slim
 
 # ---------------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS base
+# pnpm starts one worker thread per CPU it can see, and each holds its own memory. On a machine
+# with many cores but only 2 GB, that alone can exhaust memory, so cap it.
 ENV CI=true \
+    PNPM_MAX_WORKERS=2 \
     TURBO_TELEMETRY_DISABLED=1 \
     NEXT_TELEMETRY_DISABLED=1
 # OpenSSL lets Prisma detect the right engine build when it installs (openssl-3.0.x on bookworm).

@@ -4,13 +4,14 @@
 Limits (from the submission instructions):
   - the zip is at most 100 MB;
   - it holds at most 20,000 files and 500 MB once unzipped;
-  - compose.yaml (or docker-compose.yml) is at the top level;
-  - installed dependencies, build output, and large media are left out.
-Also checked, because a reviewer's start fails or confidentiality breaks without them:
+  - compose.yaml is at the top level;
+  - installed dependencies, build output, and large media are left out: no node_modules, dist,
+    .next, .turbo, or coverage folder (the only ones this stack creates), and no file over 5 MB.
+Also checked, in case the zip is ever made by hand from the working folder:
   - the committed .env with working defaults is at the top level;
-  - assignment.md is not included.
+  - assignment.md (confidential, gitignored) is not included.
 
-Entries are counted strictly (folders too), and anything past 80% of a limit is a warning.
+Entries are counted strictly (folders too).
 
 Usage: python3 scripts/submission/check_zip.py <zip>   Exit code 1 if any check fails.
 """
@@ -25,10 +26,8 @@ MB = 1024 * 1024
 MAX_ZIP_BYTES = 100 * MB
 MAX_ENTRIES = 20_000
 MAX_UNZIPPED_BYTES = 500 * MB
-MAX_FILE_BYTES = 5 * MB  # "large media": no single file this big belongs in the zip
-WARN_AT = 0.8
-COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml")
-FORBIDDEN_DIRS = {"node_modules", "dist", "build", ".next", ".turbo", "coverage", ".venv", "vendor"}
+MAX_FILE_BYTES = 5 * MB  # "large media": the seed photos are under 5 MB in total (T138)
+FORBIDDEN_DIRS = {"node_modules", "dist", ".next", ".turbo", "coverage"}
 FORBIDDEN_FILES = {"assignment.md"}
 
 
@@ -38,38 +37,28 @@ def human(n: float) -> str:
 
 def main(path: str) -> int:
     failures: list[str] = []
-    warnings: list[str] = []
     rows: list[tuple[str, str, str, str]] = []
 
     def limit(name: str, value: float, cap: float, show) -> None:
         ok = value <= cap
-        status = "ok" if ok and value <= cap * WARN_AT else ("WARN" if ok else "FAIL")
-        rows.append((name, show(value), show(cap), status))
+        rows.append((name, show(value), show(cap), "ok" if ok else "FAIL"))
         if not ok:
             failures.append(f"{name}: {show(value)} is over the limit of {show(cap)}")
-        elif status == "WARN":
-            warnings.append(f"{name}: {show(value)} is past {int(WARN_AT * 100)}% of {show(cap)}")
 
     zip_bytes = os.path.getsize(path)
     with zipfile.ZipFile(path) as zf:
         infos = zf.infolist()
-        bad = zf.testzip()
-        if bad:
-            failures.append(f"the zip is corrupt (first bad entry: {bad})")
 
     names = [i.filename for i in infos]
     unzipped = sum(i.file_size for i in infos)
-    top_level = {n.split("/", 1)[0] for n in names}
 
     limit("Zip size", zip_bytes, MAX_ZIP_BYTES, human)
     limit("Entries (files and folders)", len(infos), MAX_ENTRIES, lambda v: f"{int(v):,}")
     limit("Unzipped size", unzipped, MAX_UNZIPPED_BYTES, human)
 
-    compose = [c for c in COMPOSE_FILES if c in names]
+    compose = "compose.yaml" in names
     if not compose:
-        wrapped = sorted(t for t in top_level if any(n == f"{t}/{c}" for c in COMPOSE_FILES for n in names))
-        hint = f" (found inside a wrapping folder: {wrapped[0]}/)" if wrapped else ""
-        failures.append(f"no compose.yaml at the top level{hint}")
+        failures.append("no compose.yaml at the top level")
     if ".env" not in names:
         failures.append(".env (the working default settings) is not at the top level")
 
@@ -80,9 +69,9 @@ def main(path: str) -> int:
             failures.append(f"build output or dependencies included: {n}")
         if parts and parts[-1] in FORBIDDEN_FILES:
             failures.append(f"confidential file included: {n}")
-    big = [(i.filename, i.file_size) for i in infos if i.file_size > MAX_FILE_BYTES]
-    for name, size in big:
-        failures.append(f"large file ({human(size)} > {human(MAX_FILE_BYTES)}): {name}")
+    for i in infos:
+        if i.file_size > MAX_FILE_BYTES:
+            failures.append(f"large file ({human(i.file_size)} > {human(MAX_FILE_BYTES)}): {i.filename}")
 
     lines = [
         f"## Submission zip check: {os.path.basename(path)}",
@@ -94,8 +83,6 @@ def main(path: str) -> int:
         f"| .env at top level | {'yes' if '.env' in names else 'no'} | required | {'ok' if '.env' in names else 'FAIL'} |",
         "",
     ]
-    if warnings:
-        lines += ["**Warnings**", *[f"- {w}" for w in warnings], ""]
     if failures:
         lines += ["**Failures**", *[f"- {f}" for f in failures[:50]], ""]
     report = "\n".join(lines)

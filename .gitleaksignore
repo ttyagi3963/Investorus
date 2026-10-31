@@ -16,7 +16,7 @@ f4f30576b4fb367ddf8b0ad4ad3d4679e85cac61:.env:generic-api-key:27
 f4f30576b4fb367ddf8b0ad4ad3d4679e85cac61:.env:generic-api-key:28
 
 # The same four values in the working tree
-.env:generic-api-key:16
-.env:generic-api-key:18
+.env:generic-api-key:15
+.env:generic-api-key:17
+.env:generic-api-key:26
 .env:generic-api-key:27
-.env:generic-api-key:28

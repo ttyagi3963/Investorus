@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Durable job runner, outbox relay, and BullMQ delivery consumers.",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsx watch --env-file=../../.env src/main.ts",

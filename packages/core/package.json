@@ -16,7 +16,8 @@
   },
   "files": [
     "dist",
-    "prisma"
+    "prisma",
+    "scripts"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

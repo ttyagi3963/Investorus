@@ -1,0 +1,166 @@
+# One-command start (T232; T101 extends it): `docker compose up --build`, nothing else.
+#
+# Start order: postgres and redis → sandbox → migrate (migrations and seed, then exits) →
+# api and worker → web. Every server listens on 0.0.0.0 inside its container.
+#
+# Settings come from the committed .env file. It holds demo values only and needs no secrets
+# or outside accounts.
+#
+# Published ports: web 3000 (open http://localhost:3000), api 4000, sandbox 4100.
+
+name: investor-platform
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=50"]
+    environment:
+      # Must match DATABASE_URL in .env.
+      POSTGRES_USER: clever
+      POSTGRES_PASSWORD: clever-demo
+      POSTGRES_DB: investor_platform
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clever -d investor_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # BullMQ needs noeviction; nothing is persisted, so restarts start clean.
+    command:
+      ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  sandbox:
+    build:
+      context: .
+      target: sandbox
+    image: investor-platform-sandbox:local
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "4100:4100"
+    volumes:
+      - sandbox-objects:/data/sandbox-objects
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4100/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    image: investor-platform-migrate:local
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # The seed stores sample photos through the sandbox's storage API (T138).
+      sandbox:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      target: api
+    image: investor-platform-api:local
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      target: worker
+    image: investor-platform-worker:local
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # The worker has no port; it rewrites this file every 10 s.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('fs').statSync('/tmp/worker-heartbeat');process.exit(Date.now()-s.mtimeMs<30000?0:1)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      target: web
+    image: investor-platform-web:local
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  sandbox-objects:

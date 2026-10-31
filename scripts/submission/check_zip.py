@@ -5,7 +5,8 @@ Limits (from the submission instructions):
   - the zip is at most 100 MB;
   - it holds at most 20,000 files and 500 MB once unzipped;
   - compose.yaml is at the top level;
-  - installed dependencies, build output, and large media are left out.
+  - installed dependencies, build output, and large media are left out: no node_modules, dist,
+    .next, .turbo, or coverage folder (the only ones this stack creates), and no file over 5 MB.
 Also checked, in case the zip is ever made by hand from the working folder:
   - the committed .env with working defaults is at the top level;
   - assignment.md (confidential, gitignored) is not included.

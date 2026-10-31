@@ -1,6 +1,6 @@
 # Baseline CI (T229). Every pull request and every push to main runs four jobs, each its own
-# check: lint-typecheck, unit-tests, integration-tests, and security. The branch ruleset (T230)
-# requires the first four to pass before a PR can merge.
+# check: lint-typecheck, unit-tests, integration-tests, and security. Merge only when all four
+# are green; the free private plan has no rulesets, so this is a convention, not enforced.
 #
 # Third-party actions are pinned to full commit SHAs (the tag is in the comment beside each).
 # No secrets are used.

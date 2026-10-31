@@ -34,7 +34,7 @@ Turborepo monorepo:
   task's board issue.
 - Merge only when every check is green: `lint-typecheck`, `unit-tests`, `integration-tests`,
   `security`, `review-threads`, and `submission-rehearsal` when it runs. The free private plan
-  has no rulesets, so this is enforced by convention (tasks.md T230).
+  has no rulesets, so this is enforced by convention.
 - Commit messages follow Conventional Commits (`feat:`, `fix:`, `ci:`, `chore:`, `docs:`).
 - Mark the task `[X]` in tasks.md when it is done.
 

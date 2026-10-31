@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Mirror the Sprint 0 tasks from tasks.md onto the GitHub Projects board (T228).
+// Mirror one sprint's tasks from tasks.md onto the GitHub Projects board (T228; any sprint since
+// T272). A sprint is the `## Sprint N` section of tasks.md, up to its closing `---`.
 //
 // tasks.md is the single source of truth. This script only creates or updates GitHub items
 // to match it, and is safe to re-run: existing issues are found by their "T### " title prefix.
@@ -10,10 +11,12 @@
 //   gh auth refresh -s project            # lets gh manage Projects
 //
 // Usage (from the repo root):
-//   node scripts/board/sync-sprint0.mjs --print-tasks      # parse tasks.md only (no gh needed)
-//   node scripts/board/sync-sprint0.mjs                    # dry run: prints what it would do
-//   node scripts/board/sync-sprint0.mjs --apply            # creates the board, labels, issues
-//   node scripts/board/sync-sprint0.mjs --test-workflows   # checks auto-add and closed -> Done
+//   node scripts/board/sync-sprint.mjs --sprint 1 --print-tasks   # parse tasks.md only (no gh needed)
+//   node scripts/board/sync-sprint.mjs --sprint 1                 # dry run: prints what it would do
+//   node scripts/board/sync-sprint.mjs --sprint 1 --apply         # creates the board, labels, issues
+//   node scripts/board/sync-sprint.mjs --test-workflows           # checks auto-add and closed -> Done
+//
+// --sprint defaults to 0.
 //
 // The board is created private (the GitHub default). The repo is private too, because the
 // specs describe Clever's confidential scenario.
@@ -41,7 +44,6 @@ const CUSTOM_FIELDS = [
 ];
 const LABELS = [
   { name: "task", color: "c5def5", description: "Mirrors a task in tasks.md" },
-  { name: "sprint-0", color: "5319e7", description: "Sprint 0: delivery pipeline" },
   {
     name: "parallel",
     color: "0e8a16",
@@ -54,7 +56,14 @@ const LABELS = [
   },
 ];
 
-const args = new Set(process.argv.slice(2));
+const argv = process.argv.slice(2);
+const args = new Set(argv);
+const sprintAt = argv.indexOf("--sprint");
+const SPRINT = sprintAt >= 0 ? Number(argv[sprintAt + 1]) : 0;
+if (!Number.isInteger(SPRINT) || SPRINT < 0)
+  throw new Error("--sprint takes a sprint number, e.g. --sprint 1");
+const SPRINT_NAME = `Sprint ${SPRINT}`;
+const SPRINT_LABEL = `sprint-${SPRINT}`;
 const APPLY = args.has("--apply");
 const TEST = args.has("--test-workflows");
 const tmp = mkdtempSync(join(tmpdir(), "board-"));
@@ -68,7 +77,7 @@ function gh(argv, { json = false, allowFail = false } = {}) {
   } catch (err) {
     if (allowFail) return null;
     const msg = (err.stderr || err.message || "").toString().trim();
-    throw new Error(`gh ${argv.join(" ")}\n${msg}`);
+    throw new Error(`gh ${argv.join(" ")}\n${msg}`, { cause: err });
   }
 }
 
@@ -83,9 +92,9 @@ function repoFromRemote() {
 
 // ---------- tasks.md parsing ----------
 
-function parseSprint0(markdown) {
-  const start = markdown.indexOf("## Sprint 0");
-  if (start < 0) throw new Error(`No "## Sprint 0" section in ${TASKS_FILE}`);
+function parseSprint(markdown) {
+  const start = markdown.indexOf(`## ${SPRINT_NAME}:`);
+  if (start < 0) throw new Error(`No "## ${SPRINT_NAME}:" section in ${TASKS_FILE}`);
   const end = markdown.indexOf("\n---\n", start);
   const lines = markdown.slice(start, end < 0 ? undefined : end).split("\n");
 
@@ -104,7 +113,13 @@ function parseSprint0(markdown) {
   }
   return tasks.map((t) => {
     // Short title: the task text up to its first ":", " (", " in ", or ", ".
-    const whole = t.lines.join(" ").replace(/\*\*|`/g, "");
+    // A task split out for a sprint starts with "(Sprint N) ", and a task moved from a user-story
+    // phase keeps its "[USn] " label; neither belongs in the card title.
+    const whole = t.lines
+      .join(" ")
+      .replace(/\*\*|`/g, "")
+      .replace(/^\[US\d+\] /, "")
+      .replace(/^\(Sprint \d+\) /, "");
     const cuts = [":", " (", " in ", ", "].map((s) => whole.indexOf(s)).filter((i) => i > 10);
     const summary = whole.slice(0, Math.min(...cuts, 80)).trim();
     const depends = (t.lines.join(" ").match(/\(depends on ([^)]*)\)/) || [])[1] || "";
@@ -114,15 +129,15 @@ function parseSprint0(markdown) {
 
 function issueBody(task) {
   return [
-    `**${task.id}** (Sprint 0${task.parallel ? ", parallel" : ""})`,
+    `**${task.id}** (${SPRINT_NAME}${task.parallel ? ", parallel" : ""})`,
     "",
     "- [" + (task.done ? "x" : " ") + "] " + task.text,
     "",
     task.depends ? `Depends on: ${task.depends}` : "",
     "",
     "---",
-    `Source of truth: \`${TASKS_FILE}\`, section "Sprint 0". Change the task there and re-run`,
-    "`node scripts/board/sync-sprint0.mjs --apply`; this issue mirrors it.",
+    `Source of truth: \`${TASKS_FILE}\`, section "${SPRINT_NAME}". Change the task there and re-run`,
+    `\`node scripts/board/sync-sprint.mjs --sprint ${SPRINT} --apply\`; this issue mirrors it.`,
   ]
     .filter((l, i, a) => !(l === "" && a[i - 1] === ""))
     .join("\n");
@@ -207,7 +222,12 @@ function ensureCustomFields(project, owner) {
 }
 
 function ensureLabels(repo) {
-  for (const l of LABELS) {
+  const sprintLabel = {
+    name: SPRINT_LABEL,
+    color: "5319e7",
+    description: `${SPRINT_NAME}: tasks in that section of tasks.md`,
+  };
+  for (const l of [...LABELS, sprintLabel]) {
     console.log(`= label ${l.name}`);
     if (APPLY)
       gh([
@@ -254,7 +274,7 @@ function findIssue(repo, taskId) {
 function upsertIssue(repo, task) {
   const bodyFile = join(tmp, `${task.id}.md`);
   writeFileSync(bodyFile, issueBody(task));
-  const labels = ["task", "sprint-0", ...(task.parallel ? ["parallel"] : [])];
+  const labels = ["task", SPRINT_LABEL, ...(task.parallel ? ["parallel"] : [])];
   const existing = findIssue(repo, task.id);
 
   if (!existing) {
@@ -325,8 +345,8 @@ function setFields(project, owner, itemId, task) {
     }
   };
   edit("Task ID", task.id);
-  edit("Sprint", "Sprint 0");
-  edit("Phase", "Sprint 0");
+  edit("Sprint", SPRINT_NAME);
+  edit("Phase", SPRINT_NAME);
   edit("Parallel", task.parallel ? "Yes" : "No");
   edit("Status", task.done ? "Done" : "Backlog");
 }
@@ -410,7 +430,7 @@ async function testWorkflows(repo, project, owner) {
 
 async function main() {
   if (args.has("--print-tasks")) {
-    for (const t of parseSprint0(readFileSync(TASKS_FILE, "utf8"))) {
+    for (const t of parseSprint(readFileSync(TASKS_FILE, "utf8"))) {
       console.log(
         `${t.done ? "[done]" : "[open]"} ${t.parallel ? "[P] " : ""}${t.title}${t.depends ? `  (depends on ${t.depends})` : ""}`,
       );
@@ -422,9 +442,9 @@ async function main() {
   if (scopes === null)
     throw new Error("gh is not signed in. Run: gh auth login, then gh auth refresh -s project");
 
-  const tasks = parseSprint0(readFileSync(TASKS_FILE, "utf8"));
+  const tasks = parseSprint(readFileSync(TASKS_FILE, "utf8"));
   console.log(
-    `${APPLY ? "APPLY" : TEST ? "TEST" : "DRY RUN"}: ${repo.full}, project "${PROJECT_TITLE}", ${tasks.length} Sprint 0 tasks\n`,
+    `${APPLY ? "APPLY" : TEST ? "TEST" : "DRY RUN"}: ${repo.full}, project "${PROJECT_TITLE}", ${tasks.length} ${SPRINT_NAME} tasks\n`,
   );
 
   const project = findOrCreateProject(repo.owner);

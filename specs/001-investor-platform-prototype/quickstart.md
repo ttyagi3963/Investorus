@@ -28,14 +28,14 @@ Then open:
 
 Demo accounts (also listed in the README):
 
-| Role | Username | Password |
+| Role | Email | Password |
 | --- | --- | --- |
-| Agent | `agent.avery` | `demo1234` |
-| Agent | `agent.blake` | `demo1234` |
-| Investor | `investor.summit` | `demo1234` |
-| Investor | `investor.harbor` | `demo1234` |
-| Investor | `investor.ridge` (buy box deliberately narrow) | `demo1234` |
-| Operations | `ops.morgan` | `demo1234` |
+| Agent | `avery@example.com` | `demo1234` |
+| Agent | `blake@example.com` | `demo1234` |
+| Investor | `summit@example.com` | `demo1234` |
+| Investor | `harbor@example.com` | `demo1234` |
+| Investor | `ridge@example.com` (buy box deliberately narrow) | `demo1234` |
+| Operations | `morgan@example.com` | `demo1234` |
 
 ## Validation scenarios
 
@@ -54,24 +54,24 @@ unchanged (FR-003).
 
 ### V2 — Publish → match → privacy (Story 2, SC-003, SC-006)
 
-1. Log in as `agent.avery` → **New package**. Use the sample address shown in the form hint
+1. Log in as `avery@example.com` → **New package**. Use the sample address shown in the form hint
    (Austin 78704, single-family, Fair condition), upload one photo, and publish.
 2. Expected: status "Accepting offers". The match count shown is the seeded number
    (`seed/expected-matches.json`), and the sandbox shows one email per matched investor within
-   1 minute. `investor.summit` has two buy boxes that both fit; it gets **one** email that names
+   1 minute. `summit@example.com` has two buy boxes that both fit; it gets **one** email that names
    both boxes (FR-022).
-3. Log in as `investor.ridge` (excluded). The package is not listed, and opening its URL
+3. Log in as `ridge@example.com` (excluded). The package is not listed, and opening its URL
    returns "not found".
-4. As `ops.morgan` → package → **Why not matched?** for `investor.ridge`. Each of its buy boxes
+4. As `morgan@example.com` → package → **Why not matched?** for `ridge@example.com`. Each of its buy boxes
    is listed with its failing criteria and expected and actual values. The answer is replayed
    from the package and buy box versions live at publish time, not read from a stored failure
    row (FR-074).
-5. Log in as `investor.summit`, open the package, and confirm no seller name, phone, email, or
+5. Log in as `summit@example.com`, open the package, and confirm no seller name, phone, email, or
    street line appears in the page or in the BFF JSON response (browser dev tools).
 
 ### V3 — Offers, duplicates, deadline (Story 3, SC-004, SC-009)
 
-1. As `investor.summit`, submit an offer, then revise it. The agent sees one offer at the
+1. As `summit@example.com`, submit an offer, then revise it. The agent sees one offer at the
    latest revision, with history.
 2. Send the same POST twice with the same `Idempotency-Key` (curl recipe in the README). The
    second response has `Idempotent-Replay: true`, and only one offer exists.
@@ -79,7 +79,7 @@ unchanged (FR-003).
 
 ### V4 — Compare, accept, track to close, backup (Story 4, SC-005, SC-010, SC-011)
 
-1. As `agent.blake`, open the seeded package with 6 offers → **Compare**. Sort by net
+1. As `blake@example.com`, open the seeded package with 6 offers → **Compare**. Sort by net
    proceeds; each row's breakdown matches the formula in data-model.md.
 2. Accept the top offer. The winner sees the seller contact details (an audit entry is written),
    and the others see "Backup offer".
@@ -92,12 +92,12 @@ unchanged (FR-003).
 
 ### V5 — Buy box and legacy import (Story 5)
 
-1. As `investor.harbor`, set Min Price above Max Price. The save is refused, and the field is
+1. As `harbor@example.com`, set Min Price above Max Price. The save is refused, and the field is
    named. Clear every property type: the save is refused ("leave it blank for any").
-2. As `investor.harbor`, add a second buy box whose ZIP code covers a seeded package that is
+2. As `harbor@example.com`, add a second buy box whose ZIP code covers a seeded package that is
    still accepting offers and that harbor's first box does not fit. Within 1 minute the package
    appears on harbor's dashboard and in the in-app inbox, with no email or SMS in the sandbox.
-   As `ops.morgan` → **Deliveries** → **Send digests now** (or wait for the daily run): one
+   As `morgan@example.com` → **Deliveries** → **Send digests now** (or wait for the daily run): one
    digest email to harbor lists it (FR-023). Before the Deliveries page exists (it arrives
    with Story 6), trigger the same run from the API:
 
@@ -105,7 +105,7 @@ unchanged (FR-003).
    TOKEN=$(curl -s -X POST http://localhost:4000/api/v1/sessions \
      -H "Content-Type: application/json" \
      -H "Idempotency-Key: $(cat /proc/sys/kernel/random/uuid)" \
-     -d '{"username":"ops.morgan","password":"demo1234"}' \
+     -d '{"email":"morgan@example.com","password":"demo1234"}' \
      | sed -E 's/.*"token":"([^"]+)".*/\1/')
    curl -s -X POST http://localhost:4000/api/v1/ops/match-digests \
      -H "Authorization: Bearer $TOKEN" \
@@ -113,14 +113,14 @@ unchanged (FR-003).
    # → 202 {"jobId": "..."}; the digest email appears in the sandbox at http://localhost:4100
    ```
 3. Pause that second box, then publish a package only it would fit. Harbor is not matched.
-4. As `ops.morgan` → **Import investors** → upload `seed/legacy-investors.csv`. The summary
+4. As `morgan@example.com` → **Import investors** → upload `seed/legacy-investors.csv`. The summary
    shows 26 imported and 4 rejected, each with a row reason. Each imported investor has one
    buy box named "Legacy Import", marked default. Import the file again: 0 imported, 26
    updated, 4 rejected, and still one default buy box per investor (FR-061).
 
 ### V6 — Outage, recovery, CRM sync (Story 6, SC-007, SC-008, SC-012)
 
-1. As `ops.morgan` → **Simulations** → set CRM to `down` and Messaging to `garbage`.
+1. As `morgan@example.com` → **Simulations** → set CRM to `down` and Messaging to `garbage`.
 2. As an agent, publish a package and accept an offer on another package. Both actions succeed.
 3. Ops → **Deliveries** shows them as Retrying. Wait until some reach **Needs attention**
    (about 5 minutes with the default retry budget; shorten `deliveryRetry` in Ops → Config for a
@@ -142,7 +142,7 @@ unchanged (FR-003).
 3. Use the brand switcher to choose `brand-beta`. Every screen, including logged-in agent,
    investor, and ops pages, changes palette, radius, logo, and footer, with no restart or code
    change (FR-092, FR-093).
-4. As `ops.morgan`, submit a token set whose muted text fails contrast against the card
+4. As `morgan@example.com`, submit a token set whose muted text fails contrast against the card
    surface. It is rejected, and the failing pair and ratio are named (FR-095).
 5. Run `pnpm lint`. No raw hex values, arbitrary Tailwind values, or default palette classes
    are found (SC-014). `pnpm test` includes the per-brand contrast test (SC-015).

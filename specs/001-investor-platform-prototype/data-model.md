@@ -31,15 +31,15 @@
 
 ## Identity and roles
 
-### User (locked 2026-10-30)
-A login account. Roles are AGENT, INVESTOR, and OPS. Sellers have no User today (see the spec
+### User (locked 2026-10-30; amended 2026-10-31: sign-in by email)
+A login account, signed in to by email. Roles are AGENT, INVESTOR, and OPS. Sellers have no User today (see the spec
 assumption "No seller view"); a seller dashboard would add a SELLER role and `sellerId` without
 changing Seller data.
 
 | Field | Type | Rules |
 | --- | --- | --- |
 | id | cuid | |
-| username | string | unique, 3–40 chars, lowercase |
+| email | string | unique, a valid email, stored lowercase (was `username`; changed 2026-10-31) |
 | passwordHash | string | bcrypt |
 | role | `AGENT` \| `INVESTOR` \| `OPS` | |
 | displayName | string | 1–80 chars |
@@ -49,7 +49,7 @@ changing Seller data.
 
 Plus `createdAt` and `updatedAt` (conventions).
 
-DB constraints: unique `username`, unique `agentId`, unique `investorId` (each allows many NULLs,
+DB constraints: unique `email`, unique `agentId`, unique `investorId` (each allows many NULLs,
 which is correct here); CHECK: an AGENT has `agentId` set; an INVESTOR has `investorId` set; OPS
 has neither.
 

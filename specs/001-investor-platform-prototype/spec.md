@@ -317,7 +317,7 @@ all pending deliveries complete.
 - **FR-003**: On startup, the system MUST set up its own data structures and load sample data
   automatically. Restarting MUST NOT duplicate sample data.
 - **FR-004**: The system MUST create demo accounts for every role (agent, investor, operations)
-  automatically, and the README MUST list their usernames and passwords.
+  automatically, and the README MUST list their emails and passwords.
 - **FR-005**: Every outside service (email, SMS, CRM, file storage, address lookup) MUST have a
   built-in stand-in that works with no keys or network access.
 - **FR-006**: The submission MUST include setup instructions, automated tests, and a list of
@@ -627,7 +627,7 @@ all pending deliveries complete.
 - **Net proceeds**: estimated as offer price minus stated fees, concessions, and a configurable
   closing-cost percentage. It is an estimate for comparison, not a legal or financial figure.
 - **Seller identity**: revealed only to the winning investor after acceptance.
-- **Authentication**: simple username and password for demo accounts. Production sign-in (SSO,
+- **Authentication**: simple email and password for demo accounts. Production sign-in (SSO,
   multi-factor) is out of scope and listed as a shortcut.
 - **Currency**: all prices in US dollars.
 - **Offer programs**: cash offer, cash offer with upside, and 7-day sold, as named on

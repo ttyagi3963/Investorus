@@ -1,0 +1,99 @@
+# Submission rehearsal (T233). Builds the zip from git, checks it against Clever's published
+# limits, then runs it exactly as the reviewer will: unzipped into an empty folder, with only
+# `docker compose up --build`, on a 2 GB / 2 CPU machine (Docker-in-Docker with a proven
+# memory cap). The zip is uploaded only when every check passes, so the artifact is always the
+# exact file that was tested.
+#
+# Runs on every push to main (the trunk must stay submittable), on demand, and on pull requests
+# that touch what the startup depends on. A cold rebuild takes several minutes, so it does not
+# run on every PR, to stay within the free plan's Actions minutes.
+
+name: Submission rehearsal
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - compose.yaml
+      - .env
+      - package.json
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - apps/*/package.json
+      - packages/*/package.json
+      - apps/web/next.config.ts
+      - README.md
+      - scripts/package-zip.sh
+      - scripts/submission/**
+      - .github/workflows/submission.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: submission-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  rehearsal:
+    name: submission-rehearsal
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the zip from git (git archive)
+        run: |
+          zip="investor-platform-${GITHUB_SHA::12}.zip"
+          sh scripts/package-zip.sh "$zip"
+          echo "ZIP=$zip" >> "$GITHUB_ENV"
+
+      - name: Check the zip against Clever's limits
+        run: python3 scripts/submission/check_zip.py "$ZIP"
+
+      - name: Install gitleaks 8.30.1 (checksum verified)
+        run: |
+          curl -fsSLo gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum --check -
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          rm gitleaks.tar.gz
+
+      # The accepted demo keys in .env are listed in .gitleaksignore (working-tree format).
+      - name: Secret scan of the unzipped submission
+        run: |
+          mkdir -p /tmp/unzipped
+          unzip -q "$ZIP" -d /tmp/unzipped
+          cp .gitleaksignore /tmp/unzipped/ 2> /dev/null || true
+          gitleaks dir /tmp/unzipped --redact --no-banner --verbose
+
+      - name: Rehearse - unzip and docker compose up --build in 2 GB / 2 CPUs
+        run: bash scripts/submission/rehearse.sh "$ZIP"
+
+      - name: Record the zip checksum
+        run: |
+          sum=$(sha256sum "$ZIP" | cut -d' ' -f1)
+          echo "SHA-256 of the tested zip: $sum"
+          {
+            echo "## Tested zip"
+            echo ""
+            echo "\`$ZIP\` from commit \`${GITHUB_SHA}\`"
+            echo ""
+            echo "SHA-256: \`$sum\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Uploaded as-is (not wrapped in another zip), and only after every check above passed.
+      - name: Upload the tested zip
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: ${{ env.ZIP }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 30

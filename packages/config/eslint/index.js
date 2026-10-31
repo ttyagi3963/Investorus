@@ -3,6 +3,7 @@ import js from "@eslint/js";
 import globals from "globals";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import { boundaryConfigs } from "./boundaries.js";
 import { styleConfigs } from "./no-raw-style-values.js";
 
@@ -31,6 +32,12 @@ export default defineConfig(
     name: "clever/browser-globals",
     files: ["apps/web/**", "packages/ui/**"],
     languageOptions: { globals: { ...globals.browser } },
+  },
+  {
+    // Constitution XI and FR-096: accessibility rules for every screen and shared component.
+    ...jsxA11y.flatConfigs.recommended,
+    name: "clever/jsx-a11y",
+    files: ["apps/web/**/*.{jsx,tsx}", "packages/ui/**/*.{jsx,tsx}"],
   },
   {
     name: "clever/typescript",

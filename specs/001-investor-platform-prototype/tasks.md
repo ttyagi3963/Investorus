@@ -1337,6 +1337,53 @@ editor and see it refused with the pair and ratio named.
 
 ---
 
+## Sprint 8: Polish and Submission
+
+**Goal** (owner, 2026-11-01: "start working on sprint 6 7 and 8"; FR-006, SC-006, SC-010, the
+submission limits): the prototype is ready to hand in. A reviewer lands on a home page that says
+what to try, signs in with one press, sees their name and only their role's pages, and filters the
+lists the design shows with tabs. The whole loop is proven by one end-to-end test, logs are proven
+free of seller details, the security settings are reviewed, the README has the curl recipes and
+the shortcuts, and a script measures the build and start limits.
+
+**Decisions** (proposed by Claude, for the owner to confirm):
+- **Home page**: what the prototype shows (the deal loop, the outage demo, the brand switch), the
+  demo accounts, and links to sign in, the sandbox, and the style guide; all copy that names the
+  brand comes from the brand's content.
+- **One-click demo sign-in**: each demo account on the sign-in page signs in with one press through
+  the real session flow (the form stays for typing).
+- **Role pages**: a signed-in user who opens another role's pages is sent to their own role's home
+  (proxy.ts reads the role from the session token for this redirect only; the api still checks
+  every request). The header shows the user's name from `GET /me`.
+- **List filters** (design gaps that fit): status tabs with counts on the agent's packages (All,
+  Draft, Open for offers, Offers in, Under contract) and the investor's matched listings (Open,
+  Offered, All), filtered in the browser over the list already loaded.
+- **The agent's tabs follow the statuses, not the design's labels**: the design has "Offers in",
+  but offers arrive on a package that is still open, so the tabs are All, Draft, Open for offers,
+  Under contract, Needs a decision (no offers received, or fell through), and Closed or withdrawn.
+  The investor's tabs are the design's: Open, Offered, All.
+- **One PR for the sprint**, merged by Claude when every check is green.
+- **The end-to-end test** runs the loop against real Postgres and the sandbox's CRM through the
+  outbox (publish, match, offer, accept, milestones, closed), and the log test captures every log
+  line of that run, including a failed delivery, and finds no seller name, email, phone, or street.
+
+- [X] T355 Record the Sprint 8 goal, decisions, and tasks in this section; add "Sprint 8" to the board and mirror the section
+- [X] T356 The home page: what the prototype demonstrates (the deal loop, the outage demo, the brand switch), the demo accounts, and links to sign in, the sandbox (`PUBLIC_SANDBOX_URL`), and the style guide, with the brand switcher; brand words from the brand's content (from T103)
+- [X] T357 One-click demo sign-in on the sign-in page: each demo account signs in with one press through the real session flow (design gap)
+- [X] T358 Role pages: a signed-in user who opens another role's pages goes to their role's home (proxy.ts), and the header shows the user's name from `GET /me` (from T105, T106)
+- [X] T359 Status tabs with counts on the agent's packages (All, Draft, Open for offers, Under contract, Needs a decision, Closed or withdrawn; see the decision above) and the investor's matched listings (Open, Offered, All) (design gap)
+- [X] T360 The end-to-end integration test: publish → match → offer → accept → milestones → CLOSED, with the CRM deliveries SENT and the sandbox CRM record closed (from T208; R18, SC-010)
+- [X] T361 The log redaction integration test: every log line of the end-to-end run, with a failed delivery, has no seeded seller name, email, phone, or street (from T209; FR-032, SC-006)
+- [X] T362 Review the security settings: helmet defaults, no `x-powered-by`, the JSON size limit, no CORS on the api; the BFF's cookie flags and Origin check on every state-changing route; fix what falls short (from T210)
+- [X] T363 README: curl recipes (sign in, an idempotent POST replayed with `Idempotent-Replay: true`, the 409 while in progress, health) and the Prototype Shortcuts table copied from plan.md (from T211)
+- [X] T364 `scripts/verify-limits.sh`: a clean build timed against 20 minutes, the home page within 5 minutes of start, and the total memory; how to run it on a 2 GB x86_64 machine in the README (from T212)
+
+**Checkpoint**: on a fresh clone, `docker compose up --build`, open the home page, sign in with one
+press, follow the loop to a closed deal; `pnpm test:integration` passes the end-to-end and log
+tests; `scripts/verify-limits.sh` reports the build and start times within the limits.
+
+---
+
 ## After Sprint 1: Production Storage Adapter (owner-scheduled)
 
 **Purpose**: show that storage is swappable by adding the production adapter that

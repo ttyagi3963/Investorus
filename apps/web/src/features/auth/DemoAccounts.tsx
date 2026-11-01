@@ -1,5 +1,6 @@
-// The demo accounts under the sign-in card (T300, T329): every account the migrate step seeds
-// (packages/core/src/infra/seed/seed.ts), one row each, so the reviewer can switch roles with one press.
+// The demo accounts (T300, T329, T357): every account the migrate step seeds
+// (packages/core/src/infra/seed/seed.ts), one row each, each signing in with one press through the
+// real session flow, so the reviewer can switch roles without typing. Shown on home and sign-in.
 import { Button } from "@clever/ui";
 
 export const DEMO_PASSWORD = "demo1234";
@@ -9,18 +10,23 @@ export const DEMO_ACCOUNTS = [
   { email: "summit@example.com", role: "Investor", shows: "two buy boxes that match the sample" },
   { email: "harbor@example.com", role: "Investor", shows: "one broad buy box" },
   { email: "ridge@example.com", role: "Investor", shows: "a narrow buy box that does not match" },
-  { email: "morgan@example.com", role: "Operations", shows: "imports the legacy investor list" },
+  { email: "morgan@example.com", role: "Operations", shows: "the operations console" },
 ] as const;
 
-/** `onUse` fills the sign-in form with the chosen account. */
-export function DemoAccounts({ onUse }: { onUse: (email: string) => void }) {
+export function DemoAccounts({
+  onSignIn,
+  isPending,
+}: {
+  onSignIn: (email: string) => void;
+  isPending: boolean;
+}) {
   return (
     <section aria-labelledby="demo-accounts" className="flex flex-col gap-stack-sm">
       <h2 id="demo-accounts" className="text-label text-muted">
         Demo accounts
       </h2>
       <p className="text-helper text-muted">
-        Every account uses the password {DEMO_PASSWORD}. Choosing one fills in the form.
+        Every account uses the password {DEMO_PASSWORD}. Press Sign in to go straight in.
       </p>
       <ul className="flex flex-col gap-stack-sm">
         {DEMO_ACCOUNTS.map((account) => (
@@ -37,10 +43,11 @@ export function DemoAccounts({ onUse }: { onUse: (email: string) => void }) {
             <Button
               variant="secondary"
               size="sm"
-              onPress={() => onUse(account.email)}
-              aria-label={`Use ${account.email}`}
+              isDisabled={isPending}
+              onPress={() => onSignIn(account.email)}
+              aria-label={`Sign in as ${account.email}`}
             >
-              Use
+              Sign in
             </Button>
           </li>
         ))}

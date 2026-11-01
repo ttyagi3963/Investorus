@@ -1,9 +1,9 @@
 "use client";
-// The login page (T104, T300, T329): the brand panel beside the sign-in card, pre-filled with the
-// demo agent, and the demo accounts under it, so the reviewer can switch roles with one press and
-// sign in through the real session flow. The brand switcher sits last (T351).
+// The login page (T104, T300, T329, T357): the brand panel beside the sign-in card, pre-filled with
+// the demo agent, and the demo accounts under it, each signing in with one press through the real
+// session flow. The brand switcher sits last (T351).
 import { Button, Card, TextField } from "@clever/ui";
-import { useId, useState, type FormEvent } from "react";
+import { useId, type FormEvent } from "react";
 import { BrandSwitcher } from "@/brand/BrandSwitcher";
 import { BrandPanel } from "@/features/auth/BrandPanel";
 import { DEMO_ACCOUNTS, DEMO_PASSWORD, DemoAccounts } from "@/features/auth/DemoAccounts";
@@ -12,7 +12,6 @@ import { ErrorNotice } from "@/features/errors/ErrorNotice";
 
 export default function LoginPage() {
   const { submit, isPending, error } = useLogin();
-  const [email, setEmail] = useState<string>(DEMO_ACCOUNTS[0].email);
   const headingId = useId();
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -40,14 +39,13 @@ export default function LoginPage() {
                   Agents, investors and operations use the same sign-in.
                 </p>
               </div>
-              {/* The key remounts the fields, so choosing a demo account fills them in. */}
-              <div key={email} className="flex flex-col gap-stack-md">
+              <div className="flex flex-col gap-stack-md">
                 <TextField
                   name="email"
                   type="email"
                   label="Email"
                   autoComplete="username"
-                  defaultValue={email}
+                  defaultValue={DEMO_ACCOUNTS[0].email}
                   isRequired
                 />
                 <TextField
@@ -65,7 +63,10 @@ export default function LoginPage() {
               </Button>
             </form>
           </Card>
-          <DemoAccounts onUse={setEmail} />
+          <DemoAccounts
+            isPending={isPending}
+            onSignIn={(email) => void submit({ email, password: DEMO_PASSWORD })}
+          />
           <BrandSwitcher />
         </div>
       </div>

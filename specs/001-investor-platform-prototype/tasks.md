@@ -716,7 +716,7 @@ data-model.md, contracts/api.md, and contracts/investor-import.md; for the owner
 
 ### PR: the tables
 
-- [ ] T319 Add the Sprint 4 schema with its integration tests: `Investor.externalRef` (unique, nullable); the BuyBoxVersion table (`buyBoxId`, `version`, `snapshot` JSONB, `createdBy`; unique per box and version; append-only, a trigger); the match trigger BUY_BOX_CHANGE (its own migration); ImportBatch (`fileName`, `storageKey`, `jobId?`, `totalRows?`, `imported`, `updated`, `rejected`, `ignoredColumns`, `error?`, `createdBy`, `finishedAt?`) and ImportRowResult (`batchId`, `rowNumber`, `outcome` IMPORTED, UPDATED, or REJECTED, `reason?`, `investorId?`; unique per batch and row); then the contracts shaped from them; each job type arrives with its handler (T321, T322) (from T030, T031, T184)
+- [X] T319 Add the Sprint 4 schema with its integration tests: `Investor.externalRef` (unique, nullable); the BuyBoxVersion table (`buyBoxId`, `version`, `snapshot` JSONB, `createdBy`; unique per box and version; append-only, a trigger); the match trigger BUY_BOX_CHANGE (its own migration); ImportBatch (`fileName`, `storageKey`, `jobId?`, `totalRows?`, `imported`, `updated`, `rejected`, `ignoredColumns`, `error?`, `createdBy`, `finishedAt?`) and ImportRowResult (`batchId`, `rowNumber`, `outcome` IMPORTED, UPDATED, or REJECTED, `reason?`, `investorId?`; unique per batch and row); then the contracts shaped from them; each job type arrives with its handler (T321, T322) (from T030, T031, T184)
 
 ### PR: buy boxes (packages/contracts, packages/core)
 

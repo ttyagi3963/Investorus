@@ -89,7 +89,9 @@ FROM runtime AS migrate
 RUN apt-get update && apt-get install -y --no-install-recommends openssl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=deploy /out/migrate ./
-ENV PATH=/app/node_modules/.bin:$PATH
+# The brands the seed loads into the Brand table (T347): data, not code, so they are copied as files.
+COPY --from=build /app/seed/brands ./seed/brands
+ENV PATH=/app/node_modules/.bin:$PATH SEED_BRANDS_DIR=/app/seed/brands
 USER node
 CMD ["node", "scripts/migrate-and-seed.mjs"]
 

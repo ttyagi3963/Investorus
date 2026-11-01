@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import { BrandProvider } from "@/brand/BrandProvider";
 import { loadBrand } from "@/brand/brands";
 import { brandFont } from "@/brand/fonts";
-import { toCssRule } from "@/brand/tokens";
+import { toCssRule } from "@clever/contracts/brand";
 import { serverEnv } from "@/env";
 import { Providers } from "@/providers";
 import "./globals.css";

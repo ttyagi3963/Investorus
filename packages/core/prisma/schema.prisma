@@ -737,3 +737,20 @@ model Delivery {
   @@unique([outboxEventId, target, recipientRef])
   @@index([status])
 }
+
+// One brand the platform can run as (T347; constitution X, FR-090–FR-097): its design tokens (the
+// W3C DTCG file a designer exports) and its content (name, logo, sign-in copy) as data, never in
+// code. `hosts` are the addresses that open it; `tokenVersion` goes up on every change, so a cached
+// theme is replaced. `seedHash` is the hash of the seed files last loaded, so the seed rewrites a
+// brand only when its files change and an operator's edit survives a restart.
+model Brand {
+  id           String   @id
+  name         String
+  tokens       Json
+  content      Json
+  hosts        String[]
+  tokenVersion Int      @default(1)
+  seedHash     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

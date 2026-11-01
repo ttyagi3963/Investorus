@@ -1,5 +1,5 @@
 // Turns a brand's design tokens (W3C DTCG format, seed/brands/<id>/tokens.json) into CSS custom
-// properties named --brand-<path>, which styles/theme.css maps onto the Tailwind utilities (T327;
+// properties named --brand-<path>, which styles/theme.css maps onto the Tailwind utilities (T327, T347;
 // contracts/design-tokens.md). An alias such as {color.blue.700} becomes var(--brand-color-blue-700),
 // so the browser keeps the semantic layer's references. Values are checked, because the result is
 // written into the page's <style> element.

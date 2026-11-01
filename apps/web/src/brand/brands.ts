@@ -5,7 +5,7 @@
 import { z } from "zod";
 import cleverContent from "../../../../seed/brands/clever/content.json";
 import cleverTokens from "../../../../seed/brands/clever/tokens.json";
-import { toCssVariables } from "./tokens";
+import { toCssVariables } from "@clever/contracts/brand";
 
 const brandContentSchema = z.object({
   brandId: z.string().min(1),

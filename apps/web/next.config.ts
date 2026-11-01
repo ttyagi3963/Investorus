@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+import { SECURITY_HEADERS } from "./src/security-headers";
 
 const nextConfig: NextConfig = {
   // Small runtime image and memory footprint for the 2 GB limit (research R4, R19).
@@ -8,6 +9,8 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.resolve(process.cwd(), "../.."),
   transpilePackages: ["@clever/ui", "@clever/contracts"],
   poweredByHeader: false,
+  // Security headers on every answer (T362).
+  headers: async () => [{ source: "/:path*", headers: SECURITY_HEADERS }],
 };
 
 export default nextConfig;

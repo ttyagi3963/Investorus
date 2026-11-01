@@ -29,6 +29,11 @@ export class PrismaListingPackageRepositoryImpl implements IListingPackageReposi
     return row ? toListingPackage(row) : null;
   }
 
+  async findById(id: string): Promise<ListingPackage | null> {
+    const row = await this.db.listingPackage.findUnique({ where: { id } });
+    return row ? toListingPackage(row) : null;
+  }
+
   async listByAgent(agentId: string): Promise<ListingPackage[]> {
     const rows = await this.db.listingPackage.findMany({
       where: { agentId },

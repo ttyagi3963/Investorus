@@ -1,7 +1,7 @@
 // Public API of @clever/core: ports, services, workflows, domain types, errors.
 // Never export *Impl classes here; they go in adapters.ts (research R22).
 export { InfrastructureError } from "./errors/InfrastructureError.js";
-export { redactPii } from "./errors/redact-pii.js";
+export { redactPii, scrubPiiText } from "./errors/redact-pii.js";
 export { translateError, type ErrorBody } from "./errors/http-error-translator.js";
 export { currentTraceId, runWithTrace } from "./infra/trace-context.js";
 export type { IErrorReporter } from "./providers/error-reporter/IErrorReporter.js";
@@ -41,3 +41,5 @@ export {
   type IListingPackageService,
 } from "./services/listing-package/ListingPackageService.js";
 export { PhotoService, type IPhotoService } from "./services/photo/PhotoService.js";
+export { MatchingWorkflow, type IMatchingWorkflow } from "./workflows/matching/MatchingWorkflow.js";
+export { createJobHandlers, type JobHandler } from "./jobs/handlers.js";

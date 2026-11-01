@@ -500,6 +500,21 @@ The worker container wires `ICrmProvider` and `IMessagingProvider` (selected by 
 and `MESSAGING_PROVIDER`), the job handlers, and the outbox relay. It shares
 `@clever/core/adapters` but not the api's container.
 
+## R24. When matching runs (Principle VIII; FR-022; T293)
+
+- **Decision**: on the event, as a durable job. Publishing, or a material edit after publish,
+  writes a `MATCH_PACKAGE` job in the same transaction as the change and the listing version
+  snapshot; the worker polls the `Job` table with `FOR UPDATE SKIP LOCKED` and runs one matching
+  run per listing version in one transaction. A stale version or a withdrawn package does nothing.
+- **Rationale**: offer windows are 72 hours, so a package must reach investors within seconds,
+  not at the next batch; the job row means a crash or restart never loses a run.
+- **Where batch runs fit**: buy box changes (US5) and the daily digest re-check open packages per
+  investor, and a periodic reconciliation sweep re-runs matching for open packages to catch
+  anything a bug or a manual data fix missed.
+- **Alternatives considered**: a nightly batch (too slow for a 72-hour window); matching inside
+  the publish request (a slow or failed run would fail the publish, and nothing would retry it);
+  Redis and BullMQ (another service on the 2 GB machine, when the Postgres job table is enough).
+
 ## R23. Anti-Corruption Layer (ACL) & Boundary Insulation (Principles I, IV, VI, XIV, XVIII)
 
 - **Decision**: every outside system (HubSpot, Google Sheets, object storage such as S3, email

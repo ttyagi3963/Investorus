@@ -1,0 +1,213 @@
+// Guards the matching run (T292; FR-022, XII): one Match per matched investor naming every box that
+// matched, one notification per newly matched investor with no seller detail, one audited decision
+// per matched investor; a re-run adds nothing; after a material edit, matched investors hear once
+// that the listing changed and new ones that it matches; and a stale job does nothing.
+import type { Actor } from "@clever/contracts/auth";
+import type { BuyBox } from "@clever/contracts/buy-box";
+import type { CreateListingPackageInput } from "@clever/contracts/listing-package";
+import type { UserCredentials } from "@clever/contracts/user";
+import { describe, expect, it } from "vitest";
+import { InMemoryUnitOfWork } from "../../../test/doubles/InMemoryRepositories.js";
+import { StaticGeoProviderImpl } from "../../providers/geo/StaticGeoProviderImpl.js";
+import { createAddressHasher } from "../../providers/pii-cipher/address-hasher.js";
+import { ListingPackageService } from "../../services/listing-package/ListingPackageService.js";
+import { PublicationWorkflow } from "../publication/PublicationWorkflow.js";
+import { MatchingWorkflow } from "./MatchingWorkflow.js";
+
+const NOW = new Date("2026-11-01T12:00:00Z");
+const avery: Actor = { userId: "user-a", role: "AGENT", agentId: "agent-a" };
+const investorLogin = (name: string) =>
+  ({
+    user: {
+      id: `user-${name}`,
+      email: `${name}@example.com`,
+      role: "INVESTOR",
+      displayName: name,
+      agentId: null,
+      investorId: `investor-${name}`,
+      active: true,
+    },
+    passwordHash: "hash",
+  }) as UserCredentials;
+const box = (id: string, investor: string, criteria: Partial<BuyBox>): BuyBox => ({
+  id,
+  investorId: `investor-${investor}`,
+  name: id,
+  status: "ACTIVE",
+  isDefault: false,
+  strategy: null,
+  geographyMode: "NATIONWIDE",
+  geography: [],
+  propertyTypes: null,
+  priceMin: null,
+  priceMax: null,
+  yearBuiltMin: null,
+  yearBuiltMax: null,
+  bedsMin: null,
+  bedsMax: null,
+  bathsMin: null,
+  bathsMax: null,
+  sqftMin: null,
+  sqftMax: null,
+  unitsMin: null,
+  unitsMax: null,
+  conditionsAccepted: null,
+  repairMax: null,
+  closeWithinDays: null,
+  acceptsListed: true,
+  programsAccepted: null,
+  version: 3,
+  ...criteria,
+});
+const listing: CreateListingPackageInput = {
+  seller: { fullName: "Maria Lopez", phone: "+15551234567" },
+  property: {
+    streetLine: "12 Elm St",
+    zip: "78704",
+    propertyType: "SINGLE_FAMILY",
+    beds: 3,
+    baths: 2,
+    sqft: 1_600,
+    yearBuilt: 1985,
+    condition: "FAIR",
+  },
+  priceExpectationMin: 250_000,
+  priceExpectationMax: 300_000,
+  closingWindowStart: "2026-11-20",
+  closingWindowEnd: "2026-12-15",
+  currentlyListed: false,
+  eligiblePrograms: ["CASH_OFFER"],
+};
+
+async function published() {
+  const uow = new InMemoryUnitOfWork(["summit", "harbor", "ridge"].map(investorLogin));
+  uow.repos.buyBoxes.boxes.push(
+    box("Austin flips", "summit", { geographyMode: "ZIPS", geography: ["78704"] }),
+    box("Texas rentals", "summit", {
+      geographyMode: "STATES",
+      geography: ["TX"],
+      priceMax: 300_000,
+    }),
+    box("Anywhere", "harbor", {}),
+    box("Starter homes", "ridge", { priceMax: 280_000 }),
+  );
+  const clock = { now: () => NOW };
+  const packages = new ListingPackageService(uow, {
+    geo: new StaticGeoProviderImpl(),
+    addressHash: createAddressHasher("test-hash-key"),
+    clock,
+  });
+  const created = await packages.create(avery, listing);
+  await uow.repos.photos.add({
+    packageId: created.package.id,
+    storageKey: "photos/0.jpg",
+    contentType: "image/jpeg",
+    sizeBytes: 1_000,
+    position: 0,
+  });
+  const { package: pkg } = await new PublicationWorkflow(uow, { clock }).publish(
+    avery,
+    created.package.id,
+    { version: 1 },
+  );
+  return { uow, packages, pkg, matching: new MatchingWorkflow(uow, { clock }) };
+}
+
+const actions = (uow: InMemoryUnitOfWork, action: string) =>
+  uow.repos.audit.entries.filter((e) => e.action === action);
+
+describe("MatchingWorkflow", () => {
+  it("matches each investor once with every matching box, notifies each once, and audits each decision", async () => {
+    const { uow, pkg, matching } = await published();
+    await matching.evaluatePackage(pkg.id, 1, 1);
+
+    expect(
+      uow.repos.matches.rows.map((m) => [m.investorId, m.matchedBuyBoxIds, m.trigger]),
+    ).toEqual([
+      ["investor-summit", ["Austin flips", "Texas rentals"], "PUBLISH"],
+      ["investor-harbor", ["Anywhere"], "PUBLISH"],
+    ]);
+    const notified = uow.repos.notifications.rows;
+    expect(notified.map((n) => [n.userId, n.type])).toEqual([
+      ["user-summit", "PACKAGE_MATCHED"],
+      ["user-harbor", "PACKAGE_MATCHED"],
+    ]);
+    expect(notified[0]!.body).toContain("Austin flips");
+    expect(notified[0]!.body).toContain("Texas rentals");
+    expect(JSON.stringify(notified)).not.toMatch(/Elm|Maria|5551234567/);
+
+    const decisions = actions(uow, "MATCH_DECISION");
+    expect(decisions.map((d) => d.details?.investorId)).toEqual([
+      "investor-summit",
+      "investor-harbor",
+    ]);
+    expect(decisions[0]).toMatchObject({
+      actorType: "SYSTEM",
+      details: {
+        listingVersion: 1,
+        evaluatorVersion: 1,
+        buyBoxes: [
+          expect.objectContaining({ id: "Austin flips", version: 3 }),
+          expect.objectContaining({ id: "Texas rentals", version: 3 }),
+        ],
+      },
+    });
+    expect(decisions[0]!.details?.buyBoxes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          criteria: expect.objectContaining({ price: expect.any(Object) }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(decisions)).not.toMatch(/Elm|Maria/);
+    expect(actions(uow, "MATCHING_COMPLETED")).toEqual([
+      expect.objectContaining({ details: expect.objectContaining({ matchedCount: 2 }) }),
+    ]);
+  });
+
+  it("adds no match, notification, or decision when the same version runs again", async () => {
+    const { uow, pkg, matching } = await published();
+    await matching.evaluatePackage(pkg.id, 1, 1);
+    await matching.evaluatePackage(pkg.id, 1, 1);
+    expect(uow.repos.matches.rows).toHaveLength(2);
+    expect(uow.repos.notifications.rows).toHaveLength(2);
+    expect(actions(uow, "MATCH_DECISION")).toHaveLength(2);
+  });
+
+  it("after a material edit, tells matched investors once that it changed and new ones that it matches", async () => {
+    const { uow, packages, pkg, matching } = await published();
+    await matching.evaluatePackage(pkg.id, 1, 1);
+    const { package: edited } = await packages.update(avery, pkg.id, {
+      version: pkg.version,
+      priceExpectationMax: 275_000,
+    });
+    await matching.evaluatePackage(pkg.id, 1, edited.listingVersion);
+    await matching.evaluatePackage(pkg.id, 1, edited.listingVersion);
+
+    expect(uow.repos.notifications.rows.slice(2).map((n) => [n.userId, n.type])).toEqual([
+      ["user-summit", "PACKAGE_CHANGED"],
+      ["user-harbor", "PACKAGE_CHANGED"],
+      ["user-ridge", "PACKAGE_MATCHED"],
+    ]);
+    expect(uow.repos.matches.rows.find((m) => m.investorId === "investor-ridge")?.trigger).toBe(
+      "PACKAGE_EDIT",
+    );
+  });
+
+  it("does nothing for an older listing version or a withdrawn package", async () => {
+    const { uow, packages, pkg, matching } = await published();
+    const { package: edited } = await packages.update(avery, pkg.id, {
+      version: pkg.version,
+      priceExpectationMax: 275_000,
+    });
+    await matching.evaluatePackage(pkg.id, 1, 1);
+    expect(uow.repos.matches.rows).toEqual([]);
+
+    await new PublicationWorkflow(uow, { clock: { now: () => NOW } }).withdraw(avery, pkg.id, {
+      version: edited.version,
+    });
+    await matching.evaluatePackage(pkg.id, 1, edited.listingVersion);
+    expect(uow.repos.matches.rows).toEqual([]);
+    expect(uow.repos.notifications.rows).toEqual([]);
+  });
+});

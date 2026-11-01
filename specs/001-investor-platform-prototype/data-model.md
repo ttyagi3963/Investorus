@@ -273,7 +273,9 @@ Rules every criterion follows:
 - A listing value the criterion needs that is null fails the criterion (fail closed), with
   `actual: null` in the result (FR-025).
 - `price`: `priceMin ≤ priceExpectationMax ≤ priceMax`. `closingSpeed`: the investor's
-  `closeWithinDays` must cover the seller's closing window. `listedStatus`: fails only when the
+  `closeWithinDays` must cover the seller's closing window: counting from the day matching runs,
+  the investor must be able to close by the window's last day (`today + closeWithinDays ≤
+  closingWindowEnd`); they can always wait for its first day (pinned 2026-11-01, T287). `listedStatus`: fails only when the
   listing is listed and `acceptsListed` is false. `programs`: at least one shared program.
 - `EVALUATOR_VERSION` (an int in the evaluator file) is raised whenever any predicate changes.
 

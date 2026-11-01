@@ -126,6 +126,20 @@ describe("DealLifecycleWorkflow fall-through and backups", () => {
     expect(await notices(avery.userId)).toContain("BACKUP_RECONFIRMED");
   });
 
+  it("refuses a reconfirmation after the deadline, or from another investor", async () => {
+    const { clock, deals, ridge, fallThrough, promote } = await accepted();
+    await fallThrough();
+    const { deal } = await promote(ridge.id);
+
+    await expect(
+      deals.reconfirm(investor("harbor"), ridge.id, { action: "CONFIRM" }),
+    ).rejects.toMatchObject({ status: 404 });
+    clock.at = deal.reconfirmBy!;
+    await expect(
+      deals.reconfirm(investor("ridge"), ridge.id, { action: "CONFIRM" }),
+    ).rejects.toMatchObject({ code: "RECONFIRM_EXPIRED" });
+  });
+
   it("frees the agent to promote another backup when the promoted one declines", async () => {
     const { pkg, deals, harbor, ridge, fallThrough, promote, status, notices } = await accepted();
     await fallThrough();

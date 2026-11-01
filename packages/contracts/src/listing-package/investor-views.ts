@@ -111,13 +111,19 @@ export function toInvestorPackageView(parts: InvestorPackageParts): InvestorPack
   };
 }
 
-export function toWinningInvestorPackageView(
-  parts: InvestorPackageParts,
-  seller: WinningInvestorPackageView["sellerContact"],
-): WinningInvestorPackageView {
+/**
+ * GET /investor/packages/:id: the everyday view, plus the seller's contact and the street only when
+ * the service set `seller` (the winning investor's read, already audited).
+ */
+export function toInvestorPackageResponse(
+  parts: InvestorPackageParts & { seller?: WinningInvestorPackageView["sellerContact"] },
+): InvestorPackageView | WinningInvestorPackageView {
+  const view = toInvestorPackageView(parts);
+  if (!parts.seller) return view;
+  const { fullName, email, phone } = parts.seller;
   return {
-    ...toInvestorPackageView(parts),
-    sellerContact: { fullName: seller.fullName, email: seller.email, phone: seller.phone },
+    ...view,
+    sellerContact: { fullName, email, phone },
     streetLine: parts.property.streetLine,
   };
 }

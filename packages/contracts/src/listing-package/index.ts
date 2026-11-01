@@ -25,7 +25,7 @@ export {
 export {
   toInvestorPackageSummary,
   toInvestorPackageView,
-  toWinningInvestorPackageView,
+  toInvestorPackageResponse,
   type InvestorPackageParts,
   type InvestorPackageSummary,
   type InvestorPackageView,

@@ -15,6 +15,7 @@ export async function startMigratedDatabase() {
   await db.connect();
   return {
     db,
+    url: container.getConnectionUri(),
     stop: async () => {
       await db.end();
       await container.stop();

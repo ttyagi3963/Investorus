@@ -21,12 +21,13 @@
     "scripts"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "build": "prisma generate && tsc -p tsconfig.build.json",
+    "typecheck": "prisma generate && tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:integration": "vitest run --config vitest.integration.config.ts",
-    "db:check": "node scripts/prisma-check.mjs"
+    "test:integration": "prisma generate && vitest run --config vitest.integration.config.ts",
+    "db:check": "node scripts/prisma-check.mjs",
+    "generate": "prisma generate"
   },
   "dependencies": {
     "@clever/contracts": "workspace:*",

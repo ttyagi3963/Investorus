@@ -6,6 +6,14 @@ datasource db {
   provider = "postgresql"
 }
 
+// The typed client the repositories use (T244), generated into src/generated/prisma (gitignored)
+// by `pnpm generate`, which build, typecheck, and the tests run first.
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
 // Login roles. INVESTOR and User.investorId arrive with the Investor table in Sprint 2.
 enum Role {
   AGENT

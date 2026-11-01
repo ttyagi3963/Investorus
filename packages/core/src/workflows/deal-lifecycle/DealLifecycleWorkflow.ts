@@ -288,7 +288,10 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
     return declined;
   }
 
-  /** The deal and the agent's backups, ranked by estimated net proceeds (FR-056). */
+  /**
+   * The deal and the agent's backups, ranked by estimated net proceeds (FR-056); an expired backup
+   * stays on the list, marked, so the agent sees why it cannot be promoted.
+   */
   private async parts(
     repos: UnitOfWorkRepositories,
     pkg: ListingPackage,

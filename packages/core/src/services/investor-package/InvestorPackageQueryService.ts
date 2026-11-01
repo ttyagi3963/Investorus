@@ -21,7 +21,8 @@ export type InvestorPackage = {
   property: Property;
   photos: Photo[];
   myOffer: Offer | null;
-  myDeal: Deal | null;
+  /** Only what the investor may see of their deal: never the agent's fall-through reason. */
+  myDeal: Pick<Deal, "status" | "reconfirmBy"> | null;
   matchedAt: Date;
   /** Set only for the winning investor's own read (FR-031). */
   seller?: Seller;
@@ -103,6 +104,7 @@ async function load(
     repos.offers.findLatest(pkg.id, match.investorId, pkg.round),
   ]);
   if (!property) throw new NotFoundError(NOT_FOUND);
-  const myDeal = myOffer && (await repos.deals.findByOffer(myOffer.id));
+  const deal = myOffer && (await repos.deals.findByOffer(myOffer.id));
+  const myDeal = deal ? { status: deal.status, reconfirmBy: deal.reconfirmBy } : null;
   return { package: pkg, property, photos, myOffer, myDeal, matchedAt: match.firstMatchedAt };
 }

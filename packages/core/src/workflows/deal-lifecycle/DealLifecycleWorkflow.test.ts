@@ -1,7 +1,8 @@
 // Guards the deal after acceptance (T311; FR-055 to FR-058): milestones move only in order, mirror
 // on the package, reach the buyer, and are audited; closing is final and declines the backups; a
 // fall-through closes the winning offer, ranks the backups by net proceeds, and keeps its reason
-// from the buyer and the audit log; only an unexpired backup can be promoted, one at a time, with
+// from the buyer and the audit log; an expired backup is listed but marked, and only an unexpired
+// backup can be promoted, one at a time, with
 // 48 hours to reconfirm; reconfirming makes it the accepted offer, and declining or the timeout
 // frees the agent to promote another; and the package cannot be reopened while a backup decides.
 import { describe, expect, it } from "vitest";
@@ -86,10 +87,14 @@ describe("DealLifecycleWorkflow fall-through and backups", () => {
   });
 
   it("promotes only an unexpired backup, one at a time, with 48 hours to reconfirm", async () => {
-    const { uow, clock, pkg, publication, harbor, ridge, fallThrough, promote } = await accepted();
+    const { uow, clock, pkg, deals, publication, harbor, ridge, fallThrough, promote } =
+      await accepted();
     await fallThrough();
     clock.at = new Date("2026-11-02T06:00:00Z");
 
+    expect(
+      (await deals.get(avery, pkg.id)).backups.find((b) => b.offer.id === harbor.id),
+    ).toMatchObject({ expired: true });
     await expect(promote(harbor.id)).rejects.toMatchObject({ code: "OFFER_EXPIRED" });
     const { deal } = await promote(ridge.id);
     const reconfirmBy = new Date(clock.at.getTime() + 48 * 3_600_000);

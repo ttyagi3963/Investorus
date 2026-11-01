@@ -5,6 +5,7 @@ import {
   createApiClient,
   dealsClient,
   investorClient,
+  investorImportsClient,
   listingPackagesClient,
   notificationsClient,
   photosClient,
@@ -20,3 +21,4 @@ export const investor = investorClient(bff);
 export const notifications = notificationsClient(bff);
 export const deals = dealsClient(bff);
 export const buyBoxes = buyBoxesClient(bff);
+export const investorImports = investorImportsClient(bff);

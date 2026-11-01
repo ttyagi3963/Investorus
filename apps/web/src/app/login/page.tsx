@@ -14,6 +14,7 @@ const DEMO_ACCOUNTS = [
   { email: "summit@example.com", role: "Investor", shows: "two buy boxes that match the sample" },
   { email: "harbor@example.com", role: "Investor", shows: "one broad buy box" },
   { email: "ridge@example.com", role: "Investor", shows: "a narrow buy box that does not match" },
+  { email: "morgan@example.com", role: "Operations", shows: "imports the legacy investor list" },
 ] as const;
 
 export default function LoginPage() {

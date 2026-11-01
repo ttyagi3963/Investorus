@@ -71,4 +71,20 @@ describe("listing-package repository", () => {
       uow.run((repos) => repos.packages.update(packageId, 1, { priceExpectationMax: 370_000 })),
     ).rejects.toBeInstanceOf(ConflictError);
   });
+
+  it("stores a closing window as the exact days given, whatever the server's time zone", async () => {
+    process.env.TZ = "America/Los_Angeles";
+    const current = await uow.run((repos) => repos.packages.findForAgent("agent-a", packageId));
+    await uow.run((repos) =>
+      repos.packages.update(packageId, current!.version, {
+        closingWindowStart: "2026-12-01",
+        closingWindowEnd: "2026-12-31",
+      }),
+    );
+    const saved = await uow.run((repos) => repos.packages.findForAgent("agent-a", packageId));
+    expect(saved).toMatchObject({
+      closingWindowStart: "2026-12-01",
+      closingWindowEnd: "2026-12-31",
+    });
+  });
 });

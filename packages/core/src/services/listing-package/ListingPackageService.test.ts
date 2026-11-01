@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { InMemoryUnitOfWork } from "../../../test/doubles/InMemoryRepositories.js";
 import { StaticGeoProviderImpl } from "../../providers/geo/StaticGeoProviderImpl.js";
 import { createAddressHasher } from "../../providers/pii-cipher/address-hasher.js";
+import { world } from "../../../test/fixtures/published-package.js";
 import { ListingPackageService } from "./ListingPackageService.js";
 
 const avery: Actor = { userId: "user-a", role: "AGENT", agentId: "agent-a" };
@@ -157,5 +158,29 @@ describe("ListingPackageService", () => {
       }),
     ]);
     expect(JSON.stringify(uow.repos.audit.entries)).not.toMatch(/Maria|5551234567|5559876543|Elm/);
+  });
+
+  it("shows a package's timeline newest first to its agent only, without per-investor decisions", async () => {
+    const { uow, packages, publish } = world();
+    const pkg = await publish();
+    for (const action of ["MATCH_DECISION", "MATCHING_COMPLETED"] as const) {
+      await uow.repos.audit.append({
+        actorType: "SYSTEM",
+        actorId: null,
+        action,
+        entityType: "ListingPackage",
+        entityId: pkg.id,
+        outcome: "SUCCESS",
+        details:
+          action === "MATCH_DECISION" ? { investorId: "investor-summit" } : { matchedCount: 1 },
+      });
+    }
+    const timeline = await packages.timeline(avery, pkg.id);
+    expect(timeline.map((e) => e.action)).toEqual([
+      "MATCHING_COMPLETED",
+      "PACKAGE_PUBLISHED",
+      "PACKAGE_CREATED",
+    ]);
+    await expect(packages.timeline(blake, pkg.id)).rejects.toBeInstanceOf(NotFoundError);
   });
 });

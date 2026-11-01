@@ -20,7 +20,7 @@ const container: AppContainer = {
       return { userId: "user-a", role: "AGENT", agentId: "agent-a" };
     },
   },
-  packages: { create: unused, get: unused, list: unused, update: unused },
+  packages: { create: unused, get: unused, list: unused, update: unused, timeline: unused },
   photos: { requestUpload: unused, attach: unused, remove: unused },
   presentPackage: unused,
   checkDatabase: async () => {},

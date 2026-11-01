@@ -31,6 +31,16 @@ export class PrismaMatchRepositoryImpl implements IMatchRepository {
     });
   }
 
+  async findOne(packageId: string, investorId: string, round: number): Promise<Match | null> {
+    return this.db.match.findUnique({
+      where: { packageId_investorId_round: { packageId, investorId, round } },
+    });
+  }
+
+  async listForInvestor(investorId: string): Promise<Match[]> {
+    return this.db.match.findMany({ where: { investorId }, orderBy: { firstMatchedAt: "desc" } });
+  }
+
   async listByPackage(packageId: string, round: number): Promise<Match[]> {
     return this.db.match.findMany({
       where: { packageId, round },

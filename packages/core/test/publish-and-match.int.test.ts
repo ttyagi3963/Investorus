@@ -1,7 +1,8 @@
 // Runs the Sprint 2 loop against a real Postgres (T291, T293): publish a draft, let the queued
 // MATCH_PACKAGE job run, and check what the database holds: the open package and its listing
 // version, one Match and one notification for the matching investor (none for the other), the
-// audit trail, and, after a withdrawal, the investor told and the address free again.
+// audit trail, the investor's reads, inbox, and the agent's timeline, and, after a withdrawal,
+// the investor told and the address free again.
 import { randomBytes } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
 import type pg from "pg";
@@ -11,7 +12,9 @@ import { createPrismaClient, type PrismaClient } from "../src/infra/prisma-clien
 import { StaticGeoProviderImpl } from "../src/providers/geo/StaticGeoProviderImpl.js";
 import { AesGcmPiiCipherImpl } from "../src/providers/pii-cipher/AesGcmPiiCipherImpl.js";
 import { createAddressHasher } from "../src/providers/pii-cipher/address-hasher.js";
+import { InvestorPackageQueryService } from "../src/services/investor-package/InvestorPackageQueryService.js";
 import { ListingPackageService } from "../src/services/listing-package/ListingPackageService.js";
+import { NotificationService } from "../src/services/notification/NotificationService.js";
 import { PrismaUnitOfWorkImpl } from "../src/unit-of-work/PrismaUnitOfWorkImpl.js";
 import { MatchingWorkflow } from "../src/workflows/matching/MatchingWorkflow.js";
 import { PublicationWorkflow } from "../src/workflows/publication/PublicationWorkflow.js";
@@ -112,6 +115,21 @@ describe("publish and match", () => {
     expect(audit.rows.map((r) => r.action)).toEqual(
       expect.arrayContaining(["PACKAGE_PUBLISHED", "MATCH_DECISION", "MATCHING_COMPLETED"]),
     );
+
+    const summit: Actor = { userId: "user-summit", role: "INVESTOR", investorId: "summit" };
+    const ridge: Actor = { userId: "user-ridge", role: "INVESTOR", investorId: "ridge" };
+    const reads = new InvestorPackageQueryService(uow);
+    expect((await reads.listMatched(summit)).map((p) => p.package.id)).toEqual([created.id]);
+    expect(await reads.listMatched(ridge)).toEqual([]);
+    const inbox = new NotificationService(uow, { clock });
+    const [notice] = await inbox.listMine(summit);
+    await inbox.markRead(summit, notice!.id);
+    await expect(inbox.markRead(ridge, notice!.id)).rejects.toMatchObject({ status: 404 });
+    expect((await packages.timeline(avery, created.id)).map((e) => e.action)).toEqual([
+      "MATCHING_COMPLETED",
+      "PACKAGE_PUBLISHED",
+      "PACKAGE_CREATED",
+    ]);
 
     await publication.withdraw(avery, created.id, { version: published.version });
     const withdrawn = await db.query(`SELECT type FROM "Notification" ORDER BY "createdAt"`);

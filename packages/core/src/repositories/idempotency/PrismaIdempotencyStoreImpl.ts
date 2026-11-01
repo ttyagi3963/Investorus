@@ -1,9 +1,11 @@
 // The idempotency key store over Postgres (T285): the only file with IdempotencyKey queries. A claim
 // is one INSERT ... ON CONFLICT, so two requests with the same key can never both claim it; a key
-// older than 24 hours is claimed again in the same statement.
+// older than 24 hours is claimed again in the same statement. The stored answer can hold seller
+// details (a package view), so it is encrypted with the PII cipher (constitution XII).
 import { randomUUID } from "node:crypto";
 import { InfrastructureError } from "../../errors/InfrastructureError.js";
-import { Prisma, type PrismaClient } from "../../generated/prisma/client.js";
+import type { PrismaClient } from "../../generated/prisma/client.js";
+import type { IPiiCipher } from "../../providers/pii-cipher/IPiiCipher.js";
 import type {
   IIdempotencyStore,
   IdempotencyClaim,
@@ -14,7 +16,10 @@ const unavailable = (cause: unknown) =>
   new InfrastructureError("The idempotency key store did not answer", 503, cause);
 
 export class PrismaIdempotencyStoreImpl implements IIdempotencyStore {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly cipher: IPiiCipher,
+  ) {}
 
   async claim(r: IdempotencyRequest): Promise<IdempotencyClaim> {
     try {
@@ -40,7 +45,9 @@ export class PrismaIdempotencyStoreImpl implements IIdempotencyStore {
       if (row.status === "IN_PROGRESS" || row.responseStatus === null) {
         return { kind: "in-progress" };
       }
-      return { kind: "replay", status: row.responseStatus, body: row.responseBody };
+      const body =
+        row.responseBody === null ? null : JSON.parse(this.cipher.decrypt(row.responseBody));
+      return { kind: "replay", status: row.responseStatus, body };
     } catch (cause) {
       throw unavailable(cause);
     }
@@ -53,7 +60,7 @@ export class PrismaIdempotencyStoreImpl implements IIdempotencyStore {
         data: {
           status: "DONE",
           responseStatus: status,
-          responseBody: body == null ? Prisma.DbNull : (body as Prisma.InputJsonValue),
+          responseBody: body == null ? null : this.cipher.encrypt(JSON.stringify(body)),
         },
       });
     } catch (cause) {

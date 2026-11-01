@@ -17,7 +17,7 @@ export class PostgresDatabaseImpl implements IDatabase {
   constructor(databaseUrl: string, cipher: IPiiCipher) {
     this.prisma = createPrismaClient(databaseUrl);
     this.uow = new PrismaUnitOfWorkImpl(this.prisma, cipher);
-    this.idempotency = new PrismaIdempotencyStoreImpl(this.prisma);
+    this.idempotency = new PrismaIdempotencyStoreImpl(this.prisma, cipher);
   }
 
   async check(): Promise<void> {

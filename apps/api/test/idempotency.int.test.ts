@@ -2,7 +2,8 @@
 // POST and PATCH needs an Idempotency-Key; a retry with the same key and body replays the stored
 // answer without running the change again; a duplicate sent while the first is still running gets
 // 409, and a different body 422; a 5xx is not stored; keys are per user; a store outage fails
-// closed with 503. The real container supplies the key store; the services are fakes.
+// closed with 503; and the stored answer, which holds seller details, is encrypted at rest (XII).
+// The real container supplies the key store; the services are fakes.
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
@@ -26,6 +27,7 @@ const ACTORS: Record<string, Actor> = {
 };
 
 let database: StartedPostgreSqlContainer;
+let db: pg.Client;
 const containers: AppContainer[] = [];
 let calls = 0;
 /** What the fake create does next; by default it answers 201 at once. */
@@ -67,7 +69,8 @@ function appOver(databaseUrl: string): Express {
         return { package: { id: `package-${calls}` } } as AgentPackage;
       },
     },
-    presentPackage: async (parts) => ({ id: parts.package.id }) as AgentPackageView,
+    presentPackage: async (parts) =>
+      ({ id: parts.package.id, seller: { fullName: "Maria Lopez" } }) as AgentPackageView,
   });
 }
 
@@ -86,7 +89,7 @@ beforeAll(async () => {
     stdio: "ignore",
     shell: process.platform === "win32",
   });
-  const db = new pg.Client({ connectionString: url });
+  db = new pg.Client({ connectionString: url });
   await db.connect();
   await db.query(`
     INSERT INTO "Agent" (id, name, email, brokerage, "updatedAt") VALUES
@@ -96,11 +99,11 @@ beforeAll(async () => {
       ('user-a', 'avery@example.test', 'hash', 'AGENT', 'Avery', 'agent-a', now()),
       ('user-b', 'blake@example.test', 'hash', 'AGENT', 'Blake', 'agent-b', now());
   `);
-  await db.end();
   app = appOver(url);
 });
 
 afterAll(async () => {
+  await db?.end();
   await Promise.all(containers.map((c) => c.dispose()));
   await database?.stop();
 });
@@ -121,6 +124,11 @@ describe("idempotency", () => {
 
     const changed = await post("avery", "key-replay", { price: 2 }).expect(422);
     expect(changed.body.code).toBe("IDEMPOTENCY_KEY_REUSED");
+
+    const { rows } = await db.query(
+      `SELECT "responseBody" FROM "IdempotencyKey" WHERE key = 'key-replay'`,
+    );
+    expect(JSON.stringify(rows)).not.toContain("Maria");
   });
 
   it("answers a duplicate sent while the first is running with 409 and Retry-After: 1", async () => {

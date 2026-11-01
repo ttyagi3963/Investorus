@@ -487,7 +487,8 @@ enum IdempotencyStatus {
 // One Idempotency-Key a user sent with a POST or PATCH (T285; constitution XX.2), stored in
 // Postgres instead of Redis (plan.md Complexity Tracking). The first request claims the key
 // (IN_PROGRESS); its answer is stored (DONE) and replayed for a retry with the same body. A key
-// older than 24 hours is ignored and claimed again.
+// older than 24 hours is ignored and claimed again. The stored answer can hold seller details (a
+// package view), so it is encrypted at rest like the seller columns (constitution XII).
 model IdempotencyKey {
   id             String            @id @default(cuid())
   userId         String
@@ -498,7 +499,7 @@ model IdempotencyKey {
   bodyHash       String
   status         IdempotencyStatus @default(IN_PROGRESS)
   responseStatus Int?
-  responseBody   Json?
+  responseBody   String?
   createdAt      DateTime          @default(now())
 
   @@unique([userId, key])

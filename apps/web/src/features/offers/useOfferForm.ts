@@ -1,6 +1,7 @@
 // Making or revising an offer (T302; XX.2, FR-042): one request at a time, and one Idempotency-Key
 // per action. The key is kept until an answer arrives, so a retry of the same terms after a lost
-// answer is a replay, never a second offer; changed terms are a new action with a new key. The api's field errors are keyed by field name, which is each input's name.
+// answer is a replay, never a second offer; changed terms are a new action with a new key. The
+// api's field errors are keyed by field name, which is each input's name.
 import type { OfferView } from "@clever/contracts/offer";
 import type { CreateOfferInput } from "@clever/contracts/offer";
 import { ApiError } from "@clever/contracts/client";

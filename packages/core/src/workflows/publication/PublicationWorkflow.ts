@@ -30,6 +30,7 @@ import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUn
 import { snapshotAndQueueMatching } from "../matching/queue-matching.js";
 import { placeOf } from "../notice-text.js";
 import { scheduleRoundClose } from "../offer-round/schedule.js";
+import { notifyInvestor } from "../../outbox/notify-investor.js";
 
 export interface IPublicationWorkflow {
   publish(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage>;
@@ -120,10 +121,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
       const declined = await repos.offers.declineOpen(packageId, pkg.round);
       const property = await repos.properties.findById(pkg.propertyId);
       for (const match of await repos.matches.listByPackage(packageId, pkg.round)) {
-        const userId = await repos.users.findIdByInvestorId(match.investorId);
-        if (!userId) continue;
-        await repos.notifications.create({
-          userId,
+        await notifyInvestor(repos, match.investorId, {
           type: "PACKAGE_WITHDRAWN",
           packageId,
           title: "A matched listing was withdrawn",
@@ -197,10 +195,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
       await scheduleRoundClose(repos, pkg);
       const property = await repos.properties.findById(pkg.propertyId);
       for (const match of await repos.matches.listByPackage(packageId, pkg.round)) {
-        const userId = await repos.users.findIdByInvestorId(match.investorId);
-        if (!userId) continue;
-        await repos.notifications.create({
-          userId,
+        await notifyInvestor(repos, match.investorId, {
           type: "OFFER_DEADLINE_EXTENDED",
           packageId,
           title: "A matched listing has a later deadline",

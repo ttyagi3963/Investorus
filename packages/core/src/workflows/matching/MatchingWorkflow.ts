@@ -13,9 +13,9 @@ import type { Property } from "@clever/contracts/property";
 import type { IClock } from "../../providers/clock/IClock.js";
 import { evaluateBuyBox, type BuyBoxEvaluation } from "../../registry/evaluate-buy-box.js";
 import { EVALUATOR_VERSION } from "../../registry/evaluators.js";
-import type { NewNotification } from "../../repositories/notification/INotificationRepository.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
 import { placeOf } from "../notice-text.js";
+import { notifyInvestor, type InvestorNotice } from "../../outbox/notify-investor.js";
 
 export interface IMatchingWorkflow {
   evaluatePackage(run: MatchPackagePayload): Promise<void>;
@@ -76,14 +76,11 @@ export class MatchingWorkflow implements IMatchingWorkflow {
         // Already told about this version: a re-run adds nothing.
         if (!created && (match.lastNotifiedListingVersion ?? 0) >= listingVersion) continue;
 
-        const userId = await repos.users.findIdByInvestorId(investorId);
-        if (userId) {
-          await repos.notifications.create(
-            created
-              ? matchedNotice(userId, pkg, property, matched)
-              : changedNotice(userId, pkg, property),
-          );
-        }
+        await notifyInvestor(
+          repos,
+          investorId,
+          created ? matchedNotice(pkg, property, matched) : changedNotice(pkg, property),
+        );
         await repos.matches.markNotified(match.id, listingVersion);
         await repos.audit.append({
           ...systemEntry(packageId, "MATCH_DECISION"),
@@ -121,7 +118,6 @@ export class MatchingWorkflow implements IMatchingWorkflow {
       // Saved again, paused, or its investor can no longer be matched: nothing to do.
       const box = await repos.buyBoxes.findMatchable(buyBoxId, version, now);
       if (!box) return;
-      const userId = await repos.users.findIdByInvestorId(box.investorId);
 
       for (const pkg of await repos.packages.listOpenForOffers(now)) {
         const listing = await repos.listingVersions.find(pkg.id, pkg.listingVersion);
@@ -141,12 +137,14 @@ export class MatchingWorkflow implements IMatchingWorkflow {
           trigger: "BUY_BOX_CHANGE",
         });
         if (created) {
-          if (userId) {
-            const property = await repos.properties.findById(pkg.propertyId);
-            await repos.notifications.create(
-              matchedNotice(userId, pkg, property, [{ box, evaluation }]),
-            );
-          }
+          // In the app now; by email only in the daily digest (FR-023).
+          const property = await repos.properties.findById(pkg.propertyId);
+          await notifyInvestor(
+            repos,
+            box.investorId,
+            matchedNotice(pkg, property, [{ box, evaluation }]),
+            { outside: false },
+          );
           await repos.matches.markNotified(match.id, pkg.listingVersion);
         }
         await repos.audit.append({
@@ -178,14 +176,12 @@ const deadlineOf = (pkg: ListingPackage) =>
   pkg.offerDeadline ? `${pkg.offerDeadline.toISOString().slice(0, 16).replace("T", " ")} UTC` : "";
 
 function matchedNotice(
-  userId: string,
   pkg: ListingPackage,
   property: Property | null,
   matched: MatchedBox[],
-): NewNotification {
+): InvestorNotice {
   const boxes = matched.map(({ box }) => box.name).join(", ");
   return {
-    userId,
     type: "PACKAGE_MATCHED",
     packageId: pkg.id,
     title: "A new listing matches your buy box",
@@ -193,13 +189,8 @@ function matchedNotice(
   };
 }
 
-function changedNotice(
-  userId: string,
-  pkg: ListingPackage,
-  property: Property | null,
-): NewNotification {
+function changedNotice(pkg: ListingPackage, property: Property | null): InvestorNotice {
   return {
-    userId,
     type: "PACKAGE_CHANGED",
     packageId: pkg.id,
     title: "A matched listing changed",

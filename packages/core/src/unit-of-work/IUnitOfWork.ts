@@ -13,6 +13,7 @@ import type { IListingVersionRepository } from "../repositories/listing-version/
 import type { IMatchRepository } from "../repositories/match/IMatchRepository.js";
 import type { INotificationRepository } from "../repositories/notification/INotificationRepository.js";
 import type { IOfferRepository } from "../repositories/offer/IOfferRepository.js";
+import type { IOutboxRepository } from "../repositories/outbox/IOutboxRepository.js";
 import type { IPhotoRepository } from "../repositories/photo/IPhotoRepository.js";
 import type { IPropertyRepository } from "../repositories/property/IPropertyRepository.js";
 import type { ISellerRepository } from "../repositories/seller/ISellerRepository.js";
@@ -36,6 +37,7 @@ export interface UnitOfWorkRepositories {
   decisions: IDecisionRepository;
   deals: IDealRepository;
   imports: IImportRepository;
+  outbox: IOutboxRepository;
 }
 
 export interface IUnitOfWork {

@@ -23,6 +23,11 @@ import type {
 import type { IBuyBoxRepository } from "../../src/repositories/buy-box/IBuyBoxRepository.js";
 import type { IImportRepository } from "../../src/repositories/import/IImportRepository.js";
 import type { IConfigRepository } from "../../src/repositories/config/IConfigRepository.js";
+import type {
+  IOutboxRepository,
+  NewOutboxEvent,
+} from "../../src/repositories/outbox/IOutboxRepository.js";
+import { withOutboxEvents } from "../../src/outbox/with-outbox-events.js";
 import {
   ALREADY_ACCEPTED,
   type DealPatch,
@@ -597,6 +602,14 @@ export class InMemoryDealRepository implements IDealRepository {
   }
 }
 
+/** The events changes appended, in order. */
+export class InMemoryOutboxRepository implements IOutboxRepository {
+  readonly rows: NewOutboxEvent[] = [];
+  async append(event: NewOutboxEvent) {
+    this.rows.push(event);
+  }
+}
+
 export class InMemoryUnitOfWork implements IUnitOfWork {
   readonly repos: UnitOfWorkRepositories & {
     sellers: InMemorySellerRepository;
@@ -615,6 +628,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
     decisions: InMemoryDecisionRepository;
     deals: InMemoryDealRepository;
     imports: InMemoryImportRepository;
+    outbox: InMemoryOutboxRepository;
   };
   constructor(users: UserCredentials[] = []) {
     this.repos = {
@@ -635,9 +649,10 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       decisions: new InMemoryDecisionRepository(),
       deals: new InMemoryDealRepository(),
       imports: new InMemoryImportRepository(),
+      outbox: new InMemoryOutboxRepository(),
     };
   }
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {
-    return work(this.repos);
+    return work(withOutboxEvents(this.repos));
   }
 }

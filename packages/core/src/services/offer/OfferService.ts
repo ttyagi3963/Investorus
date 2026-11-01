@@ -33,6 +33,8 @@ import { placeOf } from "../../workflows/notice-text.js";
 import { scheduleOfferExpiry } from "../../workflows/offer-round/schedule.js";
 import { checkOfferDates, termsOf } from "./offer-terms.js";
 import { investorOf } from "../investor-package/InvestorPackageQueryService.js";
+import { crmSnapshot } from "../../outbox/crm-snapshot.js";
+import { writeEvent } from "../../outbox/write-event.js";
 
 export interface IOfferService {
   create(actor: Actor, packageId: string, input: unknown): Promise<Offer>;
@@ -74,6 +76,11 @@ export class OfferService implements IOfferService {
       });
       await scheduleOfferExpiry(repos, offer);
       await audit(repos, actor, offer, "OFFER_SUBMITTED");
+      // The CRM's offer count changes with the offer, in the same change (FR-077).
+      await writeEvent(repos, {
+        type: "offer.submitted",
+        payload: { packageId, offerId: offer.id, investorId, crm: await crmSnapshot(repos, pkg) },
+      });
       return offer;
     });
   }

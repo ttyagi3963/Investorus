@@ -1,6 +1,6 @@
 // The web server's settings (T261): the api's internal URL and whether the session cookie is Secure.
-// Checked on first use rather than at import, because `next build` runs without them; a missing or
-// invalid value then fails the request with its name instead of silently misrouting.
+// Parsed by instrumentation.ts when the server starts, not at import, because `next build` imports
+// this file without them.
 import { z } from "zod";
 
 const webEnvSchema = z.object({

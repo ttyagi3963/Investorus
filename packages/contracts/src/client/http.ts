@@ -27,6 +27,15 @@ export type ApiClient = {
   request<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T>;
 };
 
+/** The api's `{ error, code, details }`, or nothing when a failed answer is not JSON (an outage). */
+function errorBody(text: string): ConstructorParameters<typeof ApiError>[1] {
+  try {
+    return text ? (JSON.parse(text) as ConstructorParameters<typeof ApiError>[1]) : {};
+  } catch {
+    return {};
+  }
+}
+
 export function createApiClient(options: {
   baseUrl: string;
   fetch?: typeof globalThis.fetch;
@@ -40,9 +49,8 @@ export function createApiClient(options: {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       const text = await res.text();
-      const parsed: unknown = text ? JSON.parse(text) : undefined;
-      if (!res.ok) throw new ApiError(res.status, (parsed ?? {}) as Record<string, never>);
-      return parsed as T;
+      if (!res.ok) throw new ApiError(res.status, errorBody(text));
+      return (text ? JSON.parse(text) : undefined) as T;
     },
   };
 }

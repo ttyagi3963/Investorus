@@ -3,7 +3,11 @@
 export {
   JOB_STATUSES,
   JOB_TYPES,
+  closeOfferRoundPayloadSchema,
+  expireOfferPayloadSchema,
   matchPackagePayloadSchema,
+  type CloseOfferRoundPayload,
+  type ExpireOfferPayload,
   type Job,
   type JobStatus,
   type JobType,

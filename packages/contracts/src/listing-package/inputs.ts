@@ -77,3 +77,13 @@ export type PublishInput = z.input<typeof publishInputSchema>;
 /** POST /listing-packages/:id/withdrawal. */
 export const withdrawInputSchema = z.object({ version: z.number().int().positive() });
 export type WithdrawInput = z.input<typeof withdrawInputSchema>;
+
+/**
+ * POST /listing-packages/:id/reopening and PATCH /listing-packages/:id/offer-deadline (T307): the
+ * new deadline, which the workflow checks against the clock.
+ */
+export const offerDeadlineInputSchema = z.object({
+  version: z.number().int().positive(),
+  offerDeadline: z.iso.datetime(),
+});
+export type OfferDeadlineInput = z.input<typeof offerDeadlineInputSchema>;

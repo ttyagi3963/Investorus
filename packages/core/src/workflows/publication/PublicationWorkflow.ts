@@ -1,7 +1,9 @@
-// Publishing and withdrawing a listing package (T291; FR-012, FR-013, FR-022). Publish checks
-// every field matching and investors need and names each one that is missing, then opens offers,
-// snapshots listing version 1, and queues matching, all in one change. Withdraw closes the
-// package, declines its open offers, tells each matched investor, and frees the address.
+// Publishing, withdrawing, and re-running a listing package's offer round (T291, T307; FR-012 to
+// FR-014, FR-022, FR-058). Publish checks every field matching and investors need and names each
+// one that is missing, then opens offers, snapshots listing version 1, and queues matching and the
+// deadline, all in one change. Withdraw closes the package, declines its open offers, tells each
+// matched investor, and frees the address. Reopen starts a new round that is matched again;
+// extending moves the deadline of the current round.
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -11,9 +13,11 @@ import {
   type FieldError,
 } from "@clever/contracts/common";
 import {
+  offerDeadlineInputSchema,
   publishInputSchema,
   withdrawInputSchema,
   type ListingPackage,
+  type PackageStatus,
 } from "@clever/contracts/listing-package";
 import type { Photo } from "@clever/contracts/photo";
 import type { Property } from "@clever/contracts/property";
@@ -25,11 +29,19 @@ import {
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { snapshotAndQueueMatching } from "../matching/queue-matching.js";
 import { placeOf } from "../notice-text.js";
+import { scheduleRoundClose } from "../offer-round/schedule.js";
 
 export interface IPublicationWorkflow {
   publish(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage>;
   withdraw(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage>;
+  reopen(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage>;
+  extendDeadline(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage>;
 }
+
+/** Where a withdraw, a reopen, and an extension may start from (data-model.md, PackageStatus). */
+const WITHDRAWABLE: PackageStatus[] = ["DRAFT", "ACCEPTING_OFFERS", "NO_OFFERS_RECEIVED"];
+const REOPENABLE: PackageStatus[] = ["NO_OFFERS_RECEIVED"];
+const EXTENDABLE: PackageStatus[] = ["ACCEPTING_OFFERS", "NO_OFFERS_RECEIVED"];
 
 const HOUR = 3_600_000;
 const DEFAULT_OFFER_WINDOW_HOURS = 72;
@@ -75,7 +87,8 @@ export class PublicationWorkflow implements IPublicationWorkflow {
         offerDeadline,
         listingVersion: 1,
       });
-      await snapshotAndQueueMatching(repos, pkg, property);
+      await snapshotAndQueueMatching(repos, pkg, property, "PUBLISH");
+      await scheduleRoundClose(repos, pkg);
       await repos.audit.append({
         ...auditEntry(actor, packageId, "PACKAGE_PUBLISHED"),
         details: {
@@ -94,7 +107,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
 
     return this.uow.run(async (repos) => {
       const current = await this.ownPackage(repos, agentId, packageId);
-      if (current.status !== "DRAFT" && current.status !== "ACCEPTING_OFFERS") {
+      if (!WITHDRAWABLE.includes(current.status)) {
         throw new BusinessRuleError("This package cannot be withdrawn", "NOT_WITHDRAWABLE");
       }
       const pkg = await repos.packages.update(packageId, data.version, { status: "WITHDRAWN" });
@@ -113,10 +126,102 @@ export class PublicationWorkflow implements IPublicationWorkflow {
       }
       await repos.audit.append({
         ...auditEntry(actor, packageId, "PACKAGE_WITHDRAWN"),
-        details: { round: pkg.round, declinedOffers: declined },
+        details: { round: pkg.round, declinedOffers: declined.length },
       });
       return loadAgentPackage(repos, pkg);
     });
+  }
+
+  async reopen(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage> {
+    const agentId = this.agentOf(actor);
+    const data = offerDeadlineInputSchema.parse(input);
+    const offerDeadline = this.checkDeadline(data.offerDeadline);
+
+    return this.uow.run(async (repos) => {
+      const current = await this.ownPackage(repos, agentId, packageId);
+      if (!REOPENABLE.includes(current.status)) {
+        throw new BusinessRuleError("This package cannot be reopened", "NOT_REOPENABLE");
+      }
+      const pkg = await repos.packages.update(packageId, data.version, {
+        status: "ACCEPTING_OFFERS",
+        round: current.round + 1,
+        listingVersion: current.listingVersion + 1,
+        offerDeadline,
+      });
+      // Whatever the old round left open is declined: the new round starts clean.
+      const declined = await repos.offers.declineOpen(packageId, current.round);
+      const property = await repos.properties.findById(pkg.propertyId);
+      if (!property) throw new NotFoundError(NOT_FOUND);
+      // Matching runs again for the new round, so every matched investor is told again (FR-058).
+      await snapshotAndQueueMatching(repos, pkg, property, "REOPEN");
+      await scheduleRoundClose(repos, pkg);
+      await repos.audit.append({
+        ...auditEntry(actor, packageId, "PACKAGE_REOPENED"),
+        details: {
+          round: pkg.round,
+          offerDeadline: offerDeadline.toISOString(),
+          declinedOffers: declined.length,
+        },
+      });
+      return loadAgentPackage(repos, pkg);
+    });
+  }
+
+  async extendDeadline(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage> {
+    const agentId = this.agentOf(actor);
+    const data = offerDeadlineInputSchema.parse(input);
+    const offerDeadline = this.checkDeadline(data.offerDeadline);
+
+    return this.uow.run(async (repos) => {
+      const current = await this.ownPackage(repos, agentId, packageId);
+      if (!EXTENDABLE.includes(current.status)) {
+        throw new BusinessRuleError("This deadline cannot be extended", "NOT_EXTENDABLE");
+      }
+      if (current.offerDeadline && offerDeadline <= current.offerDeadline) {
+        throw new ValidationError("Some fields are invalid", [
+          { field: "offerDeadline", message: "Must be later than the current deadline" },
+        ]);
+      }
+      const pkg = await repos.packages.update(packageId, data.version, {
+        status: "ACCEPTING_OFFERS",
+        offerDeadline,
+      });
+      // The old deadline's job finds the deadline changed and does nothing.
+      await scheduleRoundClose(repos, pkg);
+      const property = await repos.properties.findById(pkg.propertyId);
+      for (const match of await repos.matches.listByPackage(packageId, pkg.round)) {
+        const userId = await repos.users.findIdByInvestorId(match.investorId);
+        if (!userId) continue;
+        await repos.notifications.create({
+          userId,
+          type: "OFFER_DEADLINE_EXTENDED",
+          packageId,
+          title: "A matched listing has a later deadline",
+          body: `Offers on the listing in ${placeOf(property)} are now due by ${utc(offerDeadline)}.`,
+        });
+      }
+      await repos.audit.append({
+        ...auditEntry(actor, packageId, "OFFER_DEADLINE_EXTENDED"),
+        details: { round: pkg.round, offerDeadline: offerDeadline.toISOString() },
+      });
+      return loadAgentPackage(repos, pkg);
+    });
+  }
+
+  /** A new deadline is in the future and within the longest offer window. */
+  private checkDeadline(value: string): Date {
+    const deadline = new Date(value);
+    const now = this.deps.clock.now();
+    const message =
+      deadline <= now
+        ? "Must be in the future"
+        : deadline.getTime() > now.getTime() + MAX_OFFER_WINDOW_DAYS * 24 * HOUR
+          ? `Must be within ${MAX_OFFER_WINDOW_DAYS} days`
+          : null;
+    if (message) {
+      throw new ValidationError("Some fields are invalid", [{ field: "offerDeadline", message }]);
+    }
+    return deadline;
   }
 
   private agentOf(actor: Actor): string {
@@ -159,10 +264,13 @@ function publishBlockers(
   return errors;
 }
 
+const utc = (at: Date) => `${at.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+
 const auditEntry = (
   actor: Actor,
   packageId: string,
-  action: "PACKAGE_PUBLISHED" | "PACKAGE_WITHDRAWN",
+  action:
+    "PACKAGE_PUBLISHED" | "PACKAGE_WITHDRAWN" | "PACKAGE_REOPENED" | "OFFER_DEADLINE_EXTENDED",
 ) => ({
   actorType: "USER" as const,
   actorId: actor.userId,

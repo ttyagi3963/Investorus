@@ -1,9 +1,15 @@
 // The job loop (T294; constitution VIII): each tick re-queues jobs whose worker died, then claims
-// and runs due jobs until none is left. Each job runs inside its own trace (the ID of the request
+// and runs the jobs due by the clock until none is left. Each job runs inside its own trace (the ID of the request
 // that queued it, or a new one), so every line of its run logs that ID. Stopping lets the running
 // job finish and claims no more.
 import { newTraceId } from "@clever/contracts/common";
-import { runWithTrace, type IErrorReporter, type IUnitOfWork, type JobHandler } from "@clever/core";
+import {
+  runWithTrace,
+  type IClock,
+  type IErrorReporter,
+  type IUnitOfWork,
+  type JobHandler,
+} from "@clever/core";
 import type { JobType } from "@clever/contracts/jobs";
 import type { Logger } from "pino";
 import { translateJobError } from "./error-translator.js";
@@ -16,12 +22,13 @@ export type JobRunnerDeps = {
   handlers: Record<JobType, JobHandler>;
   logger: Logger;
   reporter: IErrorReporter;
+  clock: IClock;
   workerId: string;
 };
 
 /** Claims and runs one due job; false when there was none. */
 export async function runNextJob(deps: JobRunnerDeps): Promise<boolean> {
-  const job = await deps.uow.run((repos) => repos.jobs.claimNext(deps.workerId));
+  const job = await deps.uow.run((repos) => repos.jobs.claimNext(deps.workerId, deps.clock.now()));
   if (!job) return false;
   await runWithTrace(job.correlationId ?? newTraceId(), async () => {
     const logger = deps.logger.child({ job_id: job.id, type: job.type });

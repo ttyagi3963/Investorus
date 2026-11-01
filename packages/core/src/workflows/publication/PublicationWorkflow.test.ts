@@ -2,7 +2,8 @@
 // field that blocks it; only the owning agent publishes or withdraws, and only a draft is
 // published; a publish opens offers, snapshots listing version 1, and queues matching in the same
 // change; a material edit after publish snapshots the next version and queues matching again; and
-// a withdrawal declines open offers, tells matched investors, and frees the address.
+// a withdrawal declines open offers, tells matched investors, and frees the address. A package
+// with no offers reopens as a new round that is matched again (T307, FR-058).
 import type { Actor } from "@clever/contracts/auth";
 import type { ValidationError } from "@clever/contracts/common";
 import type { CreateListingPackageInput } from "@clever/contracts/listing-package";
@@ -12,6 +13,8 @@ import { InMemoryUnitOfWork } from "../../../test/doubles/InMemoryRepositories.j
 import { StaticGeoProviderImpl } from "../../providers/geo/StaticGeoProviderImpl.js";
 import { createAddressHasher } from "../../providers/pii-cipher/address-hasher.js";
 import { ListingPackageService } from "../../services/listing-package/ListingPackageService.js";
+import { world } from "../../../test/fixtures/published-package.js";
+import { OfferRoundWorkflow } from "../offer-round/OfferRoundWorkflow.js";
 import { PublicationWorkflow } from "./PublicationWorkflow.js";
 
 const NOW = new Date("2026-11-01T12:00:00Z");
@@ -133,7 +136,7 @@ describe("PublicationWorkflow", () => {
     ).rejects.toMatchObject({ code: "NOT_A_DRAFT" });
   });
 
-  it("opens offers until the default deadline, snapshots version 1, and queues matching in one change", async () => {
+  it("opens offers until the default deadline, snapshots version 1, and queues matching and the deadline in one change", async () => {
     const { uow, publication, draft } = setup();
     const pkg = await draft();
     const { package: published } = await publication.publish(avery, pkg.id, { version: 1 });
@@ -147,11 +150,17 @@ describe("PublicationWorkflow", () => {
     const [snapshot] = uow.repos.listingVersions.rows;
     expect(snapshot).toMatchObject({ packageId: pkg.id, listingVersion: 1, round: 1 });
     expect(JSON.stringify(snapshot)).not.toMatch(/Elm|Maria|5551234567/);
+    const deadline = new Date(NOW.getTime() + 72 * 3_600_000);
     expect(uow.repos.jobs.rows).toEqual([
       expect.objectContaining({
         type: "MATCH_PACKAGE",
         dedupeKey: `MATCH_PACKAGE:${pkg.id}:1:1`,
-        payload: { packageId: pkg.id, round: 1, listingVersion: 1 },
+        payload: { packageId: pkg.id, round: 1, listingVersion: 1, trigger: "PUBLISH" },
+      }),
+      expect.objectContaining({
+        type: "CLOSE_OFFER_ROUND",
+        runAt: deadline,
+        payload: { packageId: pkg.id, round: 1, offerDeadline: deadline.toISOString() },
       }),
     ]);
     expect(uow.repos.audit.entries.map((e) => e.action)).toContain("PACKAGE_PUBLISHED");
@@ -168,10 +177,9 @@ describe("PublicationWorkflow", () => {
     }));
     expect(current.listingVersion).toBe(2);
     expect(uow.repos.listingVersions.rows.map((v) => v.listingVersion)).toEqual([1, 2]);
-    expect(uow.repos.jobs.rows.map((j) => j.dedupeKey)).toEqual([
-      `MATCH_PACKAGE:${pkg.id}:1:1`,
-      `MATCH_PACKAGE:${pkg.id}:1:2`,
-    ]);
+    const matchRuns = () =>
+      uow.repos.jobs.rows.filter((j) => j.type === "MATCH_PACKAGE").map((j) => j.dedupeKey);
+    expect(matchRuns()).toEqual([`MATCH_PACKAGE:${pkg.id}:1:1`, `MATCH_PACKAGE:${pkg.id}:1:2`]);
 
     ({ package: current } = await packages.update(avery, pkg.id, {
       version: current.version,
@@ -179,7 +187,7 @@ describe("PublicationWorkflow", () => {
       seller: { phone: "+15559876543" },
     }));
     expect(current.listingVersion).toBe(2);
-    expect(uow.repos.jobs.rows).toHaveLength(2);
+    expect(matchRuns()).toHaveLength(2);
   });
 
   it("withdraws: declines open offers, tells matched investors, and frees the address", async () => {
@@ -220,5 +228,42 @@ describe("PublicationWorkflow", () => {
     ]);
     expect(JSON.stringify(uow.repos.notifications.rows)).not.toMatch(/Elm|Maria/);
     await expect(packages.create(avery, ready)).resolves.toBeDefined();
+  });
+});
+
+describe("PublicationWorkflow.reopen", () => {
+  it("reopens a package with no offers as the next round: a new deadline, listing version, match run, and deadline job", async () => {
+    const w = world();
+    const pkg = await w.publish();
+    const [close] = w.uow.repos.jobs.rows.filter((j) => j.type === "CLOSE_OFFER_ROUND");
+    w.clock.at = pkg.offerDeadline!;
+    await new OfferRoundWorkflow(w.uow).closeRound(close!.payload as never);
+    const closed = (await w.uow.repos.packages.findById(pkg.id))!;
+
+    const deadline = new Date(w.clock.at.getTime() + 72 * 3_600_000);
+    const { package: reopened } = await w.publication.reopen(avery, pkg.id, {
+      version: closed.version,
+      offerDeadline: deadline.toISOString(),
+    });
+
+    expect(reopened).toMatchObject({
+      status: "ACCEPTING_OFFERS",
+      round: 2,
+      listingVersion: 2,
+      offerDeadline: deadline,
+    });
+    expect(w.uow.repos.jobs.rows.slice(-2)).toEqual([
+      expect.objectContaining({
+        type: "MATCH_PACKAGE",
+        payload: { packageId: pkg.id, round: 2, listingVersion: 2, trigger: "REOPEN" },
+      }),
+      expect.objectContaining({ type: "CLOSE_OFFER_ROUND", runAt: deadline }),
+    ]);
+    await expect(
+      w.publication.reopen(avery, pkg.id, {
+        version: reopened.version,
+        offerDeadline: deadline.toISOString(),
+      }),
+    ).rejects.toMatchObject({ code: "NOT_REOPENABLE" });
   });
 });

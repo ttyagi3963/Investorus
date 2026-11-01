@@ -5,6 +5,7 @@
 // audited decision. A run for a stale version or a closed package does nothing, so a retried or
 // late job is harmless.
 import type { BuyBox } from "@clever/contracts/buy-box";
+import type { MatchPackagePayload } from "@clever/contracts/jobs";
 import type { ListingPackage } from "@clever/contracts/listing-package";
 import type { Property } from "@clever/contracts/property";
 import type { IClock } from "../../providers/clock/IClock.js";
@@ -15,7 +16,7 @@ import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
 import { placeOf } from "../notice-text.js";
 
 export interface IMatchingWorkflow {
-  evaluatePackage(packageId: string, round: number, listingVersion: number): Promise<void>;
+  evaluatePackage(run: MatchPackagePayload): Promise<void>;
 }
 
 type MatchedBox = { box: BuyBox; evaluation: BuyBoxEvaluation };
@@ -26,7 +27,12 @@ export class MatchingWorkflow implements IMatchingWorkflow {
     private readonly deps: { clock: IClock },
   ) {}
 
-  async evaluatePackage(packageId: string, round: number, listingVersion: number): Promise<void> {
+  async evaluatePackage({
+    packageId,
+    round,
+    listingVersion,
+    trigger,
+  }: MatchPackagePayload): Promise<void> {
     const now = this.deps.clock.now();
     const today = now.toISOString().slice(0, 10);
 
@@ -62,7 +68,7 @@ export class MatchingWorkflow implements IMatchingWorkflow {
           investorId,
           round,
           matchedBuyBoxIds: matched.map(({ box }) => box.id),
-          trigger: listingVersion === 1 ? "PUBLISH" : "PACKAGE_EDIT",
+          trigger,
         });
         // Already told about this version: a re-run adds nothing.
         if (!created && (match.lastNotifiedListingVersion ?? 0) >= listingVersion) continue;

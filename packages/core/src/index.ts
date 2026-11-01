@@ -56,4 +56,8 @@ export {
   type IPublicationWorkflow,
 } from "./workflows/publication/PublicationWorkflow.js";
 export { MatchingWorkflow, type IMatchingWorkflow } from "./workflows/matching/MatchingWorkflow.js";
+export {
+  OfferRoundWorkflow,
+  type IOfferRoundWorkflow,
+} from "./workflows/offer-round/OfferRoundWorkflow.js";
 export { createJobHandlers, type JobHandler } from "./jobs/handlers.js";

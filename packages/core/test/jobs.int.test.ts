@@ -1,6 +1,7 @@
 // Checks the durable job rules against a real Postgres (T289; constitution VIII): one live job per
 // dedupe key, carrying the trace ID of the request that queued it; two workers never claim the same
-// job; a failure is retried until maxRetries, then FAILED; and a job whose worker died is reclaimed.
+// job; a job scheduled for later waits for its time on the worker's clock; a failure is retried
+// until maxRetries, then FAILED; and a job whose worker died is reclaimed.
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -49,10 +50,20 @@ describe("Job repository", () => {
     await db.query(`UPDATE "Job" SET status = 'COMPLETED'`);
     const job = await enqueue();
     const [a, b] = await Promise.all([
-      uow.run((repos) => repos.jobs.claimNext("worker-a")),
-      uow.run((repos) => repos.jobs.claimNext("worker-b")),
+      uow.run((repos) => repos.jobs.claimNext("worker-a", new Date())),
+      uow.run((repos) => repos.jobs.claimNext("worker-b", new Date())),
     ]);
     expect([a?.id, b?.id].filter(Boolean)).toEqual([job.id]);
+  });
+
+  it("does not claim a job scheduled for later until the worker's clock reaches it", async () => {
+    await db.query(`UPDATE "Job" SET status = 'COMPLETED' WHERE status <> 'FAILED'`);
+    const runAt = new Date(Date.now() + 48 * 3_600_000);
+    const job = await uow.run((repos) =>
+      repos.jobs.enqueue({ type: "MATCH_PACKAGE", dedupeKey: "later", payload: {}, runAt }),
+    );
+    expect(await uow.run((repos) => repos.jobs.claimNext("worker-a", new Date()))).toBeNull();
+    expect((await uow.run((repos) => repos.jobs.claimNext("worker-a", runAt)))?.id).toBe(job.id);
   });
 
   it("re-queues a failed job until it has been retried maxRetries times, then marks it FAILED", async () => {
@@ -71,13 +82,15 @@ describe("Job repository", () => {
   it("reclaims a job whose worker has held it for more than 60 seconds", async () => {
     await db.query(`UPDATE "Job" SET status = 'COMPLETED' WHERE status <> 'FAILED'`);
     const job = await enqueue();
-    await uow.run((repos) => repos.jobs.claimNext("worker-a"));
+    await uow.run((repos) => repos.jobs.claimNext("worker-a", new Date()));
     expect(await uow.run((repos) => repos.jobs.reclaimStale(60))).toBe(0);
     await db.query(
       `UPDATE "Job" SET "lockedAt" = CURRENT_TIMESTAMP - interval '61 seconds' WHERE id = $1`,
       [job.id],
     );
     expect(await uow.run((repos) => repos.jobs.reclaimStale(60))).toBe(1);
-    expect((await uow.run((repos) => repos.jobs.claimNext("worker-b")))?.id).toBe(job.id);
+    expect((await uow.run((repos) => repos.jobs.claimNext("worker-b", new Date())))?.id).toBe(
+      job.id,
+    );
   });
 });

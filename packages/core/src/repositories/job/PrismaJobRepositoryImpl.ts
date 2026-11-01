@@ -1,7 +1,8 @@
 // The durable job port over Prisma (T288): the only file with Job queries. Enqueue, claim, and
 // fail are single SQL statements, so two workers or two requests can never race: the partial
 // unique index keeps one live job per dedupe key, and FOR UPDATE SKIP LOCKED hands each job to one
-// worker. Times come from the database clock, like the columns' defaults.
+// worker. A job is due when the worker's clock reaches its runAt, so tests can move time; the other
+// times come from the database clock, like the columns' defaults.
 import { randomUUID } from "node:crypto";
 import type { Job } from "@clever/contracts/jobs";
 import type { Prisma } from "../../generated/prisma/client.js";
@@ -14,11 +15,12 @@ const BACKOFF_SECONDS = 5;
 export class PrismaJobRepositoryImpl implements IJobRepository {
   constructor(private readonly db: Prisma.TransactionClient) {}
 
-  async enqueue({ type, dedupeKey, payload }: NewJob): Promise<Job> {
+  async enqueue({ type, dedupeKey, payload, runAt }: NewJob): Promise<Job> {
     const inserted = await this.db.$queryRaw<{ id: string }[]>`
-      INSERT INTO "Job" (id, type, "dedupeKey", payload, "correlationId", "updatedAt")
+      INSERT INTO "Job" (id, type, "dedupeKey", payload, "runAt", "correlationId", "updatedAt")
       VALUES (${randomUUID()}, ${type}::"JobType", ${dedupeKey}, ${JSON.stringify(payload)}::jsonb,
-              ${currentTraceId() ?? null}, CURRENT_TIMESTAMP)
+              COALESCE(${runAt ?? null}::timestamp, CURRENT_TIMESTAMP), ${currentTraceId() ?? null},
+              CURRENT_TIMESTAMP)
       ON CONFLICT ("type", "dedupeKey") WHERE status IN ('QUEUED', 'PROCESSING') DO NOTHING
       RETURNING id`;
     const row = inserted[0]
@@ -29,14 +31,14 @@ export class PrismaJobRepositoryImpl implements IJobRepository {
     return toJob(row);
   }
 
-  async claimNext(workerId: string): Promise<Job | null> {
+  async claimNext(workerId: string, now: Date): Promise<Job | null> {
     const claimed = await this.db.$queryRaw<{ id: string }[]>`
       UPDATE "Job"
       SET status = 'PROCESSING', "lockedAt" = CURRENT_TIMESTAMP, "lockedBy" = ${workerId},
           "updatedAt" = CURRENT_TIMESTAMP
       WHERE id = (
         SELECT id FROM "Job"
-        WHERE status = 'QUEUED' AND "runAt" <= CURRENT_TIMESTAMP
+        WHERE status = 'QUEUED' AND "runAt" <= ${now}
         ORDER BY "runAt"
         FOR UPDATE SKIP LOCKED
         LIMIT 1

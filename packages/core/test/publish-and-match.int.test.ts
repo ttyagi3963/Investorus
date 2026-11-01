@@ -17,6 +17,7 @@ import { ListingPackageService } from "../src/services/listing-package/ListingPa
 import { NotificationService } from "../src/services/notification/NotificationService.js";
 import { PrismaUnitOfWorkImpl } from "../src/unit-of-work/PrismaUnitOfWorkImpl.js";
 import { MatchingWorkflow } from "../src/workflows/matching/MatchingWorkflow.js";
+import { OfferRoundWorkflow } from "../src/workflows/offer-round/OfferRoundWorkflow.js";
 import { PublicationWorkflow } from "../src/workflows/publication/PublicationWorkflow.js";
 import { startMigratedDatabase } from "./database.js";
 
@@ -64,7 +65,10 @@ describe("publish and match", () => {
       clock,
     });
     const publication = new PublicationWorkflow(uow, { clock });
-    const handlers = createJobHandlers({ matching: new MatchingWorkflow(uow, { clock }) });
+    const handlers = createJobHandlers({
+      matching: new MatchingWorkflow(uow, { clock }),
+      offerRound: new OfferRoundWorkflow(uow),
+    });
     const inDays = (days: number) =>
       new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
     const draft = {
@@ -99,7 +103,7 @@ describe("publish and match", () => {
 
     const { package: published } = await publication.publish(avery, created.id, { version: 1 });
     expect(published).toMatchObject({ status: "ACCEPTING_OFFERS", listingVersion: 1 });
-    const job = await uow.run((repos) => repos.jobs.claimNext("worker-a"));
+    const job = await uow.run((repos) => repos.jobs.claimNext("worker-a", new Date()));
     await handlers[job!.type](job!.payload);
     await uow.run((repos) => repos.jobs.complete(job!.id));
 

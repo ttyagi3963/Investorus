@@ -2,8 +2,9 @@
 // payload schema per job type. A payload is checked with Zod when the worker reads it (VI): it was
 // written earlier and may come from an older version of the code.
 import { z } from "zod";
+import { MATCH_TRIGGERS } from "../match/match.js";
 
-export const JOB_TYPES = ["MATCH_PACKAGE"] as const;
+export const JOB_TYPES = ["MATCH_PACKAGE", "CLOSE_OFFER_ROUND", "EXPIRE_OFFER"] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
 export const JOB_STATUSES = ["QUEUED", "PROCESSING", "COMPLETED", "FAILED"] as const;
@@ -29,5 +30,22 @@ export const matchPackagePayloadSchema = z.object({
   packageId: z.string().min(1),
   round: z.number().int().positive(),
   listingVersion: z.number().int().positive(),
+  /** What shares the package with a newly matched investor: a publish, an edit, or a reopen. */
+  trigger: z.enum(MATCH_TRIGGERS),
 });
 export type MatchPackagePayload = z.infer<typeof matchPackagePayloadSchema>;
+
+/** CLOSE_OFFER_ROUND: end a round's offers at its deadline (the deadline names which one). */
+export const closeOfferRoundPayloadSchema = z.object({
+  packageId: z.string().min(1),
+  round: z.number().int().positive(),
+  offerDeadline: z.iso.datetime(),
+});
+export type CloseOfferRoundPayload = z.infer<typeof closeOfferRoundPayloadSchema>;
+
+/** EXPIRE_OFFER: expire one revision of an offer at its expiry. */
+export const expireOfferPayloadSchema = z.object({
+  offerId: z.string().min(1),
+  revision: z.number().int().positive(),
+});
+export type ExpireOfferPayload = z.infer<typeof expireOfferPayloadSchema>;

@@ -3,13 +3,17 @@
 // enqueued it, so the worker can log its run under the same ID.
 import type { Job, JobType } from "@clever/contracts/jobs";
 
-export type NewJob = { type: JobType; dedupeKey: string; payload: unknown };
+/** `runAt` schedules the job for later (a deadline or an expiry); without it the job is due now. */
+export type NewJob = { type: JobType; dedupeKey: string; payload: unknown; runAt?: Date };
 
 export interface IJobRepository {
   /** Queues the job, or returns the one already QUEUED or PROCESSING under the same dedupe key. */
   enqueue(job: NewJob): Promise<Job>;
-  /** Locks the oldest due QUEUED job for `workerId` (SKIP LOCKED: never one another worker holds). */
-  claimNext(workerId: string): Promise<Job | null>;
+  /**
+   * Locks the oldest QUEUED job due by `now` (the worker's clock) for `workerId` (SKIP LOCKED: never
+   * one another worker holds).
+   */
+  claimNext(workerId: string, now: Date): Promise<Job | null>;
   /** Re-queues PROCESSING jobs locked more than `seconds` ago (their worker died); returns how many. */
   reclaimStale(seconds: number): Promise<number>;
   complete(id: string): Promise<void>;

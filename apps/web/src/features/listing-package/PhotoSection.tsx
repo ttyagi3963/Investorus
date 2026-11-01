@@ -1,6 +1,7 @@
 "use client";
 // The photo section of a saved package (T270): the photos in order, each with a remove button,
-// and a picker to add more. Photos are optional on a draft, so this appears only after the first save.
+// and a picker to add more. Photos are optional on a draft, so this appears only after the first save;
+// publishing needs one, and a publish blocker links here (#photos).
 import { PHOTO_CONTENT_TYPES } from "@clever/contracts/photo";
 import type { AgentPackageView } from "@clever/contracts/listing-package";
 import { Button, PhotoPicker } from "@clever/ui";
@@ -11,6 +12,7 @@ export function PhotoSection({ pkg }: { pkg: AgentPackageView }) {
 
   return (
     <section
+      id="photos"
       aria-labelledby="photos-heading"
       className="flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card"
     >
@@ -18,7 +20,7 @@ export function PhotoSection({ pkg }: { pkg: AgentPackageView }) {
         Photos
       </h2>
       <p className="text-label text-muted">
-        Optional on a draft. JPEG, PNG, or WebP, up to 10 MB each and 20 in all.
+        At least one is needed to publish. JPEG, PNG, or WebP, up to 10 MB each and 20 in all.
       </p>
       {pkg.photos.length === 0 ? (
         <p className="text-muted">No photos yet.</p>

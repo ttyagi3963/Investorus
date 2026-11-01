@@ -5,6 +5,7 @@ import { MAX_PHOTO_BYTES, PHOTO_CONTENT_TYPES } from "@clever/contracts/photo";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { photos as photosApi } from "../../lib/bff-client";
+import { errorText } from "../../lib/errors";
 import { packageKeys } from "./queries";
 
 const MAX_PHOTOS = 20;
@@ -50,7 +51,7 @@ export function usePhotoUpload(packageId: string, existing: readonly { position:
         taken.add(position);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The upload failed. Try again.");
+      setError(errorText(err, "The upload failed. Try again."));
     } finally {
       setBusy(false);
       await refresh();
@@ -63,7 +64,7 @@ export function usePhotoUpload(packageId: string, existing: readonly { position:
     try {
       await photosApi.remove(packageId, photoId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "The photo could not be removed.");
+      setError(errorText(err, "The photo could not be removed."));
     } finally {
       setBusy(false);
       await refresh();

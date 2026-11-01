@@ -1,5 +1,5 @@
 "use client";
-// The agent layout's sign-out button (T266): asks the BFF to clear the session cookie, then goes to
+// The signed-in layouts' sign-out button (T266): asks the BFF to clear the session cookie, then goes to
 // the login page. If that fails, it stays put and says so in an announced alert.
 import { Button } from "@clever/ui";
 import { useRouter } from "next/navigation";

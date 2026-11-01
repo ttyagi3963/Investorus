@@ -1,16 +1,20 @@
 "use client";
-// The package form (T270), one form for a new draft and for editing one: seller, property, and
-// price sections. Each input is named by its api field path, so an api error shows on its field.
-// On edit, an emptied optional field is sent as null (cleared); on create it is left out.
+// The package form (T270, T301), one form for a new draft and for editing one: seller, property,
+// price, and the publish fields (closing window, listed, programs). Each input is named, and has
+// the id of, its api field path, so an api error shows on its field and a publish blocker links to
+// it. On edit, an emptied optional field is sent as null (cleared); on create it is left out.
 import type {
   AgentPackageView,
   CreateListingPackageInput,
   UpdateListingPackageInput,
 } from "@clever/contracts/listing-package";
+import { OFFER_PROGRAMS } from "@clever/contracts/listing-package";
 import { PROPERTY_CONDITIONS, PROPERTY_TYPES } from "@clever/contracts/property";
-import { Button, NumberField, Select, TextField } from "@clever/ui";
+import { Button, CheckboxGroup, NumberField, Select, TextField } from "@clever/ui";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { ErrorNotice } from "@/features/errors/ErrorNotice";
+import { PROGRAM_LABELS } from "./labels";
 import { useSavePackage } from "./useSavePackage";
 
 const TYPE_LABELS: Record<(typeof PROPERTY_TYPES)[number], string> = {
@@ -30,6 +34,11 @@ const CONDITION_LABELS: Record<(typeof PROPERTY_CONDITIONS)[number], string> = {
 };
 const typeOptions = PROPERTY_TYPES.map((id) => ({ id, label: TYPE_LABELS[id] }));
 const conditionOptions = PROPERTY_CONDITIONS.map((id) => ({ id, label: CONDITION_LABELS[id] }));
+const programOptions = OFFER_PROGRAMS.map((id) => ({ id, label: PROGRAM_LABELS[id] }));
+const listedOptions = [
+  { id: "no", label: "No" },
+  { id: "yes", label: "Yes" },
+];
 const USD = { style: "currency", currency: "USD", maximumFractionDigits: 0 } as const;
 
 const OPTIONAL_TEXT = [
@@ -73,11 +82,18 @@ function readForm(form: FormData, empty: undefined | null) {
     "property.propertyType",
   ];
   const price = (name: string) => (text(name) === "" ? empty : Number(text(name)));
+  const listed = text("currentlyListed");
+  const programs = form.getAll("eligiblePrograms").map(String);
   return {
     seller: section("seller.", required),
     property: section("property.", required),
     priceExpectationMin: price("priceExpectationMin"),
     priceExpectationMax: price("priceExpectationMax"),
+    closingWindowStart: value("closingWindowStart", false),
+    closingWindowEnd: value("closingWindowEnd", false),
+    currentlyListed: listed === "" ? empty : listed === "yes",
+    // On edit, no box checked clears the programs; on create it is left out.
+    eligiblePrograms: programs.length > 0 ? programs : empty === null ? [] : undefined,
   };
 }
 
@@ -103,16 +119,8 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-stack-lg" noValidate>
-      {notice && (
-        <div
-          role={notice.tone === "error" ? "alert" : "status"}
-          className={
-            notice.tone === "error"
-              ? "rounded-control border border-danger bg-danger-surface p-inset-md text-danger"
-              : "rounded-control border border-default bg-card p-inset-md text-default"
-          }
-        >
-          <p>{notice.message}</p>
+      {notice?.tone === "error" && (
+        <ErrorNotice error={notice}>
           {notice.existingPackageId && (
             <Link
               href={`/agent/packages/${notice.existingPackageId}`}
@@ -121,7 +129,15 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
               Open the existing package
             </Link>
           )}
-        </div>
+        </ErrorNotice>
+      )}
+      {notice?.tone === "saved" && (
+        <p
+          role="status"
+          className="rounded-control border border-default bg-card p-inset-md text-default"
+        >
+          {notice.message}
+        </p>
       )}
 
       <fieldset className="flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card">
@@ -154,6 +170,7 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
       <fieldset className="flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card">
         <legend className="font-heading text-heading-sm">Property</legend>
         <TextField
+          id="property.streetLine"
           name="property.streetLine"
           label="Street address"
           defaultValue={p?.streetLine}
@@ -161,6 +178,7 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
           isRequired
         />
         <TextField
+          id="property.zip"
           name="property.zip"
           label="ZIP code"
           inputMode="numeric"
@@ -169,12 +187,14 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
           isRequired
         />
         <TextField
+          id="property.neighborhood"
           name="property.neighborhood"
           label="Neighborhood"
           defaultValue={p?.neighborhood ?? undefined}
           errorMessage={error("property.neighborhood")}
         />
         <Select
+          id="property.propertyType"
           name="property.propertyType"
           label="Property type"
           options={typeOptions}
@@ -184,6 +204,7 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
           isRequired
         />
         <NumberField
+          id="property.beds"
           name="property.beds"
           label="Beds"
           minValue={0}
@@ -191,6 +212,7 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
           errorMessage={error("property.beds")}
         />
         <NumberField
+          id="property.baths"
           name="property.baths"
           label="Baths"
           minValue={0}
@@ -199,6 +221,7 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
           errorMessage={error("property.baths")}
         />
         <NumberField
+          id="property.sqft"
           name="property.sqft"
           label="Square feet"
           minValue={0}
@@ -206,6 +229,7 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
           errorMessage={error("property.sqft")}
         />
         <NumberField
+          id="property.lotSqft"
           name="property.lotSqft"
           label="Lot square feet"
           minValue={0}
@@ -214,6 +238,7 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
         />
         {propertyType === "MULTI_FAMILY" && (
           <NumberField
+            id="property.units"
             name="property.units"
             label="Units"
             minValue={0}
@@ -222,6 +247,7 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
           />
         )}
         <NumberField
+          id="property.yearBuilt"
           name="property.yearBuilt"
           label="Year built"
           minValue={0}
@@ -230,6 +256,7 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
           errorMessage={error("property.yearBuilt")}
         />
         <Select
+          id="property.condition"
           name="property.condition"
           label="Condition"
           options={conditionOptions}
@@ -237,6 +264,7 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
           errorMessage={error("property.condition")}
         />
         <NumberField
+          id="property.repairEstimate"
           name="property.repairEstimate"
           label="Repair estimate"
           minValue={0}
@@ -265,6 +293,47 @@ export function PackageForm({ existing }: { existing?: AgentPackageView }) {
           defaultValue={existing?.priceExpectationMax}
           errorMessage={error("priceExpectationMax")}
           isRequired
+        />
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card">
+        <legend className="font-heading text-heading-sm">Publishing</legend>
+        <p className="text-label text-muted">
+          Investors need these before the package can be published.
+        </p>
+        <TextField
+          id="closingWindowStart"
+          name="closingWindowStart"
+          type="date"
+          label="Closing window starts"
+          defaultValue={existing?.closingWindowStart ?? undefined}
+          errorMessage={error("closingWindowStart")}
+        />
+        <TextField
+          id="closingWindowEnd"
+          name="closingWindowEnd"
+          type="date"
+          label="Closing window ends"
+          defaultValue={existing?.closingWindowEnd ?? undefined}
+          errorMessage={error("closingWindowEnd")}
+        />
+        <Select
+          id="currentlyListed"
+          name="currentlyListed"
+          label="Is the home listed for sale now?"
+          options={listedOptions}
+          defaultSelectedKey={
+            existing?.currentlyListed == null ? undefined : existing.currentlyListed ? "yes" : "no"
+          }
+          errorMessage={error("currentlyListed")}
+        />
+        <CheckboxGroup
+          id="eligiblePrograms"
+          name="eligiblePrograms"
+          label="Offer programs the seller will consider"
+          options={programOptions}
+          defaultValue={existing?.eligiblePrograms}
+          errorMessage={error("eligiblePrograms")}
         />
       </fieldset>
 

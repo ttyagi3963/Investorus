@@ -11,15 +11,23 @@ export class ApiError extends Error {
   readonly code: string;
   readonly fields: FieldError[];
   readonly details: Record<string, unknown>;
+  /** The request's trace ID, which a user can quote to support (T283, T300). */
+  readonly requestId: string | null;
 
   constructor(
     status: number,
-    body: { error?: string; code?: string; details?: Record<string, unknown> },
+    body: {
+      error?: string;
+      code?: string;
+      details?: Record<string, unknown>;
+      requestId?: string;
+    },
   ) {
     super(body.error ?? `Request failed (${status})`);
     this.name = new.target.name;
     this.status = status;
     this.code = body.code ?? "UNKNOWN";
+    this.requestId = body.requestId ?? null;
     this.details = body.details ?? {};
     this.fields = Array.isArray(this.details.fields) ? (this.details.fields as FieldError[]) : [];
   }

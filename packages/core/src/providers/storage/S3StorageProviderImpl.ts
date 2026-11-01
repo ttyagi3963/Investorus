@@ -81,6 +81,24 @@ export class S3StorageProviderImpl implements IStorageProvider {
     }
   }
 
+  async read(key: string): Promise<Buffer | null> {
+    try {
+      const object = await this.client.send(
+        new GetObjectCommand({ Bucket: this.options.bucket, Key: key }),
+      );
+      if (!object.Body) throw new InfrastructureError("S3 sent an object without a body", 502);
+      return Buffer.from(await object.Body.transformToByteArray());
+    } catch (err) {
+      if (err instanceof InfrastructureError) throw err;
+      if (statusOf(err) === 404) return null;
+      throw new InfrastructureError(
+        `S3 refused a storage read (${statusOf(err) ?? "no answer"})`,
+        502,
+        err,
+      );
+    }
+  }
+
   private async sign(
     command: PutObjectCommand | GetObjectCommand,
     expiresIn: number,

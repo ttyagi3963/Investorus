@@ -69,4 +69,19 @@ describe("sandbox storage", () => {
     expect(res.headers["content-type"]).toBe("image/jpeg");
     expect(res.headers["content-length"]).toBe("2000");
   });
+
+  it("returns a stored object's bytes on the internal route, only with the token", async () => {
+    await request(app)
+      .put(uploadPath("imports/i1.csv", "text/csv", 8))
+      .set("Content-Type", "text/csv")
+      .send("a,b\n1,2\n")
+      .expect(200);
+    const internal = `/internal/storage/objects/${encodeURIComponent("imports/i1.csv")}`;
+    await request(app).get(internal).expect(401);
+    const res = await request(app)
+      .get(internal)
+      .set("x-sandbox-token", "internal-token")
+      .expect(200);
+    expect(res.text).toBe("a,b\n1,2\n");
+  });
 });

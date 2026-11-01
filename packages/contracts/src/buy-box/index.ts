@@ -14,6 +14,8 @@ export {
   CRITERION_KEYS,
   MATERIAL_FIELDS,
   type CriterionDefinition,
+  type CriterionForm,
   type CriterionKey,
   type ListingField,
 } from "./criteria.js";
+export { buyBoxInputSchema, type BuyBoxInput } from "./inputs.js";

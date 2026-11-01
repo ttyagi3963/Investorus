@@ -12,14 +12,13 @@ import { PhotoSection } from "@/features/listing-package/PhotoSection";
 import { PublishPanel } from "@/features/listing-package/PublishPanel";
 import { usePackage } from "@/features/listing-package/queries";
 import { PageHeader } from "@/features/shell/PageHeader";
-import { describeError, isGone } from "@/lib/errors";
+import { describeError } from "@/lib/errors";
 
 export default function EditPackagePage() {
   const { id } = useParams<{ id: string }>();
   const { data: pkg, isPending, isError, error } = usePackage(id);
 
-  // A package deleted since this tab loaded it comes back 404: show that, not the remembered copy.
-  if (!pkg || isGone(error)) {
+  if (!pkg) {
     return (
       <>
         <PageHeader title="Listing package" back={{ href: "/agent", label: "Listing packages" }} />

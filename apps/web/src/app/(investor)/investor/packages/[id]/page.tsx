@@ -31,7 +31,7 @@ import {
 import { useInvestorPackage } from "@/features/offers/queries";
 import { timeLeft, useNow } from "@/features/offers/time-left";
 import { PageHeader } from "@/features/shell/PageHeader";
-import { describeError, isGone } from "@/lib/errors";
+import { describeError } from "@/lib/errors";
 
 const NOTICE = "rounded-control bg-soft p-inset-md text-body";
 const DEADLINE: Intl.DateTimeFormatOptions = {
@@ -135,8 +135,7 @@ export default function InvestorPackagePage() {
     (pkg.offerDeadline === null || Date.parse(pkg.offerDeadline) > now);
   const back = { href: "/investor", label: "Opportunities" };
 
-  // A package deleted since this tab loaded it comes back 404: show that, not the remembered copy.
-  if (!pkg || isGone(error)) {
+  if (!pkg) {
     return (
       <>
         <PageHeader title="Listing" back={back} />

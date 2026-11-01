@@ -1186,6 +1186,7 @@ designs that need features not yet built are listed at the end of this section, 
 - [X] T331 The investor screens (designs 06, 07, 08): opportunities as photo cards with location, time left, facts, and the seller's range; the package page with photos and the offer form; the buy box list and editor with chip choices
 - [X] T332 The operations import screen (design 10): the new-import card beside the batch's results, with stat tiles and outcome chips
 - [X] T333 Documentation: contracts/design-tokens.md (the brand file is the bundle's DTCG file; the Sprint 1 seeded values are replaced), plan.md, README, and this section's list of what the designs show that is not built
+- [X] T334 A record that no longer exists is never shown from memory (owner, 2026-11-01: a tab kept showing a package deleted by a database reset; tests first): the shared React Query client throws a 404 to the area's error page even when the tab remembers the record (`throwOnError`); each signed-in area gets an error.tsx inside its layout with "Not found" and a link back, or "Something went wrong" with Try again (which clears React Query's error state); the deal query opts out, because no deal yet is a normal state the deal page shows plainly
 
 **Not built from the designs** (each needs a feature or data that does not exist yet):
 - **Every signed-in header**: the signed-in user's name, role, and avatar (the web app does not

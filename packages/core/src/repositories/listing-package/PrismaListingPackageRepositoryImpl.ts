@@ -42,6 +42,14 @@ export class PrismaListingPackageRepositoryImpl implements IListingPackageReposi
     return rows.map(toListingPackage);
   }
 
+  async listOpenForOffers(now: Date): Promise<ListingPackage[]> {
+    const rows = await this.db.listingPackage.findMany({
+      where: { status: "ACCEPTING_OFFERS", offerDeadline: { gt: now } },
+      orderBy: { publishedAt: "asc" },
+    });
+    return rows.map(toListingPackage);
+  }
+
   async findByAddressHash(addressHash: string) {
     return this.db.listingPackage.findFirst({
       where: { addressHash, status: { not: "WITHDRAWN" } },

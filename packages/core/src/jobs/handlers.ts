@@ -1,10 +1,11 @@
-// The worker's job handlers (T293, T306, T311; constitution VIII), one per job type, so a type without a
+// The worker's job handlers (T293, T306, T311, T321; constitution VIII), one per job type, so a type without a
 // handler fails the build. Each checks its payload with Zod first (VI): it was written earlier and
 // may come from an older version of the code. A bad payload is a ZodError, which is not retried.
 import {
   closeOfferRoundPayloadSchema,
   expireOfferPayloadSchema,
   expireReconfirmationPayloadSchema,
+  matchBuyBoxPayloadSchema,
   matchPackagePayloadSchema,
   type JobType,
 } from "@clever/contracts/jobs";
@@ -22,6 +23,9 @@ export function createJobHandlers(deps: {
   return {
     MATCH_PACKAGE: async (payload) => {
       await deps.matching.evaluatePackage(matchPackagePayloadSchema.parse(payload));
+    },
+    MATCH_BUY_BOX: async (payload) => {
+      await deps.matching.evaluateBuyBox(matchBuyBoxPayloadSchema.parse(payload));
     },
     CLOSE_OFFER_ROUND: async (payload) => {
       await deps.offerRound.closeRound(closeOfferRoundPayloadSchema.parse(payload));

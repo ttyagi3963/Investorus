@@ -112,6 +112,7 @@ const ACTION_TEXT: Record<AuditAction, (details: Record<string, unknown>) => str
       ? "The backup investor did not reconfirm in time"
       : "The backup investor declined to reconfirm",
   PII_ACCESSED: () => "The buyer viewed the seller's contact details",
+  BUY_BOX_SAVED: () => "A buy box was saved",
 };
 
 export const timelineText = (entry: TimelineEntryView) => ACTION_TEXT[entry.action](entry.details);

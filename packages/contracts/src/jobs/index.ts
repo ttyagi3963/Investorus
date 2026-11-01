@@ -6,6 +6,7 @@ export {
   closeOfferRoundPayloadSchema,
   expireOfferPayloadSchema,
   expireReconfirmationPayloadSchema,
+  matchBuyBoxPayloadSchema,
   matchPackagePayloadSchema,
   type CloseOfferRoundPayload,
   type ExpireOfferPayload,
@@ -13,5 +14,6 @@ export {
   type Job,
   type JobStatus,
   type JobType,
+  type MatchBuyBoxPayload,
   type MatchPackagePayload,
 } from "./jobs.js";

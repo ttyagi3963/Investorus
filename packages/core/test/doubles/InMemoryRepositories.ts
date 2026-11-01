@@ -2,9 +2,9 @@
 // (constitution XV). They copy the behavior the services rely on: agent-filtered reads, the stale
 // version refusal, one package per address, stage 1 of matching, one match per investor and
 // round, and one live job per dedupe key. `run` does not roll back.
-import type { BuyBox } from "@clever/contracts/buy-box";
+import type { BuyBox, BuyBoxInput } from "@clever/contracts/buy-box";
 import type { AuditEntry } from "@clever/contracts/audit";
-import { BusinessRuleError, ConflictError } from "@clever/contracts/common";
+import { BusinessRuleError, ConflictError, ValidationError } from "@clever/contracts/common";
 import type { Deal, Decision } from "@clever/contracts/deal";
 import type { Investor } from "@clever/contracts/investor";
 import type { Job } from "@clever/contracts/jobs";
@@ -172,6 +172,11 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
   async listByAgent(agentId: string) {
     return [...this.rows.values()].filter((r) => r.agentId === agentId);
   }
+  async listOpenForOffers(now: Date) {
+    return [...this.rows.values()].filter(
+      (r) => r.status === "ACCEPTING_OFFERS" && r.offerDeadline !== null && r.offerDeadline > now,
+    );
+  }
   async findByAddressHash(addressHash: string) {
     const row = [...this.rows.values()].find(
       (r) => r.addressHash === addressHash && r.status !== "WITHDRAWN",
@@ -229,17 +234,58 @@ export class InMemoryBuyBoxRepository implements IBuyBoxRepository {
   readonly investors = new Map<string, Pick<Investor, "status" | "proofOfFundsExpiresAt">>();
   async listCandidates(zip: string, state: string, now: Date) {
     return this.boxes.filter((box) => {
-      const investor = this.investors.get(box.investorId) ?? {
-        status: "ACTIVE",
-        proofOfFundsExpiresAt: new Date(now.getTime() + 86_400_000),
-      };
-      const funded =
-        investor.proofOfFundsExpiresAt !== null && investor.proofOfFundsExpiresAt > now;
       const covers =
         box.geographyMode === "NATIONWIDE" ||
         box.geography.includes(box.geographyMode === "STATES" ? state : zip);
-      return box.status === "ACTIVE" && investor.status === "ACTIVE" && funded && covers;
+      return this.canMatch(box, now) && covers;
     });
+  }
+  /** Box ACTIVE, investor ACTIVE, proof of funds after `now` (a day ahead unless a test says). */
+  private canMatch(box: BuyBox, now: Date) {
+    const investor = this.investors.get(box.investorId) ?? {
+      status: "ACTIVE",
+      proofOfFundsExpiresAt: new Date(now.getTime() + 86_400_000),
+    };
+    const funded = investor.proofOfFundsExpiresAt !== null && investor.proofOfFundsExpiresAt > now;
+    return box.status === "ACTIVE" && investor.status === "ACTIVE" && funded;
+  }
+  readonly versions: { buyBoxId: string; version: number; createdBy: string | null }[] = [];
+  async listForInvestor(investorId: string) {
+    return this.boxes
+      .filter((box) => box.investorId === investorId)
+      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+  }
+  async findById(id: string) {
+    return this.boxes.find((box) => box.id === id) ?? null;
+  }
+  async findMatchable(id: string, version: number, now: Date) {
+    const box = await this.findById(id);
+    return box && box.version === version && this.canMatch(box, now) ? box : null;
+  }
+  async create(investorId: string, input: BuyBoxInput, isDefault = false) {
+    this.assertNameFree(investorId, input.name, null);
+    const box: BuyBox = { ...input, id: nextId("box"), investorId, isDefault, version: 1 };
+    this.boxes.push(box);
+    return box;
+  }
+  async update(id: string, version: number, input: BuyBoxInput) {
+    const index = this.boxes.findIndex((box) => box.id === id);
+    const row = this.boxes[index];
+    if (!row || row.version !== version) throw new ConflictError("This buy box changed.");
+    this.assertNameFree(row.investorId, input.name, id);
+    const next: BuyBox = { ...row, ...input, version: row.version + 1 };
+    this.boxes[index] = next;
+    return next;
+  }
+  async appendVersion(box: BuyBox, createdBy: string | null) {
+    this.versions.push({ buyBoxId: box.id, version: box.version, createdBy });
+  }
+  private assertNameFree(investorId: string, name: string, except: string | null) {
+    if (this.boxes.some((b) => b.investorId === investorId && b.name === name && b.id !== except)) {
+      throw new ValidationError("Some fields are invalid", [
+        { field: "name", message: "You already have a buy box with this name" },
+      ]);
+    }
   }
 }
 

@@ -721,7 +721,7 @@ data-model.md, contracts/api.md, and contracts/investor-import.md; for the owner
 ### PR: buy boxes (packages/contracts, packages/core)
 
 - [X] T320 Put the buy box rules in the registry (tests first): each criterion's field schema and form metadata in criteria.ts, `buyBoxInputSchema` (name, strategy, status, geography mode and its states or ZIP codes, every criterion, each blank for "any") composed from them, and the US state codes; each rule's refusal names its field (from T022)
-- [ ] T321 Save buy boxes and match them (tests first): `BuyBoxService` (`list` default first, `get`, `create`, `update` with pause and resume; only the investor's own; the ZIP codes checked with `IGeoProvider`; version + 1, the BuyBoxVersion snapshot, BUY_BOX_SAVED audited, and MATCH_BUY_BOX when the criteria or status changed, all in one change; a stale version is a ConflictError); the buy box repository's reads and writes; `MatchingWorkflow.evaluateBuyBox` and the MATCH_BUY_BOX job type, payload schema, and handler (from T178, T185, T218, T219)
+- [X] T321 Save buy boxes and match them (tests first): `BuyBoxService` (`list` default first, `get`, `create`, `update` with pause and resume; only the investor's own; the ZIP codes checked with `IGeoProvider`; version + 1, the BuyBoxVersion snapshot, BUY_BOX_SAVED audited, and MATCH_BUY_BOX when the criteria or status changed, all in one change; a stale version is a ConflictError); the buy box repository's reads and writes; `MatchingWorkflow.evaluateBuyBox` and the MATCH_BUY_BOX job type, payload schema, and handler (from T178, T185, T218, T219)
 
 ### PR: the import (packages/core, apps/sandbox, apps/worker)
 

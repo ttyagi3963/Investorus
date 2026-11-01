@@ -1,0 +1,117 @@
+// An investor's own buy boxes (T321; FR-060, FR-023, XIX.3): they list, read, create, and save
+// them, and pause or resume one by saving its status. Input is checked with the registry's schema,
+// and every ZIP code with the ZIP lookup. A save names the version it read, keeps the new version
+// as a snapshot, is audited, and, when the box can match and its criteria or status changed,
+// queues MATCH_BUY_BOX in the same change, so packages still taking offers are matched against it.
+import type { Actor } from "@clever/contracts/auth";
+import {
+  buyBoxInputSchema,
+  CRITERIA,
+  CRITERION_KEYS,
+  updateBuyBoxInputSchema,
+  type BuyBox,
+  type BuyBoxInput,
+} from "@clever/contracts/buy-box";
+import type { MatchBuyBoxPayload } from "@clever/contracts/jobs";
+import { ForbiddenError, NotFoundError } from "@clever/contracts/common";
+import type { IGeoProvider } from "../../providers/geo/IGeoProvider.js";
+import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
+import { checkZips } from "./check-zips.js";
+
+export interface IBuyBoxService {
+  list(actor: Actor): Promise<BuyBox[]>;
+  get(actor: Actor, id: string): Promise<BuyBox>;
+  create(actor: Actor, input: unknown): Promise<BuyBox>;
+  update(actor: Actor, id: string, input: unknown): Promise<BuyBox>;
+}
+
+const NOT_FOUND = "Buy box not found";
+
+/** Every field a criterion owns, from the registry, so a new criterion is compared too. */
+const CRITERION_FIELDS = CRITERION_KEYS.flatMap((key) => Object.keys(CRITERIA[key].fields));
+
+function criteriaOf(box: BuyBox): string {
+  const values = Object.fromEntries(
+    CRITERION_FIELDS.map((field) => [field, box[field as keyof BuyBox]]),
+  );
+  return JSON.stringify({ ...values, geography: [...box.geography].sort() });
+}
+
+function investorOf(actor: Actor): string {
+  if (actor.role !== "INVESTOR") throw new ForbiddenError("Only investors manage buy boxes");
+  return actor.investorId;
+}
+
+export class BuyBoxService implements IBuyBoxService {
+  constructor(
+    private readonly uow: IUnitOfWork,
+    private readonly deps: { geo: IGeoProvider },
+  ) {}
+
+  async list(actor: Actor): Promise<BuyBox[]> {
+    const investorId = investorOf(actor);
+    return this.uow.run((repos) => repos.buyBoxes.listForInvestor(investorId));
+  }
+
+  async get(actor: Actor, id: string): Promise<BuyBox> {
+    const investorId = investorOf(actor);
+    return this.uow.run((repos) => this.own(repos, investorId, id));
+  }
+
+  async create(actor: Actor, input: unknown): Promise<BuyBox> {
+    const investorId = investorOf(actor);
+    const box = this.check(buyBoxInputSchema.parse(input));
+    return this.uow.run(async (repos) => {
+      const created = await repos.buyBoxes.create(investorId, box);
+      await this.saved(repos, actor, created, true);
+      return created;
+    });
+  }
+
+  async update(actor: Actor, id: string, input: unknown): Promise<BuyBox> {
+    const investorId = investorOf(actor);
+    const { version, ...box } = updateBuyBoxInputSchema.parse(input);
+    this.check(box);
+    return this.uow.run(async (repos) => {
+      const before = await this.own(repos, investorId, id);
+      const after = await repos.buyBoxes.update(id, version, box);
+      const changed = after.status !== before.status || criteriaOf(after) !== criteriaOf(before);
+      await this.saved(repos, actor, after, changed);
+      return after;
+    });
+  }
+
+  private check(box: BuyBoxInput): BuyBoxInput {
+    checkZips(box, this.deps.geo);
+    return box;
+  }
+
+  private async own(repos: UnitOfWorkRepositories, investorId: string, id: string) {
+    const box = await repos.buyBoxes.findById(id);
+    if (!box || box.investorId !== investorId) throw new NotFoundError(NOT_FOUND);
+    return box;
+  }
+
+  /** The new version's snapshot and audit entry, and matching when it can find something new. */
+  private async saved(repos: UnitOfWorkRepositories, actor: Actor, box: BuyBox, changed: boolean) {
+    await repos.buyBoxes.appendVersion(box, actor.userId);
+    const match = changed && box.status === "ACTIVE";
+    if (match) {
+      const payload: MatchBuyBoxPayload = { buyBoxId: box.id, version: box.version };
+      await repos.jobs.enqueue({
+        type: "MATCH_BUY_BOX",
+        dedupeKey: `MATCH_BUY_BOX:${box.id}:${box.version}`,
+        payload,
+      });
+    }
+    await repos.audit.append({
+      actorType: "USER",
+      actorId: actor.userId,
+      action: "BUY_BOX_SAVED",
+      entityType: "BuyBox",
+      entityId: box.id,
+      outcome: "SUCCESS",
+      details: { investorId: box.investorId, version: box.version, status: box.status, match },
+    });
+  }
+}

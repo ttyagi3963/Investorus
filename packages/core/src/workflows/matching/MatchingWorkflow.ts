@@ -3,9 +3,11 @@
 // evaluator) decides every criterion. Each matched investor gets one Match naming every box that
 // matched, one notification per listing version (a match, or "this listing changed"), and one
 // audited decision. A run for a stale version or a closed package does nothing, so a retried or
-// late job is harmless.
+// late job is harmless. A saved buy box is matched the other way round (T321, FR-023): one box
+// against every package still taking offers; a package it newly shares is a match like any other,
+// and an investor already matched gets the box added and no second notice.
 import type { BuyBox } from "@clever/contracts/buy-box";
-import type { MatchPackagePayload } from "@clever/contracts/jobs";
+import type { MatchBuyBoxPayload, MatchPackagePayload } from "@clever/contracts/jobs";
 import type { ListingPackage } from "@clever/contracts/listing-package";
 import type { Property } from "@clever/contracts/property";
 import type { IClock } from "../../providers/clock/IClock.js";
@@ -17,6 +19,7 @@ import { placeOf } from "../notice-text.js";
 
 export interface IMatchingWorkflow {
   evaluatePackage(run: MatchPackagePayload): Promise<void>;
+  evaluateBuyBox(run: MatchBuyBoxPayload): Promise<void>;
 }
 
 type MatchedBox = { box: BuyBox; evaluation: BuyBoxEvaluation };
@@ -107,6 +110,57 @@ export class MatchingWorkflow implements IMatchingWorkflow {
           matchedCount: byInvestor.size,
         },
       });
+    });
+  }
+
+  async evaluateBuyBox({ buyBoxId, version }: MatchBuyBoxPayload): Promise<void> {
+    const now = this.deps.clock.now();
+    const today = now.toISOString().slice(0, 10);
+
+    await this.uow.run(async (repos) => {
+      // Saved again, paused, or its investor can no longer be matched: nothing to do.
+      const box = await repos.buyBoxes.findMatchable(buyBoxId, version, now);
+      if (!box) return;
+      const userId = await repos.users.findIdByInvestorId(box.investorId);
+
+      for (const pkg of await repos.packages.listOpenForOffers(now)) {
+        const listing = await repos.listingVersions.find(pkg.id, pkg.listingVersion);
+        if (!listing)
+          throw new Error(`Listing version ${pkg.listingVersion} of ${pkg.id} is missing`);
+        const evaluation = evaluateBuyBox(box, listing.snapshot, today);
+        if (!evaluation.matched) continue;
+        // A retried run: this box already shares the package.
+        const known = await repos.matches.findOne(pkg.id, box.investorId, pkg.round);
+        if (known?.matchedBuyBoxIds.includes(box.id)) continue;
+
+        const { match, created } = await repos.matches.upsert({
+          packageId: pkg.id,
+          investorId: box.investorId,
+          round: pkg.round,
+          matchedBuyBoxIds: [box.id],
+          trigger: "BUY_BOX_CHANGE",
+        });
+        if (created) {
+          if (userId) {
+            const property = await repos.properties.findById(pkg.propertyId);
+            await repos.notifications.create(
+              matchedNotice(userId, pkg, property, [{ box, evaluation }]),
+            );
+          }
+          await repos.matches.markNotified(match.id, pkg.listingVersion);
+        }
+        await repos.audit.append({
+          ...systemEntry(pkg.id, "MATCH_DECISION"),
+          details: {
+            investorId: box.investorId,
+            round: pkg.round,
+            listingVersion: pkg.listingVersion,
+            evaluatorVersion: EVALUATOR_VERSION,
+            trigger: "BUY_BOX_CHANGE",
+            buyBoxes: [{ id: box.id, version: box.version, criteria: evaluation.results }],
+          },
+        });
+      }
     });
   }
 }

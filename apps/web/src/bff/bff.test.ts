@@ -84,6 +84,17 @@ describe("session", () => {
     expect(cookie).toMatch(/Secure/);
   });
 
+  it("passes a failed sign-in back unchanged, even when the api's answer is not JSON", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502 }));
+    const res = await signIn(fromSite("/bff/session", { method: "POST", body: "{}" }), {
+      apiUrl: API,
+      secureCookie: true,
+      fetch,
+    });
+    expect(res.status).toBe(502);
+    expect(res.headers.get("Set-Cookie")).toBeNull();
+  });
+
   it("clears the cookie on sign out, and refuses a sign-in from another origin", async () => {
     const out = await signOut(fromSite("/bff/session", { method: "DELETE" }));
     expect(out.headers.get("Set-Cookie")).toMatch(/^session=; .*Max-Age=0/);

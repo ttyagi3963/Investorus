@@ -61,6 +61,7 @@ const offerPath = (id: string) => `/offers/${encodeURIComponent(id)}`;
 export const sessionClient = (api: ApiClient) => ({
   signIn: (input: CreateSessionInput) => api.request<{ user: UserView }>("POST", "/session", input),
   signOut: () => api.request<undefined>("DELETE", "/session"),
+  me: () => api.request<UserView>("GET", "/me"),
 });
 
 export const listingPackagesClient = (api: ApiClient) => ({

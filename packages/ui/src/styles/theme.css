@@ -31,7 +31,9 @@
   --background-color-status-draft: var(--brand-semantic-color-status-draft-background);
   --background-color-status-open: var(--brand-semantic-color-status-open-background);
   --background-color-status-offers-in: var(--brand-semantic-color-status-offers-in-background);
-  --background-color-status-under-contract: var(--brand-semantic-color-status-under-contract-background);
+  --background-color-status-under-contract: var(
+    --brand-semantic-color-status-under-contract-background
+  );
   --background-color-status-closed: var(--brand-semantic-color-status-closed-background);
   --background-color-status-error: var(--brand-semantic-color-status-error-background);
   --text-color-status-draft: var(--brand-semantic-color-status-draft-text);

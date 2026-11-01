@@ -1,6 +1,6 @@
-// The login form's behavior (T104, T300, T325): one sign-in request at a time through the BFF, then
-// the home of the user's role. A refusal shows the api's own message, which never says whether the
-// email exists, with the request ID.
+// The login form's behavior (T104, T300, T325, T342): one sign-in request at a time through the
+// BFF, then the home of the user's role. A refusal shows the api's own message, which never says
+// whether the email exists, with the request ID.
 import type { CreateSessionInput } from "@clever/contracts/auth";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
@@ -10,7 +10,7 @@ import { session } from "../../lib/bff-client";
 const HOME: Record<string, string> = {
   AGENT: "/agent",
   INVESTOR: "/investor",
-  OPS: "/ops/imports",
+  OPS: "/ops/packages",
 };
 
 export function useLogin() {

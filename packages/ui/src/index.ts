@@ -14,6 +14,12 @@ export {
 } from "./primitives/CheckboxGroup.js";
 export { NumberField, type NumberFieldProps } from "./primitives/NumberField.js";
 export { PhotoPicker, type PhotoPickerProps } from "./primitives/PhotoPicker.js";
+export { RadioGroup, type RadioGroupProps, type RadioOption } from "./primitives/RadioGroup.js";
+export {
+  SegmentedControl,
+  type Segment,
+  type SegmentedControlProps,
+} from "./primitives/SegmentedControl.js";
 export { Select, type SelectOption, type SelectProps } from "./primitives/Select.js";
 export { StatTile, type StatTileProps } from "./primitives/StatTile.js";
 export { StatusChip, type StatusChipProps } from "./primitives/StatusChip.js";

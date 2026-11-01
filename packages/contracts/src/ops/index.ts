@@ -13,6 +13,7 @@ export {
   type MatchExplanation,
   type OpsPackageRow,
   type PackageTrace,
+  type RetryAllInput,
   type SimulationMode,
   type SimulationModes,
   type SimulationService,

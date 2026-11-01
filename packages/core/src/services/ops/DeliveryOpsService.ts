@@ -1,6 +1,6 @@
 // Operations' view of outside deliveries (T341; FR-071): the newest deliveries, optionally by
 // status, each named by its investor's company or "CRM"; a retry of one delivery set aside, or of
-// every one (optionally only one target's). A retry sends the delivery back to PENDING with no
+// every one (optionally only one target's or one package's). A retry sends the delivery back to PENDING with no
 // attempts and off the queue; the worker's relay queues it again. Each retry is audited.
 import type { Actor } from "@clever/contracts/auth";
 import { BusinessRuleError, NotFoundError } from "@clever/contracts/common";
@@ -65,15 +65,22 @@ export class DeliveryOpsService implements IDeliveryOpsService {
 
   async retryAll(actor: Actor, input: unknown): Promise<{ count: number }> {
     assertOps(actor);
-    const { target } = retryAllInputSchema.parse(input);
+    const { target, packageId } = retryAllInputSchema.parse(input);
     return this.uow.run(async (repos) => {
       const setAside = await repos.opsQuery.listDeliveries("NEEDS_ATTENTION", LIST_LIMIT);
       let count = 0;
       for (const delivery of setAside) {
         if (target && delivery.target !== target) continue;
+        if (packageId && delivery.packageId !== packageId) continue;
         if (await repos.deliveries.resetForRetry(delivery.id)) count += 1;
       }
-      if (count > 0) await this.audit(repos, actor, "all", { deliveries: count, target });
+      if (count > 0) {
+        await this.audit(repos, actor, packageId ?? "all", {
+          deliveries: count,
+          target,
+          packageId,
+        });
+      }
       return { count };
     });
   }

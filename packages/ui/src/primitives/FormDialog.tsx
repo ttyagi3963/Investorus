@@ -37,10 +37,7 @@ export function FormDialog({
       <Button variant={triggerVariant} isDisabled={isDisabled}>
         {triggerLabel}
       </Button>
-      <ModalOverlay
-        isDismissable
-        className={MODAL_OVERLAY}
-      >
+      <ModalOverlay isDismissable className={MODAL_OVERLAY}>
         <Modal className={MODAL_PANEL}>
           <Dialog className="outline-none">
             {({ close }) => (

@@ -25,7 +25,7 @@ import type {
   WinningInvestorPackageView,
 } from "../listing-package/investor-views.js";
 import type { AgentPackageSummary, AgentPackageView } from "../listing-package/views.js";
-import type { DeliveryStatus, DeliveryTarget } from "../events/events.js";
+import type { DeliveryStatus } from "../events/events.js";
 import type { NotificationView } from "../notification/notification.js";
 import type {
   CrmComparisonRow,
@@ -33,6 +33,7 @@ import type {
   MatchExplanation,
   OpsPackageRow,
   PackageTrace,
+  RetryAllInput,
   SimulationMode,
   SimulationModes,
   SimulationService,
@@ -176,8 +177,8 @@ export const opsClient = (api: ApiClient) => ({
     ),
   retryDelivery: (id: string) =>
     api.request<undefined>("POST", `/ops/deliveries/${encodeURIComponent(id)}/retry`),
-  retryAll: (target?: DeliveryTarget) =>
-    api.request<{ count: number }>("POST", "/ops/deliveries/retry-all", target ? { target } : {}),
+  retryAll: (input: RetryAllInput = {}) =>
+    api.request<{ count: number }>("POST", "/ops/deliveries/retry-all", input),
   sendDigestsNow: () => api.request<{ jobId: string }>("POST", "/ops/match-digests"),
   crmComparison: () => api.request<CrmComparisonRow[]>("GET", "/ops/crm-comparison"),
   simulations: () => api.request<SimulationModes>("GET", "/ops/simulations"),

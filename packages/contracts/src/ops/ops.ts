@@ -115,7 +115,12 @@ export type DeliveryView = {
 };
 
 export const deliveryListQuerySchema = z.object({ status: z.enum(DELIVERY_STATUSES).optional() });
-export const retryAllInputSchema = z.object({ target: z.enum(DELIVERY_TARGETS).optional() });
+/** Retry every delivery set aside, or only one target's, or only one package's. */
+export const retryAllInputSchema = z.object({
+  target: z.enum(DELIVERY_TARGETS).optional(),
+  packageId: z.string().min(1).optional(),
+});
+export type RetryAllInput = z.infer<typeof retryAllInputSchema>;
 
 export type CrmComparisonRow = {
   packageId: string;

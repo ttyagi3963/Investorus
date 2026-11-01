@@ -1,6 +1,7 @@
 // The stand-in object storage (T252; contracts/providers.md). The browser uploads and reads with
-// links signed by core's SandboxStorageProviderImpl over "<METHOD>\n<key>\n<type>\n<max>\n<exp>";
-// the api checks an upload on the internal route with the shared token. Objects are files on the
+// links signed by core's SandboxStorageProviderImpl over "<METHOD>\n<key>\n<type>\n<size>\n<exp>",
+// and an upload must be exactly <size> bytes, as with a presigned S3 PUT. The api checks an
+// upload on the internal route with the shared token. Objects are files on the
 // SANDBOX_STORAGE_DIR volume, named by a hash of the key so no key can reach outside it.
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -31,12 +32,12 @@ export function storageRoutes(config: StorageConfig): Router {
     JSON.parse(await readFile(`${file(key)}.json`, "utf8").catch(() => "null")) as Meta | null;
 
   /** True when the link is unexpired and its signature covers exactly this request. */
-  const signed = (req: Request, method: string, contentType: string, max: number) => {
+  const signed = (req: Request, method: string, contentType: string, size: number) => {
     const exp = Number(req.query.exp);
     const sig = String(req.query.sig ?? "");
     if (!Number.isInteger(exp) || exp * 1000 < config.now().getTime()) return false;
     const expected = createHmac("sha256", config.signingKey)
-      .update(`${method}\n${String(req.params.key)}\n${contentType}\n${max}\n${exp}`)
+      .update(`${method}\n${String(req.params.key)}\n${contentType}\n${size}\n${exp}`)
       .digest("hex");
     return sameSecret(sig, expected);
   };
@@ -53,20 +54,22 @@ export function storageRoutes(config: StorageConfig): Router {
   });
 
   router.put("/storage/objects/:key", async (req, res: Response) => {
-    const max = Number(req.query.max);
+    const expected = Number(req.query.size);
     const contentType = req.headers["content-type"] ?? "";
-    if (!Number.isInteger(max) || !signed(req, "PUT", contentType, max)) {
+    if (!Number.isInteger(expected) || !signed(req, "PUT", contentType, expected)) {
       return void res.status(403).json({ error: "Invalid or expired upload link" });
     }
-    if (Number(req.headers["content-length"] ?? 0) > max) {
-      return void res.status(413).json({ error: "File too large" });
-    }
+    const tooLarge = () => res.status(413).json({ error: "The file is larger than declared" });
+    if (Number(req.headers["content-length"] ?? 0) > expected) return void tooLarge();
     const chunks: Buffer[] = [];
     let size = 0;
     for await (const chunk of req as AsyncIterable<Buffer>) {
       size += chunk.length;
-      if (size > max) return void res.status(413).json({ error: "File too large" });
+      if (size > expected) return void tooLarge();
       chunks.push(chunk);
+    }
+    if (size !== expected) {
+      return void res.status(400).json({ error: "The file is smaller than declared" });
     }
     const key = String(req.params.key);
     await writeFile(file(key), Buffer.concat(chunks));

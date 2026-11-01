@@ -53,8 +53,9 @@ export class PhotoService implements IPhotoService {
       }
     });
     const storageKey = `packages/${packageId}/${randomUUID()}`;
-    // The link accepts only the declared type and size, so the upload cannot be swapped for more.
-    return { storageKey, upload: this.storage.createUpload(storageKey, contentType, sizeBytes) };
+    // The link accepts only the declared type and exact size, so the upload cannot be swapped.
+    const upload = await this.storage.createUpload(storageKey, contentType, sizeBytes);
+    return { storageKey, upload };
   }
 
   async attach(actor: Actor, packageId: string, input: unknown): Promise<Photo> {

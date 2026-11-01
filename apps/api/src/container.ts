@@ -1,6 +1,7 @@
 // The api's composition root (T255, constitution I): the one place adapters are built and wired.
 // Everything is created once from validated settings; `dispose` closes the database pool on
-// shutdown. Swapping a vendor (S3 storage, T274) is a change here and nowhere else.
+// shutdown. Swapping a vendor is a change here and nowhere else: STORAGE_PROVIDER picks the
+// sandbox or S3 behind the same storage port (T275).
 import {
   AuthService,
   InfrastructureError,
@@ -15,6 +16,7 @@ import {
   AesGcmPiiCipherImpl,
   LogErrorReporterImpl,
   PrismaUnitOfWorkImpl,
+  S3StorageProviderImpl,
   SandboxStorageProviderImpl,
   StaticGeoProviderImpl,
   SystemClockImpl,
@@ -29,7 +31,7 @@ export type AppContainer = Readonly<{
   auth: IAuthService;
   packages: IListingPackageService;
   photos: IPhotoService;
-  photoUrl: (storageKey: string) => string;
+  photoUrl: (storageKey: string) => Promise<string>;
   checkDatabase: () => Promise<void>;
   logger: Logger;
   reporter: IErrorReporter;
@@ -41,13 +43,20 @@ export function createContainer(env: ApiEnv): AppContainer {
   const prisma = createPrismaClient(env.DATABASE_URL);
   const clock = new SystemClockImpl();
   const uow = new PrismaUnitOfWorkImpl(prisma, new AesGcmPiiCipherImpl(env.PII_ENCRYPTION_KEY));
-  const storage = new SandboxStorageProviderImpl({
-    publicUrl: env.PUBLIC_SANDBOX_URL,
-    internalUrl: env.SANDBOX_URL,
-    signingKey: env.STORAGE_SIGNING_KEY,
-    internalToken: env.SANDBOX_INTERNAL_TOKEN,
-    clock,
-  });
+  const storage =
+    env.STORAGE_PROVIDER === "s3"
+      ? new S3StorageProviderImpl({
+          bucket: env.S3_BUCKET ?? "",
+          region: env.S3_REGION ?? "",
+          clock,
+        })
+      : new SandboxStorageProviderImpl({
+          publicUrl: env.PUBLIC_SANDBOX_URL,
+          internalUrl: env.SANDBOX_URL,
+          signingKey: env.STORAGE_SIGNING_KEY,
+          internalToken: env.SANDBOX_INTERNAL_TOKEN,
+          clock,
+        });
 
   return Object.freeze({
     auth: new AuthService(uow, { jwtSecret: env.JWT_SECRET, clock }),

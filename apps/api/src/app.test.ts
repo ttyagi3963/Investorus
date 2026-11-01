@@ -20,7 +20,7 @@ const container: AppContainer = {
   },
   packages: { create: unused, get: unused, list: unused, update: unused },
   photos: { requestUpload: unused, attach: unused, remove: unused },
-  photoUrl: (key) => key,
+  photoUrl: async (key) => key,
   checkDatabase: async () => {},
   logger: pino({ level: "silent" }),
   reporter: { report: () => {} },

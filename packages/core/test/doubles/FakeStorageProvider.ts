@@ -8,10 +8,14 @@ import type {
 
 export class FakeStorageProvider implements IStorageProvider {
   readonly objects = new Map<string, StoredObject>();
-  readonly uploads: { key: string; contentType: string; maxBytes: number }[] = [];
+  readonly uploads: { key: string; contentType: string; sizeBytes: number }[] = [];
 
-  createUpload(key: string, contentType: string, maxBytes: number): UploadInstruction {
-    this.uploads.push({ key, contentType, maxBytes });
+  async createUpload(
+    key: string,
+    contentType: string,
+    sizeBytes: number,
+  ): Promise<UploadInstruction> {
+    this.uploads.push({ key, contentType, sizeBytes });
     return {
       url: `https://storage.test/${key}`,
       method: "PUT",
@@ -20,7 +24,7 @@ export class FakeStorageProvider implements IStorageProvider {
     };
   }
 
-  getReadUrl(key: string): string {
+  async getReadUrl(key: string): Promise<string> {
     return `https://storage.test/${key}?read`;
   }
 

@@ -16,7 +16,7 @@ Ports are exported from `@clever/core`. Implementations are exported only from
 | --- | --- | --- | --- | --- | --- |
 | `ICrmProvider` | `upsertListingStatus(record, idempotencyKey)` | `SandboxCrmProviderImpl` | worker | `CRM_PROVIDER=sandbox` | `HubspotCrmProviderImpl` (private-app access token) |
 | `IMessagingProvider` | `sendEmail(msg, key)`, `sendSms(msg, key)` | `SandboxMessagingProviderImpl` | worker | `MESSAGING_PROVIDER=sandbox` | SendGrid / Twilio impls |
-| `IStorageProvider` | `createUpload(key, contentType, maxBytes)` → `UploadInstruction`, `getReadUrl(key)`, `stat(key)` → `{ contentType, sizeBytes }` or `null` (the api records a photo's type and size from storage, not from the client), `read(key)` (server-side read, used by the CSV import), `put(key, body, contentType)` (server-side write, used only by the seed) | `SandboxStorageProviderImpl` (HMAC-signed URLs) | api, worker | `STORAGE_PROVIDER=sandbox` | `S3StorageProviderImpl` (presigned PUT) |
+| `IStorageProvider` | `createUpload(key, contentType, sizeBytes)` → `Promise<UploadInstruction>`, `getReadUrl(key)` → `Promise<string>`, `stat(key)` → `{ contentType, sizeBytes }` or `null` (the api records a photo's type and size from storage, not from the client), `read(key)` (server-side read, used by the CSV import), `put(key, body, contentType)` (server-side write, used only by the seed) | `SandboxStorageProviderImpl` (HMAC-signed URLs) | api, worker | `STORAGE_PROVIDER=sandbox` | `S3StorageProviderImpl` (presigned PUT, `STORAGE_PROVIDER=s3`) |
 | `ICrmMirrorReader` | `listListings()` (read-only) | `SandboxCrmMirrorReaderImpl` | api (ops CRM comparison) | `CRM_PROVIDER=sandbox` | `HubspotCrmMirrorReaderImpl` |
 | `ISellerContactReader` | `getForPackage(packageId)` | `PrismaSellerContactReaderImpl` (decrypts; caller audits `PII_ACCESSED`) | worker (CRM delivery only) | — | same |
 | `IGeoProvider` | `lookup(zip)` → `{ city, state, neighborhood }`, or `null` for a ZIP outside the reference set | `StaticGeoProviderImpl` (bundled ZIP list for the seeded markets) | api, worker | — | USPS / Smarty impl |
@@ -45,17 +45,23 @@ type UploadInstruction = {
 
 - The **browser** performs the upload with plain `fetch(url, { method, headers, body: file })`.
   The file bytes never pass through `apps/web` (the BFF) or `apps/api` (XIV: no proxying).
-- The sandbox implementation returns `PUT {PUBLIC_SANDBOX_URL}/storage/objects/:key?max=&exp=&sig=`, where
-  `sig` is the hex HMAC-SHA256, with `STORAGE_SIGNING_KEY`, of
-  `"<METHOD>
+- The sandbox implementation returns `PUT {PUBLIC_SANDBOX_URL}/storage/objects/:key?size=&exp=&sig=`,
+  where `sig` is the hex HMAC-SHA256, with `STORAGE_SIGNING_KEY`, of
+  `<METHOD>
 <key>
 <contentType>
-<maxBytes>
-<exp>"` (`exp` in Unix seconds). A read link is the same
-  with `GET`, an empty content type, and `0`. Core signs and the sandbox checks the same string, so a
-  link cannot be reused for another object, type, size limit, or time.
-  An S3 implementation would return a presigned `PUT` with its required headers. MinIO or other
-  storage containers are deliberately not used, because of the 2 GB memory limit.
+<sizeBytes>
+<exp>` (`exp` in Unix seconds). A read link is
+  the same with `GET`, an empty content type, and `0`. Core signs and the sandbox checks the same
+  string, so a link cannot be reused for another object, type, size, or time.
+- **The size is exact** (T275), because a presigned S3 `PUT` can pin one `Content-Length` but not a
+  maximum. The sandbox behaves the same way: a body larger than the signed size gets 413, and a
+  smaller one gets 400. `stat` after the upload remains the real size check.
+- `S3StorageProviderImpl` (`STORAGE_PROVIDER=s3`, with `S3_BUCKET` and `S3_REGION`; credentials
+  from the AWS environment variables) returns a presigned `PUT` that signs `Content-Type` and
+  `Content-Length`. Reads are presigned `GET`s, and `stat` is `HeadObject`. Signing is async, so
+  `createUpload` and `getReadUrl` return Promises. MinIO or other storage containers are
+  deliberately not used, because of the 2 GB memory limit.
 - `/storage/objects/*` sends CORS headers for `WEB_ORIGIN` only (`PUT`, `GET`, `OPTIONS`;
   `Content-Type`), because the browser uploads cross-origin from port 3000 to port 4100.
 - The api never trusts the upload itself. It calls `stat(key)` before recording a photo or
@@ -74,7 +80,7 @@ Rules for every provider:
 | GET | `/crm/listings` | All CRM records (for ops comparison and the inspection page). |
 | POST | `/messages/email`, `/messages/sms` | Captures the message; deduplicated by `Idempotency-Key`. |
 | GET | `/messages` | Captured messages, newest first. |
-| PUT | `/storage/objects/:key?max=&exp=&sig=` | Accepts an upload only with a valid, unexpired signature for that key, its `Content-Type`, and its size limit (403 otherwise; 413 over the limit). |
+| PUT | `/storage/objects/:key?size=&exp=&sig=` | Accepts an upload only with a valid, unexpired signature for that key, its `Content-Type`, and its exact size (403 otherwise; 413 when larger, 400 when smaller). |
 | GET | `/storage/objects/:key?exp=&sig=` | Serves the object, with a valid, unexpired read signature. |
 | HEAD | `/internal/storage/objects/:key` | The stored object's `Content-Type` and `Content-Length`, or 404 (internal; the `x-sandbox-token` header must carry `SANDBOX_INTERNAL_TOKEN`, else 401). |
 | GET / PUT | `/internal/storage/objects/:key` | Server-side `read(key)` / `put(...)` (internal; shared token). |

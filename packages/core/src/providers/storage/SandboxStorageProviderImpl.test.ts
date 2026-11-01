@@ -1,5 +1,5 @@
 // Guards the storage provider's rules (contracts/providers.md, T251): an upload link is signed over
-// the key, type, size limit, and expiry, so none can be changed; and a storage failure surfaces as
+// the key, type, exact size, and expiry, so none can be changed; and a storage failure surfaces as
 // an InfrastructureError, never a raw network error.
 import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
@@ -17,16 +17,16 @@ const options = (fetch: typeof globalThis.fetch) => ({
 });
 
 describe("SandboxStorageProviderImpl", () => {
-  it("signs an upload link over the key, the content type, the byte limit, and the expiry", () => {
+  it("signs an upload link over the key, the content type, the exact size, and the expiry", async () => {
     const storage = new SandboxStorageProviderImpl(options(vi.fn()));
-    const upload = storage.createUpload("packages/p1/a.jpg", "image/jpeg", 10_485_760);
+    const upload = await storage.createUpload("packages/p1/a.jpg", "image/jpeg", 2_000);
     const url = new URL(upload.url);
     const exp = url.searchParams.get("exp");
     const expected = createHmac("sha256", "signing-key")
-      .update(`PUT\npackages/p1/a.jpg\nimage/jpeg\n10485760\n${exp}`)
+      .update(`PUT\npackages/p1/a.jpg\nimage/jpeg\n2000\n${exp}`)
       .digest("hex");
     expect(url.origin).toBe("http://localhost:4100");
-    expect(url.searchParams.get("max")).toBe("10485760");
+    expect(url.searchParams.get("size")).toBe("2000");
     expect(url.searchParams.get("sig")).toBe(expected);
     expect(upload).toMatchObject({ method: "PUT", headers: { "Content-Type": "image/jpeg" } });
     expect(new Date(upload.expiresAt).getTime()).toBeGreaterThan(NOW.getTime());

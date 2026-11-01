@@ -42,7 +42,7 @@ describe("PhotoService", () => {
   it("records a photo with the type and size storage holds, and refuses one never uploaded", async () => {
     const s = await setup();
     const key = await upload(s);
-    expect(s.storage.uploads[0]).toMatchObject({ key, maxBytes: 2_000 });
+    expect(s.storage.uploads[0]).toMatchObject({ key, sizeBytes: 2_000 });
     const photo = await s.photos.attach(avery, s.packageId, { storageKey: key, position: 0 });
     expect(photo).toMatchObject({ contentType: "image/jpeg", sizeBytes: 2_000, position: 0 });
     const { storageKey: never } = await s.photos.requestUpload(avery, s.packageId, {

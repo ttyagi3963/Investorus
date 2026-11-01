@@ -1,5 +1,5 @@
-// Guards the sandbox storage rules (T252): only a valid, unexpired link for that exact object, type,
-// and size limit may upload, and the internal routes need the shared token.
+// Guards the sandbox storage rules (T252, T275): only a valid, unexpired link for that exact object,
+// type, and size may upload (like a presigned S3 PUT), and the internal routes need the shared token.
 import { createHmac } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -22,25 +22,25 @@ const app = createApp(config);
 function uploadPath(
   key: string,
   contentType: string,
-  max: number,
+  size: number,
   exp = NOW.getTime() / 1000 + 600,
 ) {
   const sig = createHmac("sha256", config.signingKey)
-    .update(`PUT\n${key}\n${contentType}\n${max}\n${exp}`)
+    .update(`PUT\n${key}\n${contentType}\n${size}\n${exp}`)
     .digest("hex");
-  return `/storage/objects/${encodeURIComponent(key)}?max=${max}&exp=${exp}&sig=${sig}`;
+  return `/storage/objects/${encodeURIComponent(key)}?size=${size}&exp=${exp}&sig=${sig}`;
 }
 
 const jpeg = Buffer.alloc(2_000, 1);
 
 describe("sandbox storage", () => {
-  it("accepts an upload only with a valid link for that object, type, and size", async () => {
-    const path = uploadPath("packages/p1/a.jpg", "image/jpeg", 5_000);
+  it("accepts an upload only with a valid link for that object, type, and exact size", async () => {
+    const path = uploadPath("packages/p1/a.jpg", "image/jpeg", 2_000);
     await request(app).put(path).set("Content-Type", "image/jpeg").send(jpeg).expect(200);
 
     const forged = path.replace(/sig=[0-9a-f]+/, `sig=${"0".repeat(64)}`);
     await request(app).put(forged).set("Content-Type", "image/jpeg").send(jpeg).expect(403);
-    const expired = uploadPath("packages/p1/b.jpg", "image/jpeg", 5_000, NOW.getTime() / 1000 - 1);
+    const expired = uploadPath("packages/p1/b.jpg", "image/jpeg", 2_000, NOW.getTime() / 1000 - 1);
     await request(app).put(expired).set("Content-Type", "image/jpeg").send(jpeg).expect(403);
     const otherObject = path.replace(
       encodeURIComponent("packages/p1/a.jpg"),
@@ -48,13 +48,15 @@ describe("sandbox storage", () => {
     );
     await request(app).put(otherObject).set("Content-Type", "image/jpeg").send(jpeg).expect(403);
     await request(app).put(path).set("Content-Type", "text/html").send(jpeg).expect(403);
-    const small = uploadPath("packages/p1/c.jpg", "image/jpeg", 1_000);
-    await request(app).put(small).set("Content-Type", "image/jpeg").send(jpeg).expect(413);
+    const smaller = uploadPath("packages/p1/c.jpg", "image/jpeg", 1_000);
+    await request(app).put(smaller).set("Content-Type", "image/jpeg").send(jpeg).expect(413);
+    const larger = uploadPath("packages/p1/e.jpg", "image/jpeg", 3_000);
+    await request(app).put(larger).set("Content-Type", "image/jpeg").send(jpeg).expect(400);
   });
 
   it("reports a stored object's type and size on the internal route, only with the token", async () => {
     await request(app)
-      .put(uploadPath("packages/p1/d.jpg", "image/jpeg", 5_000))
+      .put(uploadPath("packages/p1/d.jpg", "image/jpeg", 2_000))
       .set("Content-Type", "image/jpeg")
       .send(jpeg)
       .expect(200);

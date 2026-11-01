@@ -6,12 +6,14 @@ export type ThumbnailProps = {
   src: string | null;
   /** What the photo shows, for screen readers. */
   alt: string;
-  size?: "sm" | "fill";
+  /** sm: a list row; fill: a 4:3 tile in a grid; wide: a 16:9 card or gallery image. */
+  size?: "sm" | "fill" | "wide";
 };
 
 const SIZES = {
   sm: "h-thumbnail-h w-thumbnail-w",
   fill: "aspect-4/3 w-full",
+  wide: "aspect-video w-full",
 } as const;
 
 export function Thumbnail({ src, alt, size = "sm" }: ThumbnailProps) {

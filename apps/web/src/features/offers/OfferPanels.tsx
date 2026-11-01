@@ -2,11 +2,11 @@
 // What an investor can do with their offer after it is made (T317; FR-043, FR-052, FR-054, FR-057):
 // withdraw it (after a confirmation); answer the agent's counter; keep a backup offer alive longer
 // or withdraw it; reconfirm a promoted backup before its time runs out; and, for the winner, the
-// seller's contact card. Each action waits for the api's answer (never optimistic, XIII), then
+// seller's contact card. Each is a card in the package page's side column (T331). Each action waits for the api's answer (never optimistic, XIII), then
 // refreshes the investor's packages; a refusal shows its message and request ID.
 import type { WinningInvestorPackageView } from "@clever/contracts/listing-package";
 import type { OfferView } from "@clever/contracts/offer";
-import { Button, ConfirmDialog, FormDialog, TextField } from "@clever/ui";
+import { Button, Card, ConfirmDialog, FormDialog, TextField } from "@clever/ui";
 
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { formatUsd } from "@/features/listing-package/labels";
@@ -16,12 +16,12 @@ import { useAction } from "@/lib/use-action";
 import { investorKeys } from "./queries";
 import { timeLeft, useNow } from "./time-left";
 
-const SECTION = "flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card";
+const TERMS = "rounded-control bg-soft p-inset-md text-body";
 const lower = (code: string) => code.toLowerCase().replaceAll("_", " ");
 
 function Terms({ offer }: { offer: OfferView }) {
   return (
-    <p>
+    <p className={TERMS}>
       {formatUsd(offer.price)}, {offer.paymentType === "CASH" ? "cash" : "financed"}, closing{" "}
       {offer.closingDate}, earnest money {formatUsd(offer.earnestMoney)}, fees and concessions{" "}
       {formatUsd(offer.feesAndConcessions)}, contingencies:{" "}
@@ -56,12 +56,9 @@ export function CounterPanel({ offer }: { offer: OfferView }) {
   const answer = (action: "ACCEPT" | "DECLINE") =>
     run(() => investor.respondToCounter(offer.id, { action, version: offer.version }));
   return (
-    <section aria-labelledby="counter-heading" className={SECTION}>
-      <h2 id="counter-heading" className="font-heading text-heading-sm">
-        The seller countered your offer
-      </h2>
+    <Card title="The seller countered your offer">
       <Terms offer={offer} />
-      <p className="text-label text-muted">
+      <p className="text-helper text-muted">
         Accept these terms, keep your own, or send a revision below.
       </p>
       {error && <ErrorNotice error={error} />}
@@ -73,18 +70,15 @@ export function CounterPanel({ offer }: { offer: OfferView }) {
           Decline, keep my terms
         </Button>
       </div>
-    </section>
+    </Card>
   );
 }
 
 export function BackupPanel({ offer }: { offer: OfferView }) {
   const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
   return (
-    <section aria-labelledby="backup-heading" className={SECTION}>
-      <h2 id="backup-heading" className="font-heading text-heading-sm">
-        Your offer is a backup offer
-      </h2>
-      <p>
+    <Card title="Your offer is a backup offer">
+      <p className="text-body">
         The seller accepted another offer. Yours stays in line in case that deal falls through. You
         can keep it longer or withdraw it at any time.
       </p>
@@ -125,7 +119,7 @@ export function BackupPanel({ offer }: { offer: OfferView }) {
         </FormDialog>
         <WithdrawOfferButton offer={offer} />
       </div>
-    </section>
+    </Card>
   );
 }
 
@@ -135,11 +129,8 @@ export function ReconfirmPanel({ offer, reconfirmBy }: { offer: OfferView; recon
   const answer = (action: "CONFIRM" | "DECLINE") =>
     run(() => investor.reconfirm(offer.id, { action }));
   return (
-    <section aria-labelledby="reconfirm-heading" className={SECTION}>
-      <h2 id="reconfirm-heading" className="font-heading text-heading-sm">
-        Your backup offer was chosen
-      </h2>
-      <p>
+    <Card title="Your backup offer was chosen">
+      <p className="text-body">
         The first deal fell through, and the seller would like to go ahead with your offer.
         Reconfirm by {new Date(reconfirmBy).toLocaleString()} ({timeLeft(reconfirmBy, now)}) to keep
         it.
@@ -154,21 +145,18 @@ export function ReconfirmPanel({ offer, reconfirmBy }: { offer: OfferView; recon
           Decline
         </Button>
       </div>
-    </section>
+    </Card>
   );
 }
 
 export function SellerCard({ pkg }: { pkg: WinningInvestorPackageView }) {
   const { fullName, email, phone } = pkg.sellerContact;
   return (
-    <section aria-labelledby="seller-heading" className={SECTION}>
-      <h2 id="seller-heading" className="font-heading text-heading-sm">
-        Seller contact
-      </h2>
-      <p className="text-label text-muted">
-        Your offer was accepted, so you can now see who is selling and where.
-      </p>
-      <dl className="grid grid-cols-2 gap-stack-sm">
+    <Card
+      title="Seller contact"
+      description="Your offer was accepted, so you can now see who is selling and where."
+    >
+      <dl className="grid grid-cols-1 gap-stack-md">
         <div>
           <dt className="text-label text-muted">Seller</dt>
           <dd>{fullName}</dd>
@@ -200,6 +188,6 @@ export function SellerCard({ pkg }: { pkg: WinningInvestorPackageView }) {
           </div>
         )}
       </dl>
-    </section>
+    </Card>
   );
 }

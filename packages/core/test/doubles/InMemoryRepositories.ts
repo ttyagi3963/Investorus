@@ -34,6 +34,10 @@ import type {
 } from "../../src/repositories/delivery/IDeliveryRepository.js";
 import type { DeliveryPlan } from "@clever/contracts/events";
 import type { IOpsQueryRepository } from "../../src/repositories/ops/IOpsQueryRepository.js";
+import type {
+  BrandRecord,
+  IBrandRepository,
+} from "../../src/repositories/brand/IBrandRepository.js";
 import {
   ALREADY_ACCEPTED,
   type DealPatch,
@@ -734,6 +738,23 @@ const OPS_QUERIES_NEED_POSTGRES = new Proxy({} as IOpsQueryRepository, {
   get: () => () => Promise.reject(new Error("Operations reads are tested against Postgres")),
 });
 
+/** Brands by ID; a test adds the rows it needs. */
+export class InMemoryBrandRepository implements IBrandRepository {
+  readonly rows = new Map<string, BrandRecord>();
+  async list() {
+    return [...this.rows.values()].map(({ id, name, hosts }) => ({ id, name, hosts }));
+  }
+  async findById(id: string) {
+    return this.rows.get(id) ?? null;
+  }
+  async updateTokens(id: string, tokens: unknown) {
+    const row = this.rows.get(id)!;
+    row.tokens = tokens;
+    row.tokenVersion += 1;
+    return row.tokenVersion;
+  }
+}
+
 export class InMemoryUnitOfWork implements IUnitOfWork {
   readonly repos: UnitOfWorkRepositories & {
     sellers: InMemorySellerRepository;
@@ -754,6 +775,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
     imports: InMemoryImportRepository;
     outbox: InMemoryOutboxRepository;
     deliveries: InMemoryDeliveryRepository;
+    brands: InMemoryBrandRepository;
   };
   constructor(users: UserCredentials[] = []) {
     const outbox = new InMemoryOutboxRepository();
@@ -778,6 +800,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       outbox,
       deliveries: new InMemoryDeliveryRepository(outbox),
       opsQuery: OPS_QUERIES_NEED_POSTGRES,
+      brands: new InMemoryBrandRepository(),
     };
   }
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {

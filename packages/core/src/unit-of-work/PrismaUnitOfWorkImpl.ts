@@ -4,6 +4,7 @@
 import type { PrismaClient } from "../generated/prisma/client.js";
 import type { IPiiCipher } from "../providers/pii-cipher/IPiiCipher.js";
 import { PrismaAuditRepositoryImpl } from "../repositories/audit/PrismaAuditRepositoryImpl.js";
+import { PrismaBrandRepositoryImpl } from "../repositories/brand/PrismaBrandRepositoryImpl.js";
 import { PrismaBuyBoxRepositoryImpl } from "../repositories/buy-box/PrismaBuyBoxRepositoryImpl.js";
 import { PrismaConfigRepositoryImpl } from "../repositories/config/PrismaConfigRepositoryImpl.js";
 import { PrismaDealRepositoryImpl } from "../repositories/deal/PrismaDealRepositoryImpl.js";
@@ -56,6 +57,7 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
           outbox: new PrismaOutboxRepositoryImpl(tx),
           deliveries: new PrismaDeliveryRepositoryImpl(tx),
           opsQuery: new PrismaOpsQueryRepositoryImpl(tx, this.cipher),
+          brands: new PrismaBrandRepositoryImpl(tx),
         }),
       ),
     );

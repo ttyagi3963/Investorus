@@ -3,7 +3,7 @@
 // storage settings are the api's, because the investor import reads the file the browser uploaded;
 // S3's credentials come from the AWS environment variables, which the SDK reads itself. Deliveries
 // (T339) need Redis and the CRM and messaging providers; only the sandbox ones exist, so any other
-// provider name stops the worker at startup.
+// provider name stops the worker at startup. Messages carry the default brand's name (T348).
 import { z } from "zod";
 
 const common = z.object({
@@ -18,6 +18,7 @@ const common = z.object({
   REDIS_URL: z.url(),
   CRM_PROVIDER: z.literal("sandbox"),
   MESSAGING_PROVIDER: z.literal("sandbox"),
+  DEFAULT_BRAND_ID: z.string().min(1),
 });
 
 /** One branch per storage provider, so S3's bucket and region are required exactly when used. */

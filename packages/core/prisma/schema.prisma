@@ -464,6 +464,7 @@ model Offer {
   updatedAt          DateTime        @updatedAt
   revisions          OfferRevision[]
   deal               Deal?
+  decisions          Decision[]
 
   @@index([packageId, round])
 }
@@ -495,7 +496,8 @@ enum DecisionType {
 }
 
 // The seller's decision as the agent recorded it (T304; FR-052), append-only (a trigger refuses
-// UPDATE and DELETE). CHECK (migration): ACCEPT and COUNTER name the offer. `note` is free text the
+// UPDATE and DELETE). CHECK (migration): ACCEPT and COUNTER name the offer. Its package and offer
+// are never deleted while it exists (RESTRICT), since decisions are history (data-model.md). `note` is free text the
 // agent writes, so it holds AES-256-GCM ciphertext like the seller columns (XII).
 model Decision {
   id          String         @id @default(cuid())
@@ -504,6 +506,7 @@ model Decision {
   round       Int
   type        DecisionType
   offerId     String?
+  offer       Offer?         @relation(fields: [offerId], references: [id], onDelete: Restrict)
   actorUserId String
   note        String?
   createdAt   DateTime       @default(now())
@@ -526,7 +529,8 @@ enum DealStatus {
 
 // An accepted offer tracked to closing (T304; FR-053 to FR-057). A partial unique index
 // (migration) allows one active deal per package, so two concurrent accepts cannot both win.
-// CHECKs: a fallen-through deal has its reason, and a pending one its reconfirmBy. The reason is
+// CHECKs: a fallen-through deal has its reason, and a pending one its reconfirmBy. Like decisions,
+// deals are history: their package and offer are never deleted while they exist (RESTRICT). The reason is
 // free text, so it holds ciphertext like the seller columns (XII).
 model Deal {
   id                 String         @id @default(cuid())

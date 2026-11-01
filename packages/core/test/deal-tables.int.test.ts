@@ -1,6 +1,7 @@
 // Checks the Deal and Decision rules against a real Postgres (T304): one active deal per package
-// (FR-053), so two accepts can never both win; a fallen-through deal keeps its reason (FR-056);
-// and decisions name their offer and can never be changed.
+// (FR-053), so two accepts can never both win; a fallen-through deal keeps its reason (FR-056) and
+// a promoted backup its deadline to reconfirm (FR-057); and decisions name a real offer and can
+// never be changed.
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startMigratedDatabase } from "./database.js";
@@ -27,7 +28,13 @@ beforeAll(async () => {
 afterAll(() => stop?.());
 
 /** An offer of its own for each deal, since a deal's offer is unique. */
-async function insertDeal(status: string, fellThroughReason: string | null = null) {
+async function insertDeal(
+  status: string,
+  {
+    fellThroughReason = null,
+    reconfirmBy = null,
+  }: { fellThroughReason?: string | null; reconfirmBy?: Date | null } = {},
+) {
   const offerId = `offer-${++n}`;
   await db.query(
     `INSERT INTO "Offer" (id, "packageId", "investorId", round, status, price, "paymentType", "closingDate", "earnestMoney", contingencies, "feesAndConcessions", "expiresAt", "updatedAt")
@@ -35,9 +42,9 @@ async function insertDeal(status: string, fellThroughReason: string | null = nul
     [offerId],
   );
   const { rows } = await db.query(
-    `INSERT INTO "Deal" (id, "packageId", "offerId", status, "fellThroughReason", "updatedAt")
-     VALUES ($1, 'package-1', $2, $3, $4, now()) RETURNING id`,
-    [`deal-${n}`, offerId, status, fellThroughReason],
+    `INSERT INTO "Deal" (id, "packageId", "offerId", status, "fellThroughReason", "reconfirmBy", "updatedAt")
+     VALUES ($1, 'package-1', $2, $3, $4, $5, now()) RETURNING id`,
+    [`deal-${n}`, offerId, status, fellThroughReason, reconfirmBy],
   );
   return rows[0].id as string;
 }
@@ -56,6 +63,14 @@ describe("Deal table", () => {
   it("refuses a fallen-through deal without its reason", async () => {
     await expect(insertDeal("FELL_THROUGH")).rejects.toThrow("Deal_fellThroughReason_check");
   });
+
+  it("refuses a promoted backup without its deadline to reconfirm", async () => {
+    await db.query(`UPDATE "Deal" SET status = 'CLOSED'`);
+    await expect(insertDeal("PENDING_RECONFIRMATION")).rejects.toThrow("Deal_reconfirmBy_check");
+    await expect(
+      insertDeal("PENDING_RECONFIRMATION", { reconfirmBy: new Date() }),
+    ).resolves.toBeDefined();
+  });
 });
 
 describe("Decision table", () => {
@@ -66,8 +81,11 @@ describe("Decision table", () => {
       [`decision-${++n}`, type, offerId],
     );
 
-  it("refuses an accept that names no offer", async () => {
+  it("refuses an accept that names no offer, or an offer that does not exist", async () => {
     await expect(insertDecision("ACCEPT", null)).rejects.toThrow("Decision_offer_check");
+    await expect(insertDecision("ACCEPT", "no-such-offer")).rejects.toThrow(
+      "Decision_offerId_fkey",
+    );
   });
 
   it("can be added but never changed or removed", async () => {

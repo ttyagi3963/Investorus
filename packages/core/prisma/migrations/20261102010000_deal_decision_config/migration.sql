@@ -68,6 +68,9 @@ CREATE INDEX "Deal_packageId_idx" ON "Deal"("packageId");
 ALTER TABLE "Decision" ADD CONSTRAINT "Decision_packageId_fkey" FOREIGN KEY ("packageId") REFERENCES "ListingPackage"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "Decision" ADD CONSTRAINT "Decision_offerId_fkey" FOREIGN KEY ("offerId") REFERENCES "Offer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "Deal" ADD CONSTRAINT "Deal_packageId_fkey" FOREIGN KEY ("packageId") REFERENCES "ListingPackage"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey

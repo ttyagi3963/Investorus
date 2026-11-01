@@ -24,7 +24,7 @@ export function proxy(request: NextRequest): NextResponse {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return NextResponse.redirect(new URL("/login", request.url));
   const role = roleIn(token);
-  const home = role ? ROLE_HOME[role] : undefined;
+  const home = role && Object.hasOwn(ROLE_HOME, role) ? ROLE_HOME[role] : undefined;
   if (home && areaRole(request.nextUrl.pathname) !== role) {
     return NextResponse.redirect(new URL(home, request.url));
   }

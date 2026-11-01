@@ -19,10 +19,12 @@ import { useStatusFilter, type StatusGroup } from "@/features/listing-package/St
 import { PageHeader } from "@/features/shell/PageHeader";
 import { describeError } from "@/lib/errors";
 
+// All comes first: once an offer is accepted the listing is no longer open, and the investor
+// who won it (or a backup asked to reconfirm) must see it on arrival.
 const GROUPS: StatusGroup<InvestorPackageSummary>[] = [
+  { id: "all", label: "All", includes: () => true },
   { id: "open", label: "Open", includes: (pkg) => pkg.status === "ACCEPTING_OFFERS" },
   { id: "offered", label: "Offered", includes: (pkg) => pkg.myOfferStatus !== null },
-  { id: "all", label: "All", includes: () => true },
 ];
 
 export default function InvestorDashboard() {
@@ -48,17 +50,17 @@ export default function InvestorDashboard() {
         <>
           {tabs}
           {shown.length === 0 && (
-            <p role="status" className="text-body text-muted">
-              No listings in {groupLabel.toLowerCase()}.
-            </p>
+            <p className="text-body text-muted">No listings under “{groupLabel}”.</p>
           )}
-          <ul className="grid grid-cols-1 gap-stack-lg md:grid-cols-2 lg:grid-cols-3">
-            {shown.map((pkg) => (
-              <li key={pkg.id}>
-                <OpportunityCard pkg={pkg} now={now} />
-              </li>
-            ))}
-          </ul>
+          {shown.length > 0 && (
+            <ul className="grid grid-cols-1 gap-stack-lg md:grid-cols-2 lg:grid-cols-3">
+              {shown.map((pkg) => (
+                <li key={pkg.id}>
+                  <OpportunityCard pkg={pkg} now={now} />
+                </li>
+              ))}
+            </ul>
+          )}
           <p className="text-helper text-muted">
             Street addresses and seller details are not shown.
           </p>

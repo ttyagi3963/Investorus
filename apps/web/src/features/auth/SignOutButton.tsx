@@ -29,8 +29,10 @@ export function SignOutButton() {
             setFailed(true);
             return;
           }
-          queryClient.clear();
+          // Leave first: cleared while this area's queries are mounted, they would refetch without
+          // a session and flash an error.
           router.replace("/login");
+          queryClient.clear();
         }}
       >
         Sign out

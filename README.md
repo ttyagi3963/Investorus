@@ -138,7 +138,8 @@ Run `docker compose up --build`. Delete `.env.local` to go back to the sandbox.
 ## Try the api with curl
 
 The browser talks to the api through the web app, but the api answers curl directly on port 4000.
-Every POST, PUT, and PATCH needs an `Idempotency-Key` header, so a retried request never runs twice.
+Every POST, PUT, and PATCH from a signed-in user needs an `Idempotency-Key` header, so a retried
+request never runs twice. The recipes need only curl and a POSIX shell.
 
 ```sh
 # Health: no sign-in needed.
@@ -146,20 +147,27 @@ curl -s http://localhost:4000/api/v1/health
 # {"status":"ok","db":"ok"}
 
 # Sign in (here as operations) and keep the token.
-TOKEN=$(curl -s -X POST http://localhost:4000/api/v1/sessions   -H 'Content-Type: application/json' -H 'Idempotency-Key: signin-1'   -d '{"email":"morgan@example.com","password":"demo1234"}'   | node -pe 'JSON.parse(require("fs").readFileSync(0)).token')
+TOKEN=$(curl -s -X POST http://localhost:4000/api/v1/sessions \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"morgan@example.com","password":"demo1234"}' \
+  | sed -E 's/.*"token":"([^"]+)".*/\1/')
 
 # Send the match digests now. The same request with the same key again replays the first answer
 # (the same job ID) with `Idempotent-Replay: true`, and nothing runs twice.
-curl -si -X POST http://localhost:4000/api/v1/ops/match-digests   -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: digest-1'
+curl -si -X POST http://localhost:4000/api/v1/ops/match-digests \
+  -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: digest-1'
 # HTTP/1.1 202 Accepted
 # {"jobId":"41bd25ba-…"}
-curl -si -X POST http://localhost:4000/api/v1/ops/match-digests   -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: digest-1'
+curl -si -X POST http://localhost:4000/api/v1/ops/match-digests \
+  -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: digest-1'
 # HTTP/1.1 202 Accepted
 # Idempotent-Replay: true
 # {"jobId":"41bd25ba-…"}
 
 # The same key with a different body is refused.
-curl -si -X POST http://localhost:4000/api/v1/ops/match-digests   -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: digest-1'   -H 'Content-Type: application/json' -d '{"again":true}'
+curl -si -X POST http://localhost:4000/api/v1/ops/match-digests \
+  -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: digest-1' \
+  -H 'Content-Type: application/json' -d '{"again":true}'
 # HTTP/1.1 422 Unprocessable Entity
 # {"error":"This Idempotency-Key was already used for another request","code":"IDEMPOTENCY_KEY_REUSED",…}
 ```

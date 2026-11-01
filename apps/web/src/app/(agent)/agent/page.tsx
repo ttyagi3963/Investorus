@@ -165,9 +165,7 @@ export default function AgentDashboard() {
       )}
       {packages && packages.length > 0 && tabs}
       {packages && packages.length > 0 && shown.length === 0 && (
-        <p role="status" className="text-body text-muted">
-          No packages in {groupLabel.toLowerCase()}.
-        </p>
+        <p className="text-body text-muted">No packages under “{groupLabel}”.</p>
       )}
       {shown.length > 0 && (
         <Card>

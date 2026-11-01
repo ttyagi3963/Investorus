@@ -1,12 +1,16 @@
 // Walks the whole loop on a real Postgres through the real services and workflows (T360, T361; R18,
 // SC-010, FR-032, SC-006): publish, match, offer, accept, every milestone to CLOSED, and the CRM
-// told at each step, one update set aside during a CRM outage and retried by operations. Every log
-// line of the run, the worker's and the sandbox's, is kept and must not carry the seller's details.
+// told at each step, one update set aside during a CRM outage and retried by operations. No text the
+// run produced may carry the seller's details: the reasons deliveries were set aside (which the
+// worker logs as they are), every stored delivery and job error, event payload, audit entry, and
+// notice, and the sandbox's output. The worker's job-failure log line is guarded by its own test
+// (apps/worker/src/job-runner.test.ts).
 // The sandbox runs as its own process (its real server, started with tsx) on the database's
 // `sandbox` schema. The relay queues to a list and the test hands each delivery to the dispatcher,
 // as the worker's BullMQ consumer would, so the run needs no Redis and has no timing to wait on.
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { once } from "node:events";
 import { mkdtempSync } from "node:fs";
 import { createServer, type AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -18,7 +22,6 @@ import type { DealMilestone, DealParts } from "@clever/contracts/deal";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createJobHandlers } from "../src/jobs/handlers.js";
-import { createLogger } from "../src/infra/logger.js";
 import { createPrismaClient, type PrismaClient } from "../src/infra/prisma-client.js";
 import { DeliveryDispatcher } from "../src/outbox/DeliveryDispatcher.js";
 import { OutboxRelay } from "../src/outbox/OutboxRelay.js";
@@ -53,12 +56,8 @@ const STREET = "4471 Wrenfield Hollow Rd";
 const inDays = (days: number) => new Date(Date.now() + days * 86_400_000);
 const day = (days: number) => inDays(days).toISOString().slice(0, 10);
 
-/** Every log line of the run: the worker's logger and the sandbox process's output. */
-const logLines: string[] = [];
-const logger = createLogger("worker", {
-  level: "debug",
-  destination: { write: (line: string) => void logLines.push(line) },
-});
+/** Text the run produced outside the database: set-aside reasons and the sandbox's output. */
+const producedText: string[] = [];
 
 let db: pg.Client;
 let stopDb: () => Promise<void>;
@@ -94,10 +93,10 @@ async function startSandbox(databaseUrl: string): Promise<void> {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  sandbox.stderr!.on("data", (chunk: Buffer) => logLines.push(chunk.toString()));
+  sandbox.stderr!.on("data", (chunk: Buffer) => producedText.push(chunk.toString()));
   await new Promise<void>((resolve, reject) => {
     sandbox.stdout!.on("data", (chunk: Buffer) => {
-      logLines.push(chunk.toString());
+      producedText.push(chunk.toString());
       if (chunk.toString().includes("sandbox listening")) resolve();
     });
     sandbox.once("exit", (code) => reject(new Error(`The sandbox stopped with code ${code}`)));
@@ -166,8 +165,8 @@ beforeAll(async () => {
   });
   const setAside: string[] = [];
   /**
-   * Runs the due jobs, then relays and sends every delivery, logging what the worker's job loop,
-   * relay loop, and delivery consumer log; a delivery to retry goes back on the queue.
+   * Runs the due jobs, then relays and sends every delivery, as the worker's loops do; a delivery to
+   * retry goes back on the queue, and a set-aside one's reason is kept.
    */
   const work = async () => {
     for (;;) {
@@ -175,16 +174,14 @@ beforeAll(async () => {
       if (!job) break;
       await handlers[job.type](job.payload);
       await uow.run((repos) => repos.jobs.complete(job.id));
-      logger.child({ job_id: job.id, type: job.type }).info("job completed");
     }
-    const { relayed, queued: count } = await relay.tick();
-    logger.info({ relayed, queued: count }, "outbox relayed");
+    await relay.tick();
     for (let id = queued.shift(); id; id = queued.shift()) {
       const result = await dispatcher.dispatch(id);
       if (result.outcome === "RETRY") queued.push(id);
       if (result.outcome === "NEEDS_ATTENTION") {
         setAside.push(id);
-        logger.warn({ delivery_id: id, error: result.error }, "delivery needs attention");
+        producedText.push(result.error);
       }
     }
   };
@@ -257,7 +254,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  sandbox?.kill();
+  if (sandbox && sandbox.exitCode === null) {
+    const exited = once(sandbox, "exit");
+    sandbox.kill();
+    await exited;
+  }
   await prisma?.$disconnect();
   await stopDb?.();
 });
@@ -289,11 +290,20 @@ describe("the whole loop", () => {
     ]);
   });
 
-  it("logs no seller name, email, phone, or street, even for the delivery that failed", () => {
-    const logs = logLines.join("\n");
-    expect(logs).toContain("delivery needs attention");
+  it("produces no text with the seller's name, email, phone, or street, even for the failure", async () => {
+    const stored = await db.query(`
+      SELECT "lastError" AS text FROM "Delivery"
+      UNION ALL SELECT error FROM "Job"
+      UNION ALL SELECT payload::text FROM "OutboxEvent"
+      UNION ALL SELECT details::text FROM "AuditLog"
+      UNION ALL SELECT title || ' ' || body FROM "Notification"`);
+    const text = [
+      ...producedText,
+      ...stored.rows.map((r: { text: string | null }) => r.text ?? ""),
+    ];
+    expect(producedText.join("\n")).toContain("503");
     for (const detail of [seller.fullName, seller.email, seller.phone, STREET]) {
-      expect(logs).not.toContain(detail);
+      expect(text.join("\n")).not.toContain(detail);
     }
   });
 });

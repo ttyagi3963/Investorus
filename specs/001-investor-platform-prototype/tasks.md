@@ -461,8 +461,6 @@ rehearsal on `main`).
 - [ ] T066 Implement the shared `sandboxRequest()` helper (5 s AbortSignal timeout, Zod-validated response, InfrastructureError mapping) in packages/core/src/providers/sandbox-http.ts, then `SandboxCrmProviderImpl`, `SandboxCrmMirrorReaderImpl`, `SandboxMessagingProviderImpl`, `SandboxStorageProviderImpl` (`createUpload` returns `{ url: PUBLIC_SANDBOX_URL/storage/objects/:key?sig=&exp=, method: "PUT", headers: { "Content-Type" }, expiresAt }`, signed with HMAC-SHA256; `exists`, `read`, and `put` use `SANDBOX_INTERNAL_TOKEN`), and `SandboxSimulationProviderImpl` in their port folders under packages/core/src/providers/ (depends on T065) (Sprint 1 part split out as T251)
 - [ ] T068 Fill the barrels: packages/core/src/index.ts (ports, services, workflows, domain types, errors, `redactPii`, translators — no `*Impl`) and packages/core/src/adapters.ts (every `*Impl`, `createPrismaClient`, `createRedisClient`, `createLogger`)
 
-- [ ] T274 [P] Add `S3StorageProviderImpl` in packages/core/src/providers/storage/, the production storage adapter named in [contracts/providers.md](./contracts/providers.md) (owner: after Sprint 1, decided 2026-11-01): `createUpload` → a presigned `PUT` with `Content-Type` and `Content-Length` signed in; `getReadUrl` → a presigned `GET`; `stat` → `HeadObject` (null on 404); selected by `STORAGE_PROVIDER=s3` in the api container, with `S3_BUCKET` and `S3_REGION` checked only then; credentials from the environment, never in the committed `.env`; a unit test with a mocked S3 client, so CI needs no AWS; and a README note on switching
-
 ### Sandbox app (apps/sandbox, port 4100)
 
 - [ ] T069 Write the sandbox route tests (supertest, in-memory store) in apps/sandbox/src/routes/crm.test.ts, messages.test.ts, storage.test.ts, simulation.test.ts: CRM upsert deduplicates by `Idempotency-Key`; an older `occurredAt` → 409 `{ code: "STALE" }`; messages are captured once per key; (storage is tested in T252: signature, expiry, content type, size, internal token); an `OPTIONS` preflight from `WEB_ORIGIN` gets the CORS headers and one from any other origin does not; each mode `down` (503), `slow` (10 s, fake timers), and `garbage` (200 with malformed JSON) applies only to its own service
@@ -772,6 +770,19 @@ and the automated brand checks. The foundation (tokens, primitives, templates) i
 - [ ] T212 [P] Write scripts/verify-limits.sh: a clean `docker builder prune -af`, a timed `docker compose build` (fails if over 20 min), `docker compose up -d`, scripts/wait-for-home.sh (fails if over 5 min), and `docker stats --no-stream` (prints the total memory); document running it on a 2 GB x86_64 VM in README.md
 - [ ] T214 Run the full quickstart (V1–V7) on a clean 2 GB x86_64 Linux VM and record the build time, startup time, and memory in README.md
 - [ ] T215 Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm test:integration` from the root package.json, and fix anything that fails in the reported files
+
+---
+
+## After Sprint 1: Production Storage Adapter (owner-scheduled)
+
+**Purpose**: show that storage is swappable by adding the production adapter that
+[contracts/providers.md](./contracts/providers.md) already names, behind the same port. The owner
+(Tarun) scheduled it on 2026-11-01 to run after Sprint 1. It stays switched off in the demo: the
+reviewer's `docker compose up` uses the sandbox, and nothing needs an AWS account. Recorded as a
+deviation in plan.md Complexity Tracking.
+
+- [ ] T274 Write the S3 adapter tests first in packages/core/src/providers/storage/S3StorageProviderImpl.test.ts (a mocked S3 client; no AWS in CI): an upload link signs the `Content-Type` and the exact `Content-Length`, so the browser cannot change either; `stat` returns `{ contentType, sizeBytes }` from `HeadObject`, and `null` on a 404; an S3 failure becomes `InfrastructureError`
+- [ ] T275 Implement `S3StorageProviderImpl` in packages/core/src/providers/storage/ (`createUpload` → a presigned `PUT`, `getReadUrl` → a presigned `GET`, `stat` → `HeadObject`), select it in apps/api/src/container.ts with `STORAGE_PROVIDER=s3` (`S3_BUCKET` and `S3_REGION` required only then; credentials from the environment, never in the committed `.env`), and add a README note on switching (depends on T274)
 
 ---
 

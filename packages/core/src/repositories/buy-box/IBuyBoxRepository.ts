@@ -10,6 +10,8 @@ export interface IBuyBoxRepository {
   listCandidates(zip: string, state: string, now: Date): Promise<BuyBox[]>;
   /** The investor's boxes, the default first, then oldest first. */
   listForInvestor(investorId: string): Promise<BuyBox[]>;
+  /** Boxes that could match anything now: ACTIVE, of an ACTIVE investor with proof of funds. */
+  countMatchable(now: Date): Promise<number>;
   findById(id: string): Promise<BuyBox | null>;
   /** The investor's default box, the one the legacy import keeps, or null. */
   findDefault(investorId: string): Promise<BuyBox | null>;

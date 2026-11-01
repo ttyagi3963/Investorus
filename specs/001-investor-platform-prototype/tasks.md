@@ -1264,7 +1264,7 @@ owner to confirm):
 - [X] T340 The daily match digest (tests first): SEND_MATCH_DIGESTS runs at `matchDigest.hourUtc`, sends one `investor.match_digest` email per investor with undigested buy-box-change matches, sets `digestedAt`, and schedules the next day; `POST /ops/match-digests` runs it now (from T220, T221)
 - [X] T341 The operations api (tests first): packages with their failing deliveries; a package's timeline (audit, matches, offers, deliveries); why an investor was or was not matched; deliveries by status, retry, and retry all (DELIVERY_RETRIED audited); the CRM comparison; outage modes (SIMULATION_CHANGED audited); OPS only (from T191, T193–T195)
 - [ ] T342 The operations screens: the console's Packages, Failed jobs, Simulations, and CRM pages; the package trace (design 09: stat tiles, timeline, the investors table with match, notification, and response, and "Why not matched?") (from T196–T198)
-- [ ] T343 The match summary on the agent's package page (design 04): "N of M active buy boxes matched" and the top reasons a buy box did not match, counted when matching runs, counts only
+- [X] T343 The match summary on the agent's package page (design 04): "N of M active buy boxes matched" and the top reasons a buy box did not match, counted when matching runs, counts only
 - [ ] T344 Documentation: plan.md, contracts/events.md (in-app stays in the transaction), README (the sandbox inspection page, the operations tour, the outage demo), and quickstart
 
 **Checkpoint**: switch the stand-in CRM to `down` and messaging to `garbage`, publish a package and

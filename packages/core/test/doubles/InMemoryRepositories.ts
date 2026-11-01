@@ -244,6 +244,9 @@ export class InMemoryAuditRepository implements IAuditRepository {
 export class InMemoryBuyBoxRepository implements IBuyBoxRepository {
   readonly boxes: BuyBox[] = [];
   readonly investors = new Map<string, Pick<Investor, "status" | "proofOfFundsExpiresAt">>();
+  async countMatchable(now: Date) {
+    return this.boxes.filter((box) => this.canMatch(box, now)).length;
+  }
   async listCandidates(zip: string, state: string, now: Date) {
     return this.boxes.filter((box) => {
       const covers =

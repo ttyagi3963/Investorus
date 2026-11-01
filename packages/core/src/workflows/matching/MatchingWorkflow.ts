@@ -6,7 +6,7 @@
 // late job is harmless. A saved buy box is matched the other way round (T321, FR-023): one box
 // against every package still taking offers; a package it newly shares is a match like any other,
 // and an investor already matched gets the box added and no second notice.
-import type { BuyBox } from "@clever/contracts/buy-box";
+import { CRITERION_KEYS, type BuyBox, type CriterionKey } from "@clever/contracts/buy-box";
 import type { MatchBuyBoxPayload, MatchPackagePayload } from "@clever/contracts/jobs";
 import type { ListingPackage } from "@clever/contracts/listing-package";
 import type { Property } from "@clever/contracts/property";
@@ -54,10 +54,21 @@ export class MatchingWorkflow implements IMatchingWorkflow {
       const facts = version.snapshot;
 
       const candidates = await repos.buyBoxes.listCandidates(facts.zip, facts.state, now);
+      // Counts for the agent's summary (T343): the eligible boxes outside the area never reach the
+      // evaluator, so they count against geography; every other box counts each criterion it failed.
+      const evaluated = await repos.buyBoxes.countMatchable(now);
+      const exclusions: Partial<Record<CriterionKey, number>> = {};
+      const exclude = (key: CriterionKey, count = 1) => {
+        if (count > 0) exclusions[key] = (exclusions[key] ?? 0) + count;
+      };
+      exclude("geography", evaluated - candidates.length);
       const byInvestor = new Map<string, MatchedBox[]>();
       for (const box of candidates) {
         const evaluation = evaluateBuyBox(box, facts, today);
-        if (!evaluation.matched) continue;
+        if (!evaluation.matched) {
+          for (const key of CRITERION_KEYS) if (!evaluation.results[key].passed) exclude(key);
+          continue;
+        }
         byInvestor.set(box.investorId, [
           ...(byInvestor.get(box.investorId) ?? []),
           { box, evaluation },
@@ -105,6 +116,8 @@ export class MatchingWorkflow implements IMatchingWorkflow {
           evaluatorVersion: EVALUATOR_VERSION,
           candidates: candidates.length,
           matchedCount: byInvestor.size,
+          evaluated,
+          exclusions,
         },
       });
     });

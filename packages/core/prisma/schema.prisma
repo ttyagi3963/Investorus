@@ -65,8 +65,10 @@ enum InvestorStatus {
 
 // A buying company Clever sends matched packages to (T278). Only ACTIVE investors whose proof
 // of funds has not expired are matched (FR-024); proofOfFundsExpiresAt null means unverified.
+// externalRef is the legacy spreadsheet's Investor ID, the import's upsert key (T319, FR-061).
 model Investor {
   id                    String         @id @default(cuid())
+  externalRef           String?        @unique
   companyName           String
   contactName           String
   email                 String         @unique
@@ -296,6 +298,7 @@ model BuyBox {
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   geography          BuyBoxGeography[]
+  versions           BuyBoxVersion[]
 
   @@unique([investorId, name])
   @@index([investorId])
@@ -315,11 +318,27 @@ model BuyBoxGeography {
   @@index([kind, value])
 }
 
+// One saved version of a buy box (T319): every criterion and the geography as the save left them,
+// so a match decision can be explained later by the version it read. Append-only (a trigger
+// refuses UPDATE and DELETE); createdBy is the user who saved it, null for the seed or the import.
+model BuyBoxVersion {
+  id        String   @id @default(cuid())
+  buyBoxId  String
+  buyBox    BuyBox   @relation(fields: [buyBoxId], references: [id], onDelete: Restrict)
+  version   Int
+  snapshot  Json
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@unique([buyBoxId, version])
+}
+
 // What first shared a package with an investor in a round.
 enum MatchTrigger {
   PUBLISH
   PACKAGE_EDIT
   REOPEN
+  BUY_BOX_CHANGE
 }
 
 // An investor's access to a package in one offer round (T281; FR-022, FR-040): created when at
@@ -375,6 +394,7 @@ model Job {
   correlationId String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  importBatch   ImportBatch?
 
   @@index([status, runAt])
 }
@@ -558,6 +578,48 @@ model ConfigEntry {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+enum ImportRowOutcome {
+  IMPORTED
+  UPDATED
+  REJECTED
+}
+
+// One upload of the legacy investor file (T319, FR-061; contracts/investor-import.md). The
+// IMPORT_INVESTORS job (jobId) reads the file at storageKey; the counts are set when it finishes,
+// and error holds a refusal of the whole file (too large, a missing column). ignoredColumns are
+// the file's columns the import does not know.
+model ImportBatch {
+  id             String            @id @default(cuid())
+  fileName       String
+  storageKey     String
+  jobId          String?           @unique
+  job            Job?              @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  totalRows      Int?
+  imported       Int               @default(0)
+  updated        Int               @default(0)
+  rejected       Int               @default(0)
+  ignoredColumns String[]
+  error          String?
+  createdBy      String
+  createdAt      DateTime          @default(now())
+  finishedAt     DateTime?
+  rows           ImportRowResult[]
+}
+
+// What happened to one row of an import: the investor it created or updated, or why it was
+// rejected. One per batch and row, so a retried job skips the rows it already did.
+model ImportRowResult {
+  id         String           @id @default(cuid())
+  batchId    String
+  batch      ImportBatch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  rowNumber  Int
+  outcome    ImportRowOutcome
+  reason     String?
+  investorId String?
+
+  @@unique([batchId, rowNumber])
 }
 
 // Who caused an audited change: a signed-in user, or the system (a job such as matching).

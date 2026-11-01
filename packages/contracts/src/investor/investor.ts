@@ -1,6 +1,6 @@
 // The Investor the app passes around, shaped from the Prisma `Investor` model (T278): a buying
 // company Clever sends matched packages to. A plain type: investors come from our own database
-// (the seed today, the spreadsheet import later), which enforces the rules.
+// (the seed and the spreadsheet import), which enforces the rules.
 
 export const INVESTOR_TYPES = ["DIRECT_BUYER", "WHOLESALER", "IBUYER"] as const;
 export type InvestorType = (typeof INVESTOR_TYPES)[number];
@@ -10,6 +10,8 @@ export type InvestorStatus = (typeof INVESTOR_STATUSES)[number];
 
 export type Investor = {
   id: string;
+  /** The legacy spreadsheet's Investor ID, the import's upsert key; null when not imported. */
+  externalRef: string | null;
   companyName: string;
   contactName: string;
   email: string;

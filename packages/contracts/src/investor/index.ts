@@ -1,6 +1,12 @@
 // Public API of @clever/contracts/investor. Other packages import from here, never from the
 // individual files, so the files can change without breaking callers.
 export {
+  IMPORT_ROW_OUTCOMES,
+  type ImportBatch,
+  type ImportRowOutcome,
+  type ImportRowResult,
+} from "./import.js";
+export {
   INVESTOR_STATUSES,
   INVESTOR_TYPES,
   type Investor,

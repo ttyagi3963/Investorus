@@ -1,6 +1,6 @@
-// The demo data the reviewer signs in with (T260, T299): one agent, three investors with their buy
-// boxes, and a login for each, upserted by email (boxes by investor and name), so running it on
-// every `docker compose up` adds nothing. The password is a demo value listed in the README; it is
+// The demo data the reviewer signs in with (T260, T299, T314): two agents, five investors with their
+// buy boxes, and a login for each, upserted by email (boxes by investor and name), so running it on
+// every `docker compose up` adds nothing. Blake's deal demo is in deal-demo.ts. The password is a demo value listed in the README; it is
 // stored only as a bcrypt hash. expected-matches.json records which boxes match the sample listing.
 import bcrypt from "bcryptjs";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
@@ -9,6 +9,7 @@ export const DEMO_PASSWORD = "demo1234";
 
 const DEMO_AGENTS = [
   { name: "Avery Agent", email: "avery@example.com", brokerage: "Demo Realty" },
+  { name: "Blake Agent", email: "blake@example.com", brokerage: "Demo Realty" },
 ] as const;
 
 type DemoBox = Omit<Prisma.BuyBoxUncheckedCreateInput, "investorId" | "geographyMode"> & {
@@ -64,6 +65,37 @@ const DEMO_INVESTORS: {
         places: { kind: "ZIP", values: ["75201", "75204"] },
         propertyTypes: ["CONDO"],
         priceMax: 200_000,
+      },
+    ],
+  },
+  // Cobalt and Dune complete Blake's deal demo (T314): both boxes fit its 78745 listing, and
+  // neither covers the sample listing's 78704, so expected-matches.json is unchanged.
+  {
+    email: "cobalt@example.com",
+    companyName: "Cobalt Property Group",
+    contactName: "Cam Cobalt",
+    boxes: [
+      {
+        name: "Austin starter homes",
+        strategy: "BUY_HOLD",
+        places: { kind: "ZIP", values: ["78744", "78745"] },
+        propertyTypes: ["SINGLE_FAMILY"],
+        priceMax: 320_000,
+      },
+    ],
+  },
+  {
+    email: "dune@example.com",
+    companyName: "Dune Holdings",
+    contactName: "Dee Dune",
+    boxes: [
+      {
+        name: "South Austin flips",
+        strategy: "FIX_FLIP",
+        places: { kind: "ZIP", values: ["78745", "78748", "78749"] },
+        priceMin: 200_000,
+        priceMax: 350_000,
+        conditionsAccepted: ["FAIR", "POOR", "DISTRESSED"],
       },
     ],
   },

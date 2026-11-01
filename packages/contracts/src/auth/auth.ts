@@ -14,6 +14,7 @@ export type CreateSessionInput = z.input<typeof createSessionSchema>;
 /** Who is calling. Like `User`, each role carries exactly its own link. */
 export const actorSchema = z.discriminatedUnion("role", [
   z.object({ userId: z.string(), role: z.literal("AGENT"), agentId: z.string() }),
+  z.object({ userId: z.string(), role: z.literal("INVESTOR"), investorId: z.string() }),
   z.object({ userId: z.string(), role: z.literal("OPS"), agentId: z.null() }),
 ]);
 export type Actor = z.infer<typeof actorSchema>;

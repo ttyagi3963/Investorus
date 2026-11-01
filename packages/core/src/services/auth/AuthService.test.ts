@@ -26,9 +26,23 @@ const at = (email: string, active = true): UserCredentials => ({
   },
   passwordHash: bcrypt.hashSync("demo1234", 4),
 });
+const investor: UserCredentials = {
+  user: {
+    id: "user-summit",
+    email: "summit@example.com",
+    role: "INVESTOR",
+    agentId: null,
+    investorId: "investor-1",
+    displayName: "Summit Capital",
+    active: true,
+    createdAt: NOW,
+    updatedAt: NOW,
+  },
+  passwordHash: bcrypt.hashSync("demo1234", 4),
+};
 const service = () =>
   new AuthService(
-    new InMemoryUnitOfWork([at("avery@example.com"), at("gone@example.com", false)]),
+    new InMemoryUnitOfWork([at("avery@example.com"), at("gone@example.com", false), investor]),
     {
       jwtSecret: SECRET,
       clock: { now: () => NOW },
@@ -55,6 +69,16 @@ describe("AuthService.signIn", () => {
       email: "avery@example.com",
       role: "AGENT",
       displayName: "Avery Agent",
+    });
+  });
+
+  it("gives an investor a session that names their investor, which the services rely on", async () => {
+    const auth = service();
+    const { token } = await auth.signIn({ email: "summit@example.com", password: "demo1234" });
+    await expect(auth.verify(token)).resolves.toEqual({
+      userId: "user-summit",
+      role: "INVESTOR",
+      investorId: "investor-1",
     });
   });
 

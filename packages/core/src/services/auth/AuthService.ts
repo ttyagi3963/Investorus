@@ -48,7 +48,11 @@ export class AuthService implements IAuthService {
     }
     const { user } = found;
     const now = Math.floor(this.options.clock.now().getTime() / 1000);
-    const token = await new SignJWT({ userId: user.id, role: user.role, agentId: user.agentId })
+    const claims =
+      user.role === "INVESTOR"
+        ? { userId: user.id, role: user.role, investorId: user.investorId }
+        : { userId: user.id, role: user.role, agentId: user.agentId };
+    const token = await new SignJWT(claims)
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt(now)
       .setExpirationTime(now + SESSION_SECONDS)
@@ -66,6 +70,7 @@ export class AuthService implements IAuthService {
         userId: payload.userId,
         role: payload.role,
         agentId: payload.agentId,
+        investorId: payload.investorId,
       });
     } catch {
       throw new UnauthenticatedError("Sign in again");

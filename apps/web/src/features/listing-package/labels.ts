@@ -1,10 +1,28 @@
-// The words the screens use for the codes (T301, T315): offer programs, package, offer, and deal
-// statuses, the fields a publish can be blocked by, and the timeline's actions. One place, so every
-// screen says the same thing.
+// The words the screens use for the codes (T301, T315, T324): offer programs, property types and
+// conditions, package, offer, and deal statuses, the fields a publish can be blocked by, and the
+// timeline's actions. One place, so every screen says the same thing.
 import type { AuditAction, TimelineEntryView } from "@clever/contracts/audit";
 import type { DealStatus } from "@clever/contracts/deal";
 import type { OfferProgram, PackageStatus } from "@clever/contracts/listing-package";
 import type { OfferStatus } from "@clever/contracts/offer";
+import type { PropertyCondition, PropertyType } from "@clever/contracts/property";
+
+export const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
+  SINGLE_FAMILY: "Single family",
+  CONDO: "Condo",
+  TOWNHOME: "Townhome",
+  MULTI_FAMILY: "Multi-family",
+  MANUFACTURED: "Manufactured",
+  LAND: "Land",
+};
+
+export const CONDITION_LABELS: Record<PropertyCondition, string> = {
+  EXCELLENT: "Excellent",
+  GOOD: "Good",
+  FAIR: "Fair",
+  POOR: "Poor",
+  DISTRESSED: "Distressed",
+};
 
 export const PROGRAM_LABELS: Record<OfferProgram, string> = {
   CASH_OFFER: "Cash offer",

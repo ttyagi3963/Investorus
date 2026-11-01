@@ -14,25 +14,10 @@ import { Button, CheckboxGroup, NumberField, Select, TextField } from "@clever/u
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
-import { PROGRAM_LABELS } from "./labels";
+import { CONDITION_LABELS, PROGRAM_LABELS, PROPERTY_TYPE_LABELS } from "./labels";
 import { useSavePackage } from "./useSavePackage";
 
-const TYPE_LABELS: Record<(typeof PROPERTY_TYPES)[number], string> = {
-  SINGLE_FAMILY: "Single family",
-  CONDO: "Condo",
-  TOWNHOME: "Townhome",
-  MULTI_FAMILY: "Multi-family",
-  MANUFACTURED: "Manufactured",
-  LAND: "Land",
-};
-const CONDITION_LABELS: Record<(typeof PROPERTY_CONDITIONS)[number], string> = {
-  EXCELLENT: "Excellent",
-  GOOD: "Good",
-  FAIR: "Fair",
-  POOR: "Poor",
-  DISTRESSED: "Distressed",
-};
-const typeOptions = PROPERTY_TYPES.map((id) => ({ id, label: TYPE_LABELS[id] }));
+const typeOptions = PROPERTY_TYPES.map((id) => ({ id, label: PROPERTY_TYPE_LABELS[id] }));
 const conditionOptions = PROPERTY_CONDITIONS.map((id) => ({ id, label: CONDITION_LABELS[id] }));
 const programOptions = OFFER_PROGRAMS.map((id) => ({ id, label: PROGRAM_LABELS[id] }));
 const listedOptions = [

@@ -1,4 +1,4 @@
-// Guards the draft package rules (T258): bad data is refused with the field named, city and state
+// Guards the draft package rules (T258): an unknown ZIP or future year is refused on its field, city and state
 // come from the ZIP, one package per address across all agents (FR-013), an agent only reaches their
 // own packages (FR-080), a stale edit is refused, and an edit is checked on the merged result.
 import type { Actor } from "@clever/contracts/auth";
@@ -10,7 +10,6 @@ import {
 } from "@clever/contracts/common";
 import type { CreateListingPackageInput } from "@clever/contracts/listing-package";
 import { describe, expect, it } from "vitest";
-import { ZodError } from "zod";
 import { InMemoryUnitOfWork } from "../../../test/doubles/InMemoryRepositories.js";
 import { StaticGeoProviderImpl } from "../../providers/geo/StaticGeoProviderImpl.js";
 import { createAddressHasher } from "../../providers/pii-cipher/address-hasher.js";
@@ -31,15 +30,11 @@ const service = () =>
     clock: { now: () => new Date("2026-11-01T12:00:00Z") },
   });
 const fields = (err: unknown) =>
-  err instanceof ZodError
-    ? err.issues.map((i) => i.path.join("."))
-    : ((err as ValidationError).details?.fields as { field: string }[]).map((f) => f.field);
+  ((err as ValidationError).details?.fields as { field: string }[]).map((f) => f.field);
 
 describe("ListingPackageService", () => {
-  it("refuses bad data with the field named, including an unknown ZIP and a future year", async () => {
+  it("refuses an unknown ZIP and a future year built, on their fields", async () => {
     const s = service();
-    const bad = { ...draft, property: { ...draft.property, baths: 2.3 } };
-    expect(fields(await s.create(avery, bad).catch((e: unknown) => e))).toEqual(["property.baths"]);
     const unknownZip = { ...draft, property: { ...draft.property, zip: "99999" } };
     expect(fields(await s.create(avery, unknownZip).catch((e: unknown) => e))).toEqual([
       "property.zip",

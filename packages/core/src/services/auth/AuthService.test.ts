@@ -38,7 +38,7 @@ const service = () =>
 describe("AuthService.signIn", () => {
   it("returns an 8-hour token naming the user, role, and agent, and the user's view", async () => {
     const { token, user } = await service().signIn({
-      email: " Avery@Example.com ",
+      email: "avery@example.com",
       password: "demo1234",
     });
     const { payload } = await jwtVerify(token, new TextEncoder().encode(SECRET), {

@@ -123,7 +123,11 @@ export class DeliveryDispatcher {
     occurredAt: Date,
     key: string,
   ): Promise<Send> {
-    if (event.type !== "package.status_changed" && event.type !== "offer.submitted") {
+    if (
+      event.type !== "package.status_changed" &&
+      event.type !== "offer.submitted" &&
+      event.type !== "offer.withdrawn"
+    ) {
       throw new DeliveryRejectedError(`No CRM delivery for ${event.type}`);
     }
     const { packageId, crm } = event.payload;

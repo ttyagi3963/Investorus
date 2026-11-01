@@ -56,6 +56,8 @@ export class OfferService implements IOfferService {
     const investorId = investorOf(actor);
     const terms = checkOfferDates(createOfferInputSchema.parse(input), this.deps.clock.now());
     return this.uow.run(async (repos) => {
+      // Offers on one package are made one at a time, so each CRM offer count includes the others.
+      await repos.packages.lock(packageId);
       const pkg = await repos.packages.findById(packageId);
       const match = pkg && (await repos.matches.findOne(packageId, investorId, pkg.round));
       if (!pkg || !match) throw new NotFoundError(NOT_FOUND);
@@ -119,8 +121,22 @@ export class OfferService implements IOfferService {
       if (!OPEN_OFFER_STATUSES.includes(current.status)) {
         throw new BusinessRuleError("This offer can no longer be withdrawn", "OFFER_NOT_OPEN");
       }
+      await repos.packages.lock(current.packageId);
       const offer = await repos.offers.updateStatus(offerId, version, "WITHDRAWN");
       await audit(repos, actor, offer, "OFFER_WITHDRAWN");
+      // The CRM's offer count goes back down in the same change (FR-077).
+      const pkg = await repos.packages.findById(offer.packageId);
+      if (pkg) {
+        await writeEvent(repos, {
+          type: "offer.withdrawn",
+          payload: {
+            packageId: pkg.id,
+            offerId,
+            investorId,
+            crm: await crmSnapshot(repos, pkg),
+          },
+        });
+      }
       return offer;
     });
   }

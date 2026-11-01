@@ -26,6 +26,13 @@ export type DeliveryWithEvent = Delivery & {
 export interface IDeliveryRepository {
   /** One row per plan; a plan the event already has is skipped, so a second relay adds nothing. */
   createForEvent(outboxEventId: string, plans: DeliveryPlan[]): Promise<void>;
+  /**
+   * Puts back on the way to the queue every delivery whose job may be gone (Redis lost it, or the
+   * worker died mid-send): PENDING queued before `before` and never started, RETRYING overdue since
+   * before `before`, and SENDING untouched since before `before`. Their attempts are kept; the
+   * idempotency key makes a resend safe. Returns how many.
+   */
+  requeueStale(before: Date): Promise<number>;
   /** PENDING deliveries not yet on the queue, oldest first, locked for this transaction. */
   claimUnqueued(limit: number): Promise<string[]>;
   markQueued(ids: string[], at: Date): Promise<void>;

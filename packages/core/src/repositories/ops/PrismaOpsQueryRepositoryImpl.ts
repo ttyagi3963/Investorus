@@ -2,10 +2,10 @@
 // statements instead of one query per row. The street line is decrypted here, as in the property
 // repository; nothing else read here is PII.
 import type { BuyBox } from "@clever/contracts/buy-box";
-import type { DeliveryStatus } from "@clever/contracts/events";
 import type { Prisma } from "../../generated/prisma/client.js";
 import type { IPiiCipher } from "../../providers/pii-cipher/IPiiCipher.js";
 import type {
+  DeliveryFilter,
   IOpsQueryRepository,
   OpsDelivery,
   OpsPackage,
@@ -90,14 +90,21 @@ export class PrismaOpsQueryRepositoryImpl implements IOpsQueryRepository {
     return rows.map(toOpsDelivery);
   }
 
-  async listDeliveries(status: DeliveryStatus | undefined, limit: number): Promise<OpsDelivery[]> {
+  async listDeliveries(
+    { status, target, packageId }: DeliveryFilter,
+    limit: number,
+  ): Promise<OpsDelivery[]> {
     const rows = await this.db.$queryRawUnsafe<DeliveryRow[]>(
       `SELECT ${DELIVERY_COLUMNS}
        FROM "Delivery" d JOIN "OutboxEvent" e ON e.id = d."outboxEventId"
-       WHERE $1::text IS NULL OR d.status = $1::"DeliveryStatus"
+       WHERE ($1::text IS NULL OR d.status = $1::"DeliveryStatus")
+         AND ($2::text IS NULL OR d.target = $2::"DeliveryTarget")
+         AND ($3::text IS NULL OR (e."aggregateType" = 'ListingPackage' AND e."aggregateId" = $3))
        ORDER BY d."createdAt" DESC
-       LIMIT $2`,
+       LIMIT $4`,
       status ?? null,
+      target ?? null,
+      packageId ?? null,
       limit,
     );
     return rows.map(toOpsDelivery);

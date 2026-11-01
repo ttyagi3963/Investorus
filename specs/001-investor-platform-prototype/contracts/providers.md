@@ -82,7 +82,7 @@ Rules for every provider:
 | Method | Path | Behavior |
 | --- | --- | --- |
 | PUT | `/crm/listings/:packageId` | Upsert `{ status, round, offerCount, acceptedPrice: int \| null, sellerContact: { fullName, email \| null, phone \| null }, occurredAt }` (internal; shared token). Needs `Idempotency-Key` (400 without one); a repeated key replays the stored answer without applying. 200 `{ result: "APPLIED" }`; a stored record with a later `occurredAt` → 409 `{ code: "STALE" }`, also stored under the key. An equal `occurredAt` applies. 400 on a bad body. |
-| GET | `/crm/listings` | `{ listings: [...] }`, newest update first, seller contact included (the CRM's copy), for the ops comparison and the inspection page. Open. |
+| GET | `/crm/listings` | `{ listings: [...] }`, newest update first, seller contact included (the CRM's copy), for the ops CRM comparison (internal; shared token, since it holds seller contacts). The inspection page shows the records without the contact. |
 | POST | `/messages/email` `{ to, subject, body }`, `/messages/sms` `{ to (E.164), body }` | Captures the message (internal; shared token). Needs `Idempotency-Key`; a repeated key returns the stored answer and stores nothing. 201 `{ id }`; 400 on a bad body. |
 | GET | `/messages?limit=` | `{ messages: [...] }`, newest first; `limit` 1–500, default 100. Open. |
 | PUT | `/storage/objects/:key?size=&exp=&sig=` | Accepts an upload only with a valid, unexpired signature for that key, its `Content-Type`, and its exact size (403 otherwise; 413 when larger, 400 when smaller). |

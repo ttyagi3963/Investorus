@@ -19,6 +19,7 @@ import { evaluateBuyBox } from "../../registry/evaluate-buy-box.js";
 import { EVALUATOR_VERSION } from "../../registry/evaluators.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { assertOps } from "./assert-ops.js";
+import { auditAddressRead } from "./audit-address-read.js";
 import { auditSummary, deliverySummary } from "./timeline-text.js";
 
 const NOT_FOUND = "Package not found";
@@ -51,7 +52,16 @@ export class OpsQueryService implements IOpsQueryService {
 
   async listPackages(actor: Actor): Promise<OpsPackageRow[]> {
     assertOps(actor);
-    const rows = await this.uow.run((repos) => repos.opsQuery.listPackages());
+    const rows = await this.uow.run(async (repos) => {
+      const packages = await repos.opsQuery.listPackages();
+      await auditAddressRead(
+        repos,
+        actor,
+        "packages",
+        packages.map((p) => p.id),
+      );
+      return packages;
+    });
     return rows.map(({ listingVersion: _version, offerDeadline: _deadline, ...row }) => ({
       ...row,
       updatedAt: row.updatedAt.toISOString(),
@@ -64,6 +74,7 @@ export class OpsQueryService implements IOpsQueryService {
       const pkg = await repos.opsQuery.findPackage(packageId);
       if (!pkg) throw new NotFoundError(NOT_FOUND);
       const audit = await repos.audit.listForEntity("ListingPackage", packageId);
+      await auditAddressRead(repos, actor, "trace", [packageId]);
       const matches = await repos.matches.listByPackage(packageId, pkg.round);
       const offers = await repos.offers.listByPackage(packageId, pkg.round);
       const deliveries = await repos.opsQuery.deliveriesForPackage(packageId);
@@ -171,17 +182,30 @@ export class OpsQueryService implements IOpsQueryService {
       const audit = await repos.audit.listForEntity("ListingPackage", packageId);
       const stored = this.decisions(audit, pkg.round).get(investorId);
       if (stored) return this.fromStored(repos, stored);
-      return this.replay(repos, pkg.id, pkg.listingVersion, investorId);
+      // The boxes are judged as they were when matching ran for this listing version.
+      const matchedAt = audit.findLast(
+        (e) =>
+          e.action === "MATCHING_COMPLETED" &&
+          (e.details as { listingVersion?: number }).listingVersion === pkg.listingVersion,
+      )?.occurredAt;
+      return this.replay(repos, pkg.id, pkg.listingVersion, investorId, matchedAt);
     });
   }
 
-  /** Each investor's latest stored decision in the round. */
+  /**
+   * Each investor's stored decisions in the round, merged: a later decision (a buy box saved after
+   * publish) adds its box to the earlier ones, and a box decided twice keeps its latest result.
+   */
   private decisions(audit: { action: string; details: unknown }[], round: number) {
     const byInvestor = new Map<string, StoredDecision>();
     for (const entry of audit) {
       if (entry.action !== "MATCH_DECISION") continue;
       const decision = entry.details as StoredDecision;
-      if (decision.round === round) byInvestor.set(decision.investorId, decision);
+      if (decision.round !== round) continue;
+      const earlier = byInvestor.get(decision.investorId);
+      const boxes = new Map((earlier?.buyBoxes ?? []).map((box) => [box.id, box]));
+      for (const box of decision.buyBoxes) boxes.set(box.id, box);
+      byInvestor.set(decision.investorId, { ...decision, buyBoxes: [...boxes.values()] });
     }
     return byInvestor;
   }
@@ -213,16 +237,18 @@ export class OpsQueryService implements IOpsQueryService {
     packageId: string,
     listingVersion: number,
     investorId: string,
+    matchedAt: Date | undefined,
   ): Promise<MatchExplanation> {
     const listing = await repos.listingVersions.find(packageId, listingVersion);
-    const at = await repos.opsQuery.listingVersionCreatedAt(packageId, listingVersion);
+    const at =
+      matchedAt ?? (await repos.opsQuery.listingVersionCreatedAt(packageId, listingVersion));
     if (!listing || !at) throw new NotFoundError("This package has not been matched yet");
     const today = at.toISOString().slice(0, 10);
 
     const buyBoxes: MatchExplanation["buyBoxes"] = [];
     for (const current of await repos.buyBoxes.listForInvestor(investorId)) {
       const then = await repos.opsQuery.buyBoxVersionAt(current.id, at);
-      // A box saved after this listing version was matched had no say in it.
+      // A box saved after matching ran had no say in it.
       if (!then) continue;
       const evaluation = evaluateBuyBox(then.box, listing.snapshot, today);
       const active = then.box.status === "ACTIVE";

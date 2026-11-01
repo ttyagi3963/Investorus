@@ -13,6 +13,7 @@ import type { ICrmMirrorReader } from "../../providers/crm/ICrmMirrorReader.js";
 import type { ISimulationControlProvider } from "../../providers/simulation/ISimulationControlProvider.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
 import { assertOps } from "./assert-ops.js";
+import { auditAddressRead } from "./audit-address-read.js";
 
 export interface IOutsideServicesService {
   crmComparison(actor: Actor): Promise<CrmComparisonRow[]>;
@@ -47,6 +48,12 @@ export class OutsideServicesService implements IOutsideServicesService {
           pendingDelivery: unsent ? { id: unsent.id, status: unsent.status } : null,
         });
       }
+      await auditAddressRead(
+        repos,
+        actor,
+        "crm-comparison",
+        rows.map((row) => row.packageId),
+      );
       return rows;
     });
   }
@@ -61,9 +68,9 @@ export class OutsideServicesService implements IOutsideServicesService {
     const known = SIMULATION_SERVICES.find((s) => s === service);
     if (!known) throw new NotFoundError("No such outside service");
     const { mode } = simulationInputSchema.parse(input);
-    const modes = await this.deps.simulation.set(known, mode);
-    await this.uow.run((repos) =>
-      repos.audit.append({
+    // The audit entry commits only if the sandbox took the change, so no switch goes unrecorded.
+    return this.uow.run(async (repos) => {
+      await repos.audit.append({
         actorType: "USER",
         actorId: actor.userId,
         action: "SIMULATION_CHANGED",
@@ -71,8 +78,8 @@ export class OutsideServicesService implements IOutsideServicesService {
         entityId: known,
         outcome: "SUCCESS",
         details: { mode },
-      }),
-    );
-    return modes;
+      });
+      return this.deps.simulation.set(known, mode);
+    });
   }
 }

@@ -34,6 +34,8 @@ export class MatchDigestWorkflow implements IMatchDigestWorkflow {
 
   async send({ digestDate }: SendMatchDigestsPayload): Promise<void> {
     const now = this.deps.clock.now();
+    // The next run is queued first, in its own change, so a run that fails cannot stop the next one.
+    await this.uow.run((repos) => this.scheduleNext(repos, now));
     await this.uow.run(async (repos) => {
       const pending = await repos.matches.listUndigested();
       const byInvestor = new Map<string, Match[]>();
@@ -66,7 +68,6 @@ export class MatchDigestWorkflow implements IMatchDigestWorkflow {
         outcome: "SUCCESS",
         details: { investors: emailed, matches: pending.length },
       });
-      await this.scheduleNext(repos, now);
     });
   }
 

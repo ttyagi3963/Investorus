@@ -2,7 +2,8 @@
 // failure is retried with a growing wait and set aside after the last allowed attempt; a refusal
 // or an investor who cannot be reached is set aside at once; a CRM update carries the seller's
 // contact read at send time, that read is audited, and STALE counts as delivered; a duplicate job
-// sends nothing; and the relay makes each delivery once, with no text for an investor with no phone.
+// sends nothing; the relay makes each delivery once, with no text for an investor with no phone, and
+// puts back a delivery whose job was lost when the worker died mid-send.
 import type { DeliveryRetryPolicy } from "@clever/contracts/config";
 import type { OutboxEventInput } from "@clever/contracts/events";
 import { describe, expect, it, vi } from "vitest";
@@ -151,6 +152,26 @@ describe("DeliveryDispatcher", () => {
 });
 
 describe("OutboxRelay", () => {
+  it("puts back a delivery left sending past its lease, so a crash mid-send is retried", async () => {
+    const ctx = setup();
+    ctx.uow.repos.investors.contacts.set("investor-1", { email: "i@example.test", phone: null });
+    const { email } = await relayed(ctx, NOTICE);
+    // The worker died after starting the attempt, long before now.
+    Object.assign(email, {
+      status: "SENDING",
+      attempts: 1,
+      updatedAt: new Date(NOW.getTime() - 10 * 60_000),
+    });
+
+    const { recovered } = await ctx.relay.tick();
+    const retried = await ctx.dispatcher.dispatch(email.id);
+
+    expect(recovered).toBe(1);
+    expect(ctx.queue.enqueue).toHaveBeenLastCalledWith([email.id]);
+    expect(retried.outcome).toBe("SENT");
+    expect(email.attempts).toBe(2);
+  });
+
   it("makes each delivery once and queues it once, with no text for an investor with no phone", async () => {
     const ctx = setup();
     ctx.uow.repos.investors.contacts.set("investor-1", { email: "i@example.test", phone: null });

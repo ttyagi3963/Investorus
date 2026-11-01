@@ -16,8 +16,19 @@ const DEAD_LETTERS = "deliveries-dlq";
 
 type DeliveryJob = { deliveryId: string; delayMs?: number };
 
-/** A Redis connection as BullMQ needs it: commands wait for Redis instead of failing fast. */
-const connect = (redisUrl: string) => new Redis(redisUrl, { maxRetriesPerRequest: null });
+/** The consumer's connection, as a BullMQ Worker needs it: commands wait for Redis to come back. */
+const consumerConnection = (redisUrl: string) =>
+  new Redis(redisUrl, { maxRetriesPerRequest: null });
+
+/**
+ * The producer's connection fails fast while Redis is down, so the relay's queueing transaction
+ * rolls back at once and the next tick tries again, instead of waiting inside the transaction.
+ */
+const producerConnection = (redisUrl: string) =>
+  new Redis(redisUrl, { maxRetriesPerRequest: 1, enableOfflineQueue: false });
+
+/** Set-aside deliveries stay on the dead-letter queue a day; PostgreSQL keeps their record. */
+const DEAD_LETTER_DAY_MS = 24 * 60 * 60 * 1_000;
 
 export class BullMqDeliveryQueueImpl implements IDeliveryQueue, IDeliveryConsumer {
   private readonly deliveries: Queue<DeliveryJob>;
@@ -27,7 +38,7 @@ export class BullMqDeliveryQueueImpl implements IDeliveryQueue, IDeliveryConsume
   private workerConnection: Redis | null = null;
 
   constructor(private readonly options: { redisUrl: string; retry: DeliveryRetryPolicy }) {
-    this.connection = connect(options.redisUrl);
+    this.connection = producerConnection(options.redisUrl);
     this.deliveries = new Queue(DELIVERIES, { connection: this.connection });
     this.deadLetters = new Queue(DEAD_LETTERS, { connection: this.connection });
   }
@@ -55,7 +66,7 @@ export class BullMqDeliveryQueueImpl implements IDeliveryQueue, IDeliveryConsume
     options: { concurrency: number; onSetAside: (deliveryId: string, error: string) => void },
   ): void {
     const { retry } = this.options;
-    this.workerConnection = connect(this.options.redisUrl);
+    this.workerConnection = consumerConnection(this.options.redisUrl);
     this.worker = new Worker<DeliveryJob>(
       DELIVERIES,
       async (job: Job<DeliveryJob>) => {
@@ -69,6 +80,8 @@ export class BullMqDeliveryQueueImpl implements IDeliveryQueue, IDeliveryConsume
             deliveryId: job.data.deliveryId,
             error: result.error,
           });
+          // Bounded, so a long outage cannot fill Redis's memory (it never evicts).
+          await this.deadLetters.clean(DEAD_LETTER_DAY_MS, 1_000, "wait");
           options.onSetAside(job.data.deliveryId, result.error);
         }
       },

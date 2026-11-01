@@ -44,12 +44,18 @@ export type OpsDelivery = {
   noticeType: string | null;
 };
 
+export type DeliveryFilter = {
+  status?: DeliveryStatus;
+  target?: DeliveryTarget;
+  packageId?: string;
+};
+
 export interface IOpsQueryRepository {
   listPackages(): Promise<OpsPackageSummary[]>;
   findPackage(id: string): Promise<OpsPackage | null>;
   deliveriesForPackage(packageId: string): Promise<OpsDelivery[]>;
-  /** The newest deliveries first, at most `limit`. */
-  listDeliveries(status: DeliveryStatus | undefined, limit: number): Promise<OpsDelivery[]>;
+  /** The newest deliveries first, at most `limit`, narrowed by each filter given. */
+  listDeliveries(filter: DeliveryFilter, limit: number): Promise<OpsDelivery[]>;
   activeInvestors(): Promise<{ id: string; companyName: string }[]>;
   buyBoxNames(ids: string[]): Promise<Map<string, string>>;
   /** The box as it was at `at`: its newest saved version from then or earlier. */

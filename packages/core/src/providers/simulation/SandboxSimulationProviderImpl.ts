@@ -52,7 +52,8 @@ export class SandboxSimulationProviderImpl implements ISimulationControlProvider
   }
 
   async listListings(): Promise<CrmMirrorRecord[]> {
-    return (await this.read("/crm/listings", listings)).listings;
+    const headers = { "x-sandbox-token": this.options.internalToken };
+    return (await this.read("/crm/listings", listings, { headers })).listings;
   }
 
   private async read<T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {

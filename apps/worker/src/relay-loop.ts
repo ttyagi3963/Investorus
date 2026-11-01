@@ -18,8 +18,9 @@ export function startRelayLoop(deps: {
 
   const tick = async () => {
     try {
-      const { relayed, queued, unreadable } = await deps.relay.tick();
+      const { relayed, queued, recovered, unreadable } = await deps.relay.tick();
       if (relayed > 0 || queued > 0) deps.logger.info({ relayed, queued }, "outbox relayed");
+      if (recovered > 0) deps.logger.warn({ recovered }, "deliveries whose job was lost re-queued");
       for (const eventId of unreadable) {
         deps.logger.error({ event_id: eventId }, "outbox event no longer matches its schema");
       }

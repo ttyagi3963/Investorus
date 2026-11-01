@@ -27,7 +27,7 @@ export class DeliveryOpsService implements IDeliveryOpsService {
     assertOps(actor);
     const { status } = deliveryListQuerySchema.parse(query);
     return this.uow.run(async (repos) => {
-      const rows = await repos.opsQuery.listDeliveries(status, LIST_LIMIT);
+      const rows = await repos.opsQuery.listDeliveries({ status }, LIST_LIMIT);
       const companies = await repos.investors.findCompanyNames(
         rows.flatMap((d) => (d.investorId ? [d.investorId] : [])),
       );
@@ -67,12 +67,17 @@ export class DeliveryOpsService implements IDeliveryOpsService {
     assertOps(actor);
     const { target, packageId } = retryAllInputSchema.parse(input);
     return this.uow.run(async (repos) => {
-      const setAside = await repos.opsQuery.listDeliveries("NEEDS_ATTENTION", LIST_LIMIT);
+      // In pages, until no delivery that needs attention is left: a reset one leaves the list.
       let count = 0;
-      for (const delivery of setAside) {
-        if (target && delivery.target !== target) continue;
-        if (packageId && delivery.packageId !== packageId) continue;
-        if (await repos.deliveries.resetForRetry(delivery.id)) count += 1;
+      for (;;) {
+        const setAside = await repos.opsQuery.listDeliveries(
+          { status: "NEEDS_ATTENTION", target, packageId },
+          LIST_LIMIT,
+        );
+        if (setAside.length === 0) break;
+        for (const delivery of setAside) {
+          if (await repos.deliveries.resetForRetry(delivery.id)) count += 1;
+        }
       }
       if (count > 0) {
         await this.audit(repos, actor, packageId ?? "all", {

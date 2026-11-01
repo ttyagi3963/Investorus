@@ -26,6 +26,7 @@ class StatusEventsPackageRepository implements IListingPackageRepository {
     this.inner.listOpenForOffers(now);
   findByAddressHash: IListingPackageRepository["findByAddressHash"] = (hash) =>
     this.inner.findByAddressHash(hash);
+  lock: IListingPackageRepository["lock"] = (id) => this.inner.lock(id);
 
   async update(id: string, version: number, patch: ListingPackagePatch) {
     const before = patch.status === undefined ? null : await this.inner.findById(id);

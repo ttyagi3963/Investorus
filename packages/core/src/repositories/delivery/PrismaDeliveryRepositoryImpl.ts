@@ -17,6 +17,15 @@ export class PrismaDeliveryRepositoryImpl implements IDeliveryRepository {
     });
   }
 
+  async requeueStale(before: Date): Promise<number> {
+    return this.db.$executeRaw`
+      UPDATE "Delivery"
+      SET status = 'PENDING', "queuedAt" = NULL, "nextAttemptAt" = NULL, "updatedAt" = CURRENT_TIMESTAMP
+      WHERE (status = 'PENDING' AND "queuedAt" < ${before})
+         OR (status = 'RETRYING' AND "nextAttemptAt" < ${before})
+         OR (status = 'SENDING' AND "updatedAt" < ${before})`;
+  }
+
   async claimUnqueued(limit: number): Promise<string[]> {
     const rows = await this.db.$queryRaw<{ id: string }[]>`
       SELECT id FROM "Delivery"

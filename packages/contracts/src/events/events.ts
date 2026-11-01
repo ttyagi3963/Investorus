@@ -49,6 +49,11 @@ export const outboxEventInputSchema = z.discriminatedUnion("type", [
     type: z.literal("offer.submitted"),
     payload: z.object({ packageId: id, offerId: id, investorId: id, crm: crmSnapshotSchema }),
   }),
+  /** A withdrawn offer: the CRM's offer count changes back. */
+  z.object({
+    type: z.literal("offer.withdrawn"),
+    payload: z.object({ packageId: id, offerId: id, investorId: id, crm: crmSnapshotSchema }),
+  }),
   /** An in-app notice to an investor that should also arrive by email, and by text if urgent. */
   z.object({
     type: z.literal("investor.notice"),
@@ -104,6 +109,7 @@ export function deliveriesOf(event: OutboxEventInput): DeliveryPlan[] {
   switch (event.type) {
     case "package.status_changed":
     case "offer.submitted":
+    case "offer.withdrawn":
       return [{ target: "CRM", recipientRef: event.payload.packageId }];
     case "investor.notice":
       return event.payload.channels.map((target) => ({

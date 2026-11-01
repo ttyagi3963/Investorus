@@ -12,7 +12,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { createStore } from "./store.js";
 
-const TOKEN = "internal-token-0123456789";
+const TOKEN = "test-internal-token";
 const SLOW_MS = 300;
 
 let database: StartedPostgreSqlContainer;
@@ -26,7 +26,7 @@ beforeAll(async () => {
   await store.ensureSchema();
   app = createApp({
     storageDir: mkdtempSync(join(tmpdir(), "sandbox-int-")),
-    signingKey: "signing-key-0123456789",
+    signingKey: "test-signing-key",
     internalToken: TOKEN,
     webOrigin: "http://localhost:3000",
     now: () => new Date(),
@@ -58,7 +58,7 @@ const putCrm = (packageId: string, key: string, body: object) =>
     .send(body);
 
 const crmRecord = async (packageId: string) => {
-  const res = await request(app).get("/crm/listings").expect(200);
+  const res = await request(app).get("/crm/listings").set("x-sandbox-token", TOKEN).expect(200);
   return (res.body.listings as { packageId: string; status: string }[]).find(
     (l) => l.packageId === packageId,
   );
@@ -139,7 +139,7 @@ describe("sandbox outage modes", () => {
       error: "Simulated outage",
     });
     await sendSms("delivery-8").expect(201);
-    await request(app).get("/crm/listings").expect(200);
+    await request(app).get("/crm/listings").set("x-sandbox-token", TOKEN).expect(200);
     await request(app).get("/").expect(200);
     expect(await crmRecord("pkg-down")).toBeUndefined();
   });

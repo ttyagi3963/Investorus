@@ -49,4 +49,9 @@ export interface IListingPackageRepository {
    * property changed).
    */
   update(id: string, version: number, patch: ListingPackagePatch): Promise<ListingPackage>;
+  /**
+   * Holds the package's row until the transaction ends (SELECT ... FOR UPDATE), so two changes that
+   * count its offers for the CRM run one after the other and each counts the other's offer.
+   */
+  lock(id: string): Promise<void>;
 }

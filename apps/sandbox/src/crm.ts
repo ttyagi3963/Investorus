@@ -40,7 +40,9 @@ export function crmRoutes({ store, internalToken, gate }: CrmConfig): Router {
     },
   );
 
-  router.get("/crm/listings", async (_req, res) => {
+  // The records hold sellers' contact details, so only the platform reads them; the inspection page
+  // shows them without the contact column.
+  router.get("/crm/listings", requireInternalToken(internalToken), async (_req, res) => {
     res.status(200).json({ listings: await store.listCrmListings() });
   });
 

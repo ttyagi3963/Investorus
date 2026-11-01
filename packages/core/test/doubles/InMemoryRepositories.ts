@@ -195,6 +195,8 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
     );
     return row ? { id: row.id, agentId: row.agentId } : null;
   }
+  /** One test runs at a time, so there is nothing to wait for. */
+  async lock() {}
   async update(id: string, version: number, patch: ListingPackagePatch) {
     const row = this.rows.get(id);
     if (!row || row.version !== version)
@@ -663,6 +665,19 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
         updatedAt: NOW,
       });
     }
+  }
+  async requeueStale(before: Date) {
+    let count = 0;
+    for (const row of this.rows) {
+      const stale =
+        (row.status === "PENDING" && row.queuedAt !== null && row.queuedAt < before) ||
+        (row.status === "RETRYING" && row.nextAttemptAt !== null && row.nextAttemptAt < before) ||
+        (row.status === "SENDING" && row.updatedAt < before);
+      if (!stale) continue;
+      Object.assign(row, { status: "PENDING", queuedAt: null, nextAttemptAt: null });
+      count += 1;
+    }
+    return count;
   }
   async claimUnqueued(limit: number) {
     return this.rows

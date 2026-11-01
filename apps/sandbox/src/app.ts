@@ -1,25 +1,38 @@
-// The sandbox app: the outside world the platform talks to, in one container. Today it serves the
-// inspection page placeholder and object storage (T252); CRM, messaging, and outage simulation
-// arrive with T070 and T071.
-import express, { type Express } from "express";
+// The sandbox app: the outside world the platform talks to, in one container. It serves the stand-in
+// CRM and email/SMS (T338), object storage (T252), an outage mode per service in front of each, and
+// the inspection page at /. Its records live in the `sandbox` schema; storage objects are files.
+import express, { type ErrorRequestHandler, type Express } from "express";
+import { crmRoutes } from "./crm.js";
+import { inspectionPage } from "./inspection.js";
+import { messageRoutes } from "./messages.js";
+import { simulation } from "./simulation.js";
 import { storageRoutes, type StorageConfig } from "./storage.js";
+import type { SandboxStore } from "./store.js";
 
-const PAGE = `<!doctype html>
-<html lang="en">
-  <head><meta charset="utf-8" /><title>Sandbox</title></head>
-  <body>
-    <h1>Sandbox</h1>
-    <p>Stand-in CRM, messaging, and storage services. The inspection page arrives with T071.</p>
-  </body>
-</html>
-`;
+export type SandboxConfig = StorageConfig & {
+  store: SandboxStore;
+  /** How long slow mode waits before answering: 10 s in the demo, shorter in tests. */
+  slowDelayMs: number;
+};
 
-export function createApp(config: StorageConfig): Express {
+/** A bad JSON body keeps its 4xx; anything else is a 500 without internals. */
+const onError: ErrorRequestHandler = (err: { status?: number }, _req, res, _next) => {
+  const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 500;
+  if (status === 500) process.stderr.write(`sandbox: ${String((err as Error).stack ?? err)}\n`);
+  res.status(status).json({ error: status === 500 ? "Internal error" : "Invalid request" });
+};
+
+export function createApp(config: SandboxConfig): Express {
+  const { store, internalToken, slowDelayMs } = config;
+  const outages = simulation({ store, internalToken, slowDelayMs });
   const app = express();
   app.disable("x-powered-by");
-  app.get("/", (_req, res) => {
-    res.status(200).type("html").send(PAGE);
-  });
+  app.get("/", inspectionPage(store));
+  app.use(outages.routes);
+  app.use(crmRoutes({ store, internalToken, gate: outages.gate("crm") }));
+  app.use(messageRoutes({ store, internalToken, gate: outages.gate("messaging") }));
+  app.use(["/storage/objects", "/internal/storage/objects"], outages.gate("storage"));
   app.use(storageRoutes(config));
+  app.use(onError);
   return app;
 }

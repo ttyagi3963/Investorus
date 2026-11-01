@@ -77,17 +77,22 @@ Rules for every provider:
 
 | Method | Path | Behavior |
 | --- | --- | --- |
-| PUT | `/crm/listings/:packageId` | Upsert `{ status, round, offerCount, acceptedPrice?, sellerContact, occurredAt }`. Deduplicated by `Idempotency-Key`. Stale `occurredAt` → 409. |
-| GET | `/crm/listings` | All CRM records (for ops comparison and the inspection page). |
-| POST | `/messages/email`, `/messages/sms` | Captures the message; deduplicated by `Idempotency-Key`. |
-| GET | `/messages` | Captured messages, newest first. |
+| PUT | `/crm/listings/:packageId` | Upsert `{ status, round, offerCount, acceptedPrice: int \| null, sellerContact: { fullName, email \| null, phone \| null }, occurredAt }` (internal; shared token). Needs `Idempotency-Key` (400 without one); a repeated key replays the stored answer without applying. 200 `{ result: "APPLIED" }`; a stored record with a later `occurredAt` → 409 `{ code: "STALE" }`, also stored under the key. An equal `occurredAt` applies. 400 on a bad body. |
+| GET | `/crm/listings` | `{ listings: [...] }`, newest update first, seller contact included (the CRM's copy), for the ops comparison and the inspection page. Open. |
+| POST | `/messages/email` `{ to, subject, body }`, `/messages/sms` `{ to (E.164), body }` | Captures the message (internal; shared token). Needs `Idempotency-Key`; a repeated key returns the stored answer and stores nothing. 201 `{ id }`; 400 on a bad body. |
+| GET | `/messages?limit=` | `{ messages: [...] }`, newest first; `limit` 1–500, default 100. Open. |
 | PUT | `/storage/objects/:key?size=&exp=&sig=` | Accepts an upload only with a valid, unexpired signature for that key, its `Content-Type`, and its exact size (403 otherwise; 413 when larger, 400 when smaller). |
 | GET | `/storage/objects/:key` | Serves a photo (a key under `packages/`) to anyone, with no signature, as the S3 bucket policy does (T326); any other key gets 403. |
 | HEAD | `/internal/storage/objects/:key` | The stored object's `Content-Type` and `Content-Length`, or 404 (internal; the `x-sandbox-token` header must carry `SANDBOX_INTERNAL_TOKEN`, else 401). |
 | GET / PUT | `/internal/storage/objects/:key` | Server-side `read(key)` / `put(...)` (internal; shared token). |
-| GET / PUT | `/simulation`, `/simulation/:service` | Mode per service: `up`, `down` (503), `slow` (10 s delay), or `garbage` (200 with malformed JSON). Persisted in the `sandbox` schema. |
-| GET | `/` | HTML inspection page: CRM records, messages, current modes. |
+| GET / PUT | `/simulation`, `/simulation/:service` | `GET` (open) → `{ crm, messaging, storage }`. `PUT` `{ mode }` (internal; shared token) sets one service's mode and answers with all of them; 404 for an unknown service. Modes: `up`, `down` (503 `{ error: "Simulated outage" }`), `slow` (10 s delay, then the normal answer), or `garbage` (200 with cut-off JSON; nothing is applied). A mode applies to its service's routes only: CRM writes, message posts, and the storage object routes; the read-outs and `/` are never affected. Persisted in the `sandbox` schema; read at most 1 s stale. |
+| GET | `/` | HTML inspection page (open, refreshes every 5 s): current modes, CRM records, and the latest 50 messages, every value HTML-escaped. |
 
-Sandbox persistence lives in its own PostgreSQL schema, `sandbox`, which platform code never
-reads directly. Storage objects are the exception: they are files on the `SANDBOX_STORAGE_DIR`
-volume, named by a hash of the key (T252). The sandbox is the "outside world".
+Internal routes need the `x-sandbox-token` header to equal `SANDBOX_INTERNAL_TOKEN` (compared in
+constant time; 401 otherwise). Writes are deduplicated on the delivery's ID sent as
+`Idempotency-Key`, in the same transaction as the change.
+
+Sandbox persistence lives in its own PostgreSQL schema, `sandbox` (same database as the platform;
+the sandbox creates its tables at startup), which platform code never reads directly. Storage
+objects are the exception: they are files on the `SANDBOX_STORAGE_DIR` volume, named by a hash of
+the key (T252). The sandbox is the "outside world".

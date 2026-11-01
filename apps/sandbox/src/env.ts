@@ -1,8 +1,10 @@
-// The sandbox's settings, checked at startup (T252): a missing or empty value stops the process with
-// its name printed, instead of failing on the first request (constitution XII).
+// The sandbox's settings, checked at startup (T252, T338): a missing or empty value stops the process
+// with its name printed, instead of failing on the first request (constitution XII). DATABASE_URL is
+// the platform's database; the sandbox uses only its own `sandbox` schema there.
 import { z } from "zod";
 
 const envSchema = z.object({
+  DATABASE_URL: z.string().min(1),
   SANDBOX_STORAGE_DIR: z.string().min(1),
   STORAGE_SIGNING_KEY: z.string().min(16),
   SANDBOX_INTERNAL_TOKEN: z.string().min(16),

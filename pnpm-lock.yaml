@@ -109,6 +109,9 @@ importers:
       '@clever/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@testcontainers/postgresql':
+        specifier: ^12.2.1
+        version: 12.2.1
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6

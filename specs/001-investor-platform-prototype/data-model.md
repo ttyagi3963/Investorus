@@ -62,14 +62,17 @@ has neither.
 | brokerage | string | |
 | brandId | string | references Brand |
 
-### Brand (Constitution X and XVI)
+### Brand (Constitution X and XVI; built in Sprint 7, T347)
 | Field | Type | Rules |
 | --- | --- | --- |
-| id | string | seeded: `clever`, `brand-beta`; synthetic `brand-alpha` / `brand-gamma` in tests |
-| name | string | display name from the content layer |
-| themeTokens | JSONB | `{ primitives, semantic }` per [contracts/design-tokens.md](./contracts/design-tokens.md); rejected unless every required semantic token is mapped and all contrast pairs meet WCAG AA (FR-091, FR-095) |
-| content | JSONB | display name, logo path, legal footer, copy |
-| tokenVersion | int | +1 on each token change; used for cache-busting the rendered CSS variables |
+| id | string | the folder name in `seed/brands/`: `clever`, `larkspur` |
+| name | string | `content.displayName`; the name emails and texts carry |
+| tokens | JSONB | DTCG tokens per [contracts/design-tokens.md](./contracts/design-tokens.md); saved only if `validateBrandTokens` passes: every variable the theme reads, no unsafe value, every text pair at least 4.5:1 (FR-091, FR-095) |
+| content | JSONB | display and product names, logo path, sign-in copy (`brandContentSchema`) |
+| hosts | text[] | the addresses that open the brand (`partner.localhost`); at least one |
+| tokenVersion | int | starts at 1, `CHECK >= 1`; +1 on each token change (seed file change or an operator's save); the theme's `ETag`, and the version a save must name |
+| seedHash | string? | sha256 of the seed files last loaded; the seed rewrites the brand only when it differs, so an operator's edit survives a restart |
+| createdAt, updatedAt | timestamp | |
 
 ---
 

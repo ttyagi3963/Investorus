@@ -1303,6 +1303,19 @@ contracts/design-tokens.md, for the owner to confirm):
   font through next/font, so the switch shows on every screen.
 - **Emails name the default brand**, read from the Brand table: packages carry no brand yet.
 - **One PR for the sprint**, merged by Claude when every check is green.
+- **Made while building** (also for the owner to confirm):
+  - A theme save names the `tokenVersion` it started from and is refused (409) if another save came
+    first, so two operators cannot overwrite each other; the editor reads the raw file from
+    `GET /ops/brands/:id/tokens` (OPS).
+  - The web app keeps the brand list and theme in Next's data cache for 60 seconds, tagged so the
+    editor's save drops them at once; the api gained a health check and the web app waits for it,
+    since every page now reads its brand from the api.
+  - Larkspur has pill **buttons** only; inputs keep 4px corners. Buttons now read the brand's
+    button radius token (`rounded-button`).
+  - Texts carry the brand name as a prefix (`Larkspur Home Offers: …`), as senders are expected to
+    identify themselves.
+  - `PhotoPicker` became `FilePicker` (one file unless asked), since it also picks the import CSV
+    and the token file.
 
 - [X] T346 Record the Sprint 7 goal, decisions, and tasks in this section; add "Sprint 7" to the board and mirror the section
 - [X] T347 The Brand table and the brand contracts (tests first): Brand (`id`, `name`, `tokens` and `content` JSONB, `hosts`, `tokenVersion`, `seedHash`); the DTCG converter, the content schema, and `validateBrandTokens` (unsafe values, dangling aliases, every variable theme.css reads, every AA pair, each failure named) moved to `@clever/contracts/brand`; a test that every brand in `seed/brands/` passes; the seed loads `seed/brands/` into the table (from T027–T029, T050, T085, T099's brand part, T199)
@@ -1312,7 +1325,7 @@ contracts/design-tokens.md, for the owner to confirm):
 - [X] T351 The brand switcher on the home page, sign-in, and the style guide: a React Aria select of the brands that sets the `brand` cookie through a server action and refreshes (from T203)
 - [X] T352 The living style guide at `/design-system`: every semantic color with its value, the type scale, spacing, and every component in each state, in the active brand (from T204)
 - [X] T353 The operations theme editor at `/ops/brands`: each brand's tokens as JSON to edit or upload, saved through the api, with the refused variables and contrast pairs listed (from T205)
-- [ ] T354 Documentation: contracts/design-tokens.md, data-model.md (Brand), api.md, plan.md (the brand shortcut row), README (switching brands)
+- [X] T354 Documentation: contracts/design-tokens.md, data-model.md (Brand), api.md, plan.md (the brand shortcut row), README (switching brands)
 
 **Checkpoint**: open http://partner.localhost:3000 and see Larkspur on every screen, with no code
 change; switch back with the switcher; save a token set with an unreadable text color in the theme

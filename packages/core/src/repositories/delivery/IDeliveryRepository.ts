@@ -1,0 +1,43 @@
+// The delivery port (T339; data-model.md Delivery): the relay creates and queues deliveries, and the
+// dispatcher moves each through PENDING → SENDING → SENT, or RETRYING → NEEDS_ATTENTION. The claim
+// methods lock rows with SKIP LOCKED, so two workers never take the same delivery.
+import type { DeliveryPlan, DeliveryStatus, DeliveryTarget } from "@clever/contracts/events";
+
+export type Delivery = {
+  id: string;
+  outboxEventId: string;
+  target: DeliveryTarget;
+  recipientRef: string;
+  status: DeliveryStatus;
+  attempts: number;
+  lastError: string | null;
+  nextAttemptAt: Date | null;
+  queuedAt: Date | null;
+  sentAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/** A delivery with the event it carries, as the dispatcher reads it. */
+export type DeliveryWithEvent = Delivery & {
+  event: { type: string; payload: unknown; occurredAt: Date };
+};
+
+export interface IDeliveryRepository {
+  /** One row per plan; a plan the event already has is skipped, so a second relay adds nothing. */
+  createForEvent(outboxEventId: string, plans: DeliveryPlan[]): Promise<void>;
+  /** PENDING deliveries not yet on the queue, oldest first, locked for this transaction. */
+  claimUnqueued(limit: number): Promise<string[]>;
+  markQueued(ids: string[], at: Date): Promise<void>;
+  findWithEvent(id: string): Promise<DeliveryWithEvent | null>;
+  /** Counts the attempt; only a PENDING or RETRYING delivery can start one. */
+  markSending(id: string): Promise<boolean>;
+  markSent(id: string, at: Date): Promise<void>;
+  markRetrying(id: string, error: string, nextAttemptAt: Date): Promise<void>;
+  markNeedsAttention(id: string, error: string): Promise<void>;
+  /**
+   * An operator's retry (FR-071): a delivery set aside goes back to PENDING with no attempts and
+   * off the queue, so the relay queues it again. False when it was not set aside.
+   */
+  resetForRetry(id: string): Promise<boolean>;
+}

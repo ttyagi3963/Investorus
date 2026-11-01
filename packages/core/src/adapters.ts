@@ -9,3 +9,6 @@ export { LogErrorReporterImpl } from "./providers/error-reporter/LogErrorReporte
 export { AesGcmPiiCipherImpl } from "./providers/pii-cipher/AesGcmPiiCipherImpl.js";
 export { createAddressHasher } from "./providers/pii-cipher/address-hasher.js";
 export { PostgresDatabaseImpl } from "./unit-of-work/PostgresDatabaseImpl.js";
+export { SandboxCrmProviderImpl } from "./providers/crm/SandboxCrmProviderImpl.js";
+export { SandboxMessagingProviderImpl } from "./providers/messaging/SandboxMessagingProviderImpl.js";
+export { BullMqDeliveryQueueImpl } from "./providers/delivery-queue/BullMqDeliveryQueueImpl.js";

@@ -28,6 +28,11 @@ import type {
   NewOutboxEvent,
 } from "../../src/repositories/outbox/IOutboxRepository.js";
 import { withOutboxEvents } from "../../src/outbox/with-outbox-events.js";
+import type {
+  Delivery,
+  IDeliveryRepository,
+} from "../../src/repositories/delivery/IDeliveryRepository.js";
+import type { DeliveryPlan } from "@clever/contracts/events";
 import {
   ALREADY_ACCEPTED,
   type DealPatch,
@@ -520,8 +525,12 @@ export class InMemoryConfigRepository implements IConfigRepository {
 /** Every investor is named after its ID unless a test names it. The import's writes need Postgres. */
 export class InMemoryInvestorRepository implements IInvestorRepository {
   readonly names = new Map<string, string>();
+  readonly contacts = new Map<string, { email: string; phone: string | null }>();
   async findCompanyNames(ids: string[]) {
     return new Map(ids.map((id) => [id, this.names.get(id) ?? id]));
+  }
+  async findContact(id: string) {
+    return this.contacts.get(id) ?? null;
   }
   async findIdForImport(): Promise<string | null> {
     throw new Error("The import is tested against Postgres");
@@ -602,11 +611,95 @@ export class InMemoryDealRepository implements IDealRepository {
   }
 }
 
-/** The events changes appended, in order. */
+/** The events changes appended, in order, with the relay's mark. */
 export class InMemoryOutboxRepository implements IOutboxRepository {
-  readonly rows: NewOutboxEvent[] = [];
+  readonly rows: (NewOutboxEvent & { id: string; occurredAt: Date; relayedAt: Date | null })[] = [];
   async append(event: NewOutboxEvent) {
-    this.rows.push(event);
+    this.rows.push({ ...event, id: nextId("event"), occurredAt: NOW, relayedAt: null });
+  }
+  async claimUnrelayed(limit: number) {
+    return this.rows.filter((r) => r.relayedAt === null).slice(0, limit);
+  }
+  async markRelayed(ids: string[], at: Date) {
+    for (const row of this.rows) if (ids.includes(row.id)) row.relayedAt ??= at;
+  }
+}
+
+/** Deliveries with the dispatcher's status rules, reading their events from the outbox double. */
+export class InMemoryDeliveryRepository implements IDeliveryRepository {
+  readonly rows: Delivery[] = [];
+  constructor(private readonly outbox: InMemoryOutboxRepository) {}
+  async createForEvent(outboxEventId: string, plans: DeliveryPlan[]) {
+    for (const plan of plans) {
+      const exists = this.rows.some(
+        (r) =>
+          r.outboxEventId === outboxEventId &&
+          r.target === plan.target &&
+          r.recipientRef === plan.recipientRef,
+      );
+      if (exists) continue;
+      this.rows.push({
+        id: nextId("delivery"),
+        outboxEventId,
+        ...plan,
+        status: "PENDING",
+        attempts: 0,
+        lastError: null,
+        nextAttemptAt: null,
+        queuedAt: null,
+        sentAt: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+    }
+  }
+  async claimUnqueued(limit: number) {
+    return this.rows
+      .filter((r) => r.status === "PENDING" && r.queuedAt === null)
+      .slice(0, limit)
+      .map((r) => r.id);
+  }
+  async markQueued(ids: string[], at: Date) {
+    for (const row of this.rows) if (ids.includes(row.id)) row.queuedAt = at;
+  }
+  async findWithEvent(id: string) {
+    const row = this.rows.find((r) => r.id === id);
+    const event = row && this.outbox.rows.find((e) => e.id === row.outboxEventId);
+    return row && event ? { ...row, event } : null;
+  }
+  private move(id: string, from: Delivery["status"][], patch: Partial<Delivery>) {
+    const row = this.rows.find((r) => r.id === id && from.includes(r.status));
+    if (row) Object.assign(row, patch);
+    return Boolean(row);
+  }
+  async markSending(id: string) {
+    const row = this.rows.find((r) => r.id === id);
+    return this.move(id, ["PENDING", "RETRYING"], {
+      status: "SENDING",
+      attempts: (row?.attempts ?? 0) + 1,
+      nextAttemptAt: null,
+    });
+  }
+  async markSent(id: string, at: Date) {
+    this.move(id, ["SENDING"], { status: "SENT", sentAt: at, lastError: null });
+  }
+  async markRetrying(id: string, error: string, nextAttemptAt: Date) {
+    this.move(id, ["SENDING"], { status: "RETRYING", lastError: error, nextAttemptAt });
+  }
+  async markNeedsAttention(id: string, error: string) {
+    this.move(id, ["SENDING"], {
+      status: "NEEDS_ATTENTION",
+      lastError: error,
+      nextAttemptAt: null,
+    });
+  }
+  async resetForRetry(id: string) {
+    return this.move(id, ["NEEDS_ATTENTION"], {
+      status: "PENDING",
+      attempts: 0,
+      queuedAt: null,
+      nextAttemptAt: null,
+    });
   }
 }
 
@@ -629,8 +722,10 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
     deals: InMemoryDealRepository;
     imports: InMemoryImportRepository;
     outbox: InMemoryOutboxRepository;
+    deliveries: InMemoryDeliveryRepository;
   };
   constructor(users: UserCredentials[] = []) {
+    const outbox = new InMemoryOutboxRepository();
     this.repos = {
       users: new InMemoryUserRepository(users),
       sellers: new InMemorySellerRepository(),
@@ -649,7 +744,8 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       decisions: new InMemoryDecisionRepository(),
       deals: new InMemoryDealRepository(),
       imports: new InMemoryImportRepository(),
-      outbox: new InMemoryOutboxRepository(),
+      outbox,
+      deliveries: new InMemoryDeliveryRepository(outbox),
     };
   }
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {

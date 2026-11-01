@@ -71,7 +71,26 @@ AWS_SECRET_ACCESS_KEY=<your secret>
 
 The bucket needs:
 
-- **Block all public access** turned on. Every link the app hands out is signed and expires.
+- **Public photos, nothing else public.** Under Block public access, turn off the two settings
+  about bucket policies (keep the two about ACLs on), then add this bucket policy. It lets anyone
+  read listing photos at their plain address, so photo links never expire, while import files
+  stay private:
+
+  ```json
+  {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "PublicListingPhotos",
+        "Effect": "Allow",
+        "Principal": "*",
+        "Action": "s3:GetObject",
+        "Resource": "arn:aws:s3:::<your bucket>/packages/*"
+      }
+    ]
+  }
+  ```
+
 - **A CORS rule** that allows `PUT` and `GET` from `http://localhost:3000` with the
   `Content-Type` header, because the browser uploads straight to the bucket.
 - **An IAM user** with `s3:PutObject` and `s3:GetObject` on `<bucket>/*`, and `s3:ListBucket`

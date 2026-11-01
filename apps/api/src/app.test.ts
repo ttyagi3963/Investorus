@@ -26,8 +26,10 @@ const container: AppContainer = {
   },
   packages: { create: unused, get: unused, list: unused, update: unused, timeline: unused },
   photos: { requestUpload: unused, attach: unused, remove: unused },
-  presentPackage: unused,
-  signPhotos: async (photos) => photos.map((photo) => ({ ...photo, url: "https://storage/p" })),
+  presentPackage: () => {
+    throw new Error("not used in this test");
+  },
+  addPhotoUrls: (photos) => photos.map((photo) => ({ ...photo, url: "https://storage/p" })),
   publication: { publish: unused, withdraw: unused, reopen: unused, extendDeadline: unused },
   investorPackages: { listMatched: unused, getForInvestor: unused },
   offers: {

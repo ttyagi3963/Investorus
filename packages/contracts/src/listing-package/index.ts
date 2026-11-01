@@ -20,7 +20,7 @@ export {
   type AgentPackageParts,
   type AgentPackageSummary,
   type AgentPackageView,
-  type SignedAgentPackageParts,
+  type AgentPackagePartsWithUrls,
 } from "./views.js";
 export {
   toInvestorPackageSummary,

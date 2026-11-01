@@ -739,6 +739,14 @@ data-model.md, contracts/api.md, and contracts/investor-import.md; for the owner
 Every screen in T324–T325 keeps XI: each field has a label, errors are tied to their field and
 announced, and the upload's progress is announced politely.
 
+### PR: public photos (requested by the owner, 2026-11-01)
+
+The owner decided that photo links must not expire: listing photos are public, at a plain address
+with no signature, and anyone with the link can open it. Import files stay private. Recorded in
+plan.md Prototype Shortcuts with the production approach.
+
+- [X] T326 Make listing photos public (tests first): the storage port's `getReadUrl` becomes `getPublicUrl(key)`, a plain address with no signature or expiry (S3: the bucket's address; the sandbox: its object address); the sandbox serves keys under `packages/` to anyone and refuses any other key; the api adds the addresses without signing; README gives the S3 bucket policy (`s3:GetObject` on `packages/*` only); contracts/providers.md and data-model.md updated
+
 **Checkpoint**: `docker compose up --build` on a clean machine; harbor saving Min Price above Max
 Price is refused with the field named, and clearing every property type is refused; ridge adds
 a second box whose ZIP code covers an open package that ridge's narrow box does not fit, and the

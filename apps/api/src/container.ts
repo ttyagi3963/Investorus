@@ -48,7 +48,7 @@ import {
 } from "@clever/contracts/listing-package";
 import type { Logger } from "pino";
 import type { ApiEnv } from "./env.js";
-import type { SignPhotos } from "./routes/investor.router.js";
+import type { AddPhotoUrls } from "./routes/investor.router.js";
 
 export type AppContainer = Readonly<{
   auth: IAuthService;
@@ -63,10 +63,10 @@ export type AppContainer = Readonly<{
   notifications: INotificationService;
   buyBoxes: IBuyBoxService;
   investorImports: IInvestorImportWorkflow;
-  /** A package's view, with each photo's short-lived read link signed. */
-  presentPackage: (parts: AgentPackageParts) => Promise<AgentPackageView>;
-  /** Each photo with its short-lived read link signed. */
-  signPhotos: SignPhotos;
+  /** A package's view, with each photo's public address. */
+  presentPackage: (parts: AgentPackageParts) => AgentPackageView;
+  /** Each photo with its public address. */
+  addPhotoUrls: AddPhotoUrls;
   checkDatabase: () => Promise<void>;
   /** The Idempotency-Key store every POST and PATCH goes through (T285). */
   idempotency: IIdempotencyStore;
@@ -100,10 +100,8 @@ export function createContainer(env: ApiEnv): AppContainer {
 
   const geo = new StaticGeoProviderImpl();
 
-  const signPhotos: SignPhotos = (photos) =>
-    Promise.all(
-      photos.map(async (photo) => ({ ...photo, url: await storage.getReadUrl(photo.storageKey) })),
-    );
+  const addPhotoUrls: AddPhotoUrls = (photos) =>
+    photos.map((photo) => ({ ...photo, url: storage.getPublicUrl(photo.storageKey) }));
 
   return Object.freeze({
     auth: new AuthService(uow, { jwtSecret: env.JWT_SECRET, clock }),
@@ -122,9 +120,8 @@ export function createContainer(env: ApiEnv): AppContainer {
     notifications: new NotificationService(uow, { clock }),
     buyBoxes: new BuyBoxService(uow, { geo }),
     investorImports: new InvestorImportWorkflow(uow, { storage, geo, clock }),
-    presentPackage: async (parts) =>
-      toAgentPackageView({ ...parts, photos: await signPhotos(parts.photos) }),
-    signPhotos,
+    presentPackage: (parts) => toAgentPackageView({ ...parts, photos: addPhotoUrls(parts.photos) }),
+    addPhotoUrls,
     checkDatabase: () => db.check(),
     idempotency: db.idempotency,
     logger,

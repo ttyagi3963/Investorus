@@ -1,7 +1,7 @@
 // What the agent's package responses show (T257, contracts/api.md): the full package with its seller
 // and property for GET/POST/PATCH, and a short summary for the list. Each view names its fields, so
-// nothing added to the domain types later reaches a response by accident; photos carry a short-lived
-// read link instead of their storage key.
+// nothing added to the domain types later reaches a response by accident; photos carry their public
+// address instead of their storage key.
 import type { Photo } from "../photo/photo.js";
 import type { Property } from "../property/property.js";
 import type { Seller } from "../seller/seller.js";
@@ -17,8 +17,8 @@ export type AgentPackageParts = {
   matchedCount: number;
 };
 
-/** The parts with each photo's read link already signed (signing is async; this mapper is not). */
-export type SignedAgentPackageParts = Omit<AgentPackageParts, "photos"> & {
+/** The parts with each photo's public address, which only storage knows, already added. */
+export type AgentPackagePartsWithUrls = Omit<AgentPackageParts, "photos"> & {
   photos: (Photo & { url: string })[];
 };
 
@@ -61,7 +61,7 @@ export type AgentPackageSummary = {
   updatedAt: string;
 };
 
-export function toAgentPackageView(parts: SignedAgentPackageParts): AgentPackageView {
+export function toAgentPackageView(parts: AgentPackagePartsWithUrls): AgentPackageView {
   const { package: pkg, seller, property: p, photos } = parts;
   return {
     id: pkg.id,

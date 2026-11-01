@@ -1,7 +1,7 @@
-// Storage on the sandbox (T251). Links are HMAC-SHA256 signed with STORAGE_SIGNING_KEY over
-// "<METHOD>\n<key>\n<contentType>\n<sizeBytes>\n<exp>" (contracts/providers.md), the same string
-// the sandbox checks, so a link cannot be reused for another object, type, size, or time; the sandbox
-// accepts exactly that many bytes, as S3 does.
+// Storage on the sandbox (T251, T326). Upload links are HMAC-SHA256 signed with STORAGE_SIGNING_KEY
+// over "<METHOD>\n<key>\n<contentType>\n<sizeBytes>\n<exp>" (contracts/providers.md), the same
+// string the sandbox checks, so a link cannot be reused for another object, type, size, or time;
+// the sandbox accepts exactly that many bytes, as S3 does. Photos are read at a plain public address.
 import { createHmac } from "node:crypto";
 import type { UploadInstruction } from "@clever/contracts/photo";
 import { z } from "zod";
@@ -11,7 +11,6 @@ import { sandboxRequest } from "../sandbox-http.js";
 import type { IStorageProvider, StoredObject } from "./IStorageProvider.js";
 
 const UPLOAD_SECONDS = 10 * 60;
-const READ_SECONDS = 60 * 60;
 
 const statHeaders = z.object({
   contentType: z.string().min(1),
@@ -51,9 +50,8 @@ export class SandboxStorageProviderImpl implements IStorageProvider {
     };
   }
 
-  async getReadUrl(key: string): Promise<string> {
-    const exp = this.expiry(READ_SECONDS);
-    return `${this.objectUrl(key)}?exp=${exp}&sig=${this.sign("GET", key, "", 0, exp)}`;
+  getPublicUrl(key: string): string {
+    return this.objectUrl(key);
   }
 
   async stat(key: string): Promise<StoredObject | null> {

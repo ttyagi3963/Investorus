@@ -1,6 +1,7 @@
-// Storage on Amazon S3 (T275), selected with STORAGE_PROVIDER=s3. Uploads are presigned PUTs that
-// sign the content type and the exact length, so S3 itself refuses any other file; reads are
-// presigned GETs; `stat` is HeadObject. The bucket stays private: every link expires.
+// Storage on Amazon S3 (T275, T326), selected with STORAGE_PROVIDER=s3. Uploads are presigned PUTs
+// that sign the content type and the exact length, so S3 itself refuses any other file; `stat` is
+// HeadObject. Photos are read at the bucket's plain address, which the bucket policy makes public
+// for keys under packages/ only (README); everything else stays private.
 import {
   GetObjectCommand,
   HeadObjectCommand,
@@ -14,7 +15,6 @@ import type { IClock } from "../clock/IClock.js";
 import type { IStorageProvider, StoredObject } from "./IStorageProvider.js";
 
 const UPLOAD_SECONDS = 10 * 60;
-const READ_SECONDS = 60 * 60;
 
 export type S3StorageOptions = {
   bucket: string;
@@ -56,9 +56,10 @@ export class S3StorageProviderImpl implements IStorageProvider {
     };
   }
 
-  getReadUrl(key: string): Promise<string> {
-    const command = new GetObjectCommand({ Bucket: this.options.bucket, Key: key });
-    return this.sign(command, READ_SECONDS, this.options.clock.now(), []);
+  getPublicUrl(key: string): string {
+    const { bucket, region } = this.options;
+    const path = key.split("/").map(encodeURIComponent).join("/");
+    return `https://${bucket}.s3.${region}.amazonaws.com/${path}`;
   }
 
   async stat(key: string): Promise<StoredObject | null> {
@@ -100,7 +101,7 @@ export class S3StorageProviderImpl implements IStorageProvider {
   }
 
   private async sign(
-    command: PutObjectCommand | GetObjectCommand,
+    command: PutObjectCommand,
     expiresIn: number,
     signingDate: Date,
     headers: string[],

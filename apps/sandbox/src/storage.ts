@@ -1,8 +1,10 @@
-// The stand-in object storage (T252; contracts/providers.md). The browser uploads and reads with
-// links signed by core's SandboxStorageProviderImpl over "<METHOD>\n<key>\n<type>\n<size>\n<exp>",
-// and an upload must be exactly <size> bytes, as with a presigned S3 PUT. The api checks an
-// upload, and the worker reads an uploaded file, on the internal routes with the shared token. Objects are files on the
-// SANDBOX_STORAGE_DIR volume, named by a hash of the key so no key can reach outside it.
+// The stand-in object storage (T252, T326; contracts/providers.md). The browser uploads with links
+// signed by core's SandboxStorageProviderImpl over "<METHOD>\n<key>\n<type>\n<size>\n<exp>", and an
+// upload must be exactly <size> bytes, as with a presigned S3 PUT. Photos (keys under packages/) are
+// public, like the S3 bucket's policy; anything else, such as an import file, is not. The api checks
+// an upload, and the worker reads an uploaded file, on the internal routes with the shared token.
+// Objects are files on the SANDBOX_STORAGE_DIR volume, named by a hash of the key so no key can
+// reach outside it.
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -17,6 +19,9 @@ export type StorageConfig = {
 };
 
 type Meta = { contentType: string; sizeBytes: number };
+
+/** Listing photos; the only objects anyone may read without the internal token. */
+const PUBLIC_PREFIX = "packages/";
 
 const sameSecret = (given: string, expected: string) => {
   const a = Buffer.from(given);
@@ -81,9 +86,8 @@ export function storageRoutes(config: StorageConfig): Router {
   });
 
   router.get("/storage/objects/:key", async (req, res) => {
-    if (!signed(req, "GET", "", 0))
-      return void res.status(403).json({ error: "Invalid or expired link" });
     const key = String(req.params.key);
+    if (!key.startsWith(PUBLIC_PREFIX)) return void res.status(403).json({ error: "Not public" });
     const meta = await readMeta(key);
     if (!meta) return void res.status(404).json({ error: "Not found" });
     res

@@ -1,0 +1,73 @@
+/* The Tailwind 4 bridge for the semantic tokens (T267; contracts/design-tokens.md): neutral
+   default values for every token the Sprint 1 screens use, mapped to semantic utilities such as
+   bg-action-primary or p-inset-md. A brand later overrides the same CSS variables (T094). */
+
+/* Colors and spacing: contract variable names, mapped below to shorter utility names. */
+:root {
+  --color-action-primary: #1f4fd1;
+  --color-action-primary-hover: #183fa8;
+  --color-action-on-primary: #ffffff;
+  --color-action-secondary: #1f2937;
+  --color-action-on-secondary: #ffffff;
+  --color-surface-page: #f8fafc;
+  --color-surface-card: #ffffff;
+  --color-text-default: #111827;
+  --color-text-muted: #4b5563;
+  --color-text-link: #1f4fd1;
+  --color-border-default: #e5e7eb;
+  --color-border-strong: #6b7280;
+  --color-focus-ring: #1f4fd1;
+  --color-status-danger: #dc2626;
+  --color-status-danger-text: #b91c1c;
+  --color-status-danger-surface: #fee2e2;
+
+  --space-inset-sm: 0.5rem;
+  --space-inset-md: 1rem;
+  --space-inset-lg: 1.5rem;
+  --space-stack-sm: 0.5rem;
+  --space-stack-md: 1rem;
+  --space-stack-lg: 2rem;
+  --space-inline-sm: 0.5rem;
+  --space-inline-md: 1rem;
+}
+
+/* Tokens whose contract name is already a Tailwind theme name (radius, shadow, font, text). */
+@theme {
+  --radius-control: 0.5rem;
+  --radius-card: 1rem;
+  --shadow-card: 0 1px 3px 0 #0000001a, 0 1px 2px -1px #0000001a;
+  --font-body: system-ui, sans-serif;
+  --font-heading: system-ui, sans-serif;
+  --text-body: 1rem;
+  --text-label: 0.875rem;
+  --text-heading-sm: 1.25rem;
+  --text-heading-md: 1.5rem;
+  --text-heading-lg: 2rem;
+}
+
+@theme inline {
+  --background-color-action-primary: var(--color-action-primary);
+  --background-color-action-primary-hover: var(--color-action-primary-hover);
+  --background-color-action-secondary: var(--color-action-secondary);
+  --background-color-page: var(--color-surface-page);
+  --background-color-card: var(--color-surface-card);
+  --background-color-danger-surface: var(--color-status-danger-surface);
+  --text-color-on-primary: var(--color-action-on-primary);
+  --text-color-on-secondary: var(--color-action-on-secondary);
+  --text-color-default: var(--color-text-default);
+  --text-color-muted: var(--color-text-muted);
+  --text-color-link: var(--color-text-link);
+  --text-color-danger: var(--color-status-danger-text);
+  --border-color-default: var(--color-border-default);
+  --border-color-strong: var(--color-border-strong);
+  --border-color-danger: var(--color-status-danger);
+  --outline-color-focus: var(--color-focus-ring);
+  --spacing-inset-sm: var(--space-inset-sm);
+  --spacing-inset-md: var(--space-inset-md);
+  --spacing-inset-lg: var(--space-inset-lg);
+  --spacing-stack-sm: var(--space-stack-sm);
+  --spacing-stack-md: var(--space-stack-md);
+  --spacing-stack-lg: var(--space-stack-lg);
+  --spacing-inline-sm: var(--space-inline-sm);
+  --spacing-inline-md: var(--space-inline-md);
+}

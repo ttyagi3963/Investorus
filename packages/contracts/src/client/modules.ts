@@ -106,7 +106,6 @@ export const investorClient = (api: ApiClient) => ({
     api.request<OfferView>("POST", `${offerPath(offerId)}/reconfirmation`, input),
 });
 
-/** The signed-in user's in-app inbox (T300). */
 /** The investor's own buy boxes (T323). A save restates the whole box and the version it read. */
 export const buyBoxesClient = (api: ApiClient) => ({
   list: () => api.request<BuyBoxView[]>("GET", "/investor/buy-boxes"),
@@ -126,6 +125,7 @@ export const investorImportsClient = (api: ApiClient) => ({
   get: (batchId: string) => api.request<ImportBatchView>("GET", `/ops/investor-imports/${batchId}`),
 });
 
+/** The signed-in user's in-app inbox (T300). */
 export const notificationsClient = (api: ApiClient) => ({
   list: () => api.request<NotificationView[]>("GET", "/notifications"),
   markRead: (id: string) =>

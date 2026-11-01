@@ -172,7 +172,12 @@ export const CRITERIA = {
     ...range(
       "bathsMin",
       "bathsMax",
-      z.number().min(0, "Must be 0 or more").max(20, "Must be 20 or less"),
+      z
+        .number()
+        .min(0, "Must be 0 or more")
+        .max(20, "Must be 20 or less")
+        // The column keeps one decimal place, so 2.25 would be stored as 2.3.
+        .refine((baths) => Number.isInteger(baths * 10), "Use at most one decimal place"),
       { min: "Min baths", max: "Max baths" },
     ),
   },

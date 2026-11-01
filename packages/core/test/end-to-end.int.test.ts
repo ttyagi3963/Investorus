@@ -1,5 +1,7 @@
-// Walks the whole loop on a real Postgres through the real services and workflows (T360; R18,
-// SC-010): publish, match, offer, accept, every milestone to CLOSED, and the CRM told at each step.
+// Walks the whole loop on a real Postgres through the real services and workflows (T360, T361; R18,
+// SC-010, FR-032, SC-006): publish, match, offer, accept, every milestone to CLOSED, and the CRM
+// told at each step, one update set aside during a CRM outage and retried by operations. Every log
+// line of the run, the worker's and the sandbox's, is kept and must not carry the seller's details.
 // The sandbox runs as its own process (its real server, started with tsx) on the database's
 // `sandbox` schema. The relay queues to a list and the test hands each delivery to the dispatcher,
 // as the worker's BullMQ consumer would, so the run needs no Redis and has no timing to wait on.
@@ -12,10 +14,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Actor } from "@clever/contracts/auth";
 import type { DeliveryRetryPolicy } from "@clever/contracts/config";
-import type { DealMilestone } from "@clever/contracts/deal";
+import type { DealMilestone, DealParts } from "@clever/contracts/deal";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createJobHandlers } from "../src/jobs/handlers.js";
+import { createLogger } from "../src/infra/logger.js";
 import { createPrismaClient, type PrismaClient } from "../src/infra/prisma-client.js";
 import { DeliveryDispatcher } from "../src/outbox/DeliveryDispatcher.js";
 import { OutboxRelay } from "../src/outbox/OutboxRelay.js";
@@ -26,6 +29,7 @@ import { AesGcmPiiCipherImpl } from "../src/providers/pii-cipher/AesGcmPiiCipher
 import { createAddressHasher } from "../src/providers/pii-cipher/address-hasher.js";
 import { ListingPackageService } from "../src/services/listing-package/ListingPackageService.js";
 import { OfferService } from "../src/services/offer/OfferService.js";
+import { DeliveryOpsService } from "../src/services/ops/DeliveryOpsService.js";
 import { PrismaUnitOfWorkImpl } from "../src/unit-of-work/PrismaUnitOfWorkImpl.js";
 import { DealLifecycleWorkflow } from "../src/workflows/deal-lifecycle/DealLifecycleWorkflow.js";
 import { DecisionWorkflow } from "../src/workflows/decision/DecisionWorkflow.js";
@@ -39,19 +43,30 @@ const TOKEN = "end-to-end-internal-token";
 const RETRY: DeliveryRetryPolicy = { baseMs: 20, factor: 2, capMs: 100, jitter: 0, attempts: 2 };
 const avery: Actor = { userId: "user-a", role: "AGENT", agentId: "agent-a" };
 const summit: Actor = { userId: "user-summit", role: "INVESTOR", investorId: "summit" };
+const ops: Actor = { userId: "user-ops", role: "OPS", agentId: null };
 const seller = {
   fullName: "Ottoline Quillfeather",
   email: "ottoline.quillfeather@example.test",
   phone: "+15125550187",
 };
+const STREET = "4471 Wrenfield Hollow Rd";
 const inDays = (days: number) => new Date(Date.now() + days * 86_400_000);
 const day = (days: number) => inDays(days).toISOString().slice(0, 10);
+
+/** Every log line of the run: the worker's logger and the sandbox process's output. */
+const logLines: string[] = [];
+const logger = createLogger("worker", {
+  level: "debug",
+  destination: { write: (line: string) => void logLines.push(line) },
+});
 
 let db: pg.Client;
 let stopDb: () => Promise<void>;
 let prisma: PrismaClient;
 let sandbox: ChildProcess;
 let sandboxUrl: string;
+let packageId: string;
+let closed: DealParts;
 
 /** A port free right now, for the sandbox to listen on. */
 async function freePort(): Promise<number> {
@@ -79,12 +94,24 @@ async function startSandbox(databaseUrl: string): Promise<void> {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  sandbox.stderr!.on("data", (chunk: Buffer) => logLines.push(chunk.toString()));
   await new Promise<void>((resolve, reject) => {
     sandbox.stdout!.on("data", (chunk: Buffer) => {
+      logLines.push(chunk.toString());
       if (chunk.toString().includes("sandbox listening")) resolve();
     });
     sandbox.once("exit", (code) => reject(new Error(`The sandbox stopped with code ${code}`)));
   });
+}
+
+/** Switches the sandbox CRM's outage mode, as operations would. */
+async function setCrmMode(mode: "up" | "down"): Promise<void> {
+  const res = await fetch(`${sandboxUrl}/simulation/crm`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "x-sandbox-token": TOKEN },
+    body: JSON.stringify({ mode }),
+  });
+  if (!res.ok) throw new Error(`The sandbox answered ${res.status} to the mode change`);
 }
 
 beforeAll(async () => {
@@ -105,6 +132,128 @@ beforeAll(async () => {
       VALUES ('summit-box', 'summit', 'Austin flips', 'ZIPS', '{SINGLE_FAMILY}', 250000, 300000, now());
     INSERT INTO "BuyBoxGeography" (id, "buyBoxId", kind, value) VALUES ('g1', 'summit-box', 'ZIP', '78704');
   `);
+
+  const uow = new PrismaUnitOfWorkImpl(
+    prisma,
+    new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`),
+  );
+  const clock = { now: () => new Date() };
+  const packages = new ListingPackageService(uow, {
+    geo: new StaticGeoProviderImpl(),
+    addressHash: createAddressHasher("test-hash-key"),
+    clock,
+  });
+  const deals = new DealLifecycleWorkflow(uow, { clock });
+  const handlers = createJobHandlers({
+    matching: new MatchingWorkflow(uow, { clock }),
+    offerRound: new OfferRoundWorkflow(uow),
+    deals,
+    imports: { run: () => Promise.reject(new Error("No imports in this test")) },
+    digests: { send: () => Promise.reject(new Error("No digests in this test")) },
+  });
+  const queued: string[] = [];
+  const relay = new OutboxRelay(uow, {
+    queue: { enqueue: async (ids) => void queued.push(...ids) },
+    clock,
+  });
+  const target = { internalUrl: sandboxUrl, internalToken: TOKEN };
+  const dispatcher = new DeliveryDispatcher(uow, {
+    crm: new SandboxCrmProviderImpl(target),
+    messaging: new SandboxMessagingProviderImpl(target),
+    clock,
+    retry: RETRY,
+    brandId: "test",
+  });
+  const setAside: string[] = [];
+  /**
+   * Runs the due jobs, then relays and sends every delivery, logging what the worker's job loop,
+   * relay loop, and delivery consumer log; a delivery to retry goes back on the queue.
+   */
+  const work = async () => {
+    for (;;) {
+      const job = await uow.run((repos) => repos.jobs.claimNext("worker", clock.now()));
+      if (!job) break;
+      await handlers[job.type](job.payload);
+      await uow.run((repos) => repos.jobs.complete(job.id));
+      logger.child({ job_id: job.id, type: job.type }).info("job completed");
+    }
+    const { relayed, queued: count } = await relay.tick();
+    logger.info({ relayed, queued: count }, "outbox relayed");
+    for (let id = queued.shift(); id; id = queued.shift()) {
+      const result = await dispatcher.dispatch(id);
+      if (result.outcome === "RETRY") queued.push(id);
+      if (result.outcome === "NEEDS_ATTENTION") {
+        setAside.push(id);
+        logger.warn({ delivery_id: id, error: result.error }, "delivery needs attention");
+      }
+    }
+  };
+
+  const { package: draft } = await packages.create(avery, {
+    seller,
+    property: {
+      streetLine: STREET,
+      zip: "78704",
+      propertyType: "SINGLE_FAMILY",
+      beds: 3,
+      baths: 2,
+      sqft: 1_600,
+      yearBuilt: 1985,
+      condition: "FAIR",
+    },
+    priceExpectationMin: 250_000,
+    priceExpectationMax: 300_000,
+    closingWindowStart: day(20),
+    closingWindowEnd: day(45),
+    currentlyListed: false,
+    eligiblePrograms: ["CASH_OFFER"],
+  });
+  packageId = draft.id;
+  await uow.run((repos) =>
+    repos.photos.add({
+      packageId,
+      storageKey: "photos/0.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: 1_000,
+      position: 0,
+    }),
+  );
+  await new PublicationWorkflow(uow, { clock }).publish(avery, packageId, { version: 1 });
+  await work();
+
+  // The CRM is down while the offer's update goes out: it is retried, set aside, and retried by
+  // operations once the CRM is back.
+  await setCrmMode("down");
+  const offer = await new OfferService(uow, { clock }).create(summit, packageId, {
+    price: 280_000,
+    paymentType: "CASH",
+    closingDate: day(30),
+    earnestMoney: 5_000,
+    contingencies: ["INSPECTION"],
+    feesAndConcessions: 0,
+    expiresAt: inDays(2).toISOString(),
+  });
+  await work();
+  await setCrmMode("up");
+  for (const id of setAside) await new DeliveryOpsService(uow).retry(ops, id);
+  await work();
+
+  await new DecisionWorkflow(uow, { clock }).record(avery, packageId, {
+    type: "ACCEPT",
+    offerId: offer.id,
+    version: offer.version,
+  });
+  await work();
+
+  closed = await deals.get(avery, packageId);
+  const milestones: DealMilestone[] = ["UNDER_CONTRACT", "INSPECTION", "CLOSING", "CLOSED"];
+  for (const milestone of milestones) {
+    closed = await deals.recordMilestone(avery, closed.deal.id, {
+      milestone,
+      version: closed.deal.version,
+    });
+    await work();
+  }
 });
 
 afterAll(async () => {
@@ -115,111 +264,7 @@ afterAll(async () => {
 
 describe("the whole loop", () => {
   it("publishes, matches, takes an offer, closes the deal, and tells the CRM each step", async () => {
-    const uow = new PrismaUnitOfWorkImpl(
-      prisma,
-      new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`),
-    );
-    const clock = { now: () => new Date() };
-    const geo = new StaticGeoProviderImpl();
-    const packages = new ListingPackageService(uow, {
-      geo,
-      addressHash: createAddressHasher("test-hash-key"),
-      clock,
-    });
-    const deals = new DealLifecycleWorkflow(uow, { clock });
-    const handlers = createJobHandlers({
-      matching: new MatchingWorkflow(uow, { clock }),
-      offerRound: new OfferRoundWorkflow(uow),
-      deals,
-      imports: { run: () => Promise.reject(new Error("No imports in this test")) },
-      digests: { send: () => Promise.reject(new Error("No digests in this test")) },
-    });
-    const queued: string[] = [];
-    const relay = new OutboxRelay(uow, {
-      queue: { enqueue: async (ids) => void queued.push(...ids) },
-      clock,
-    });
-    const target = { internalUrl: sandboxUrl, internalToken: TOKEN };
-    const dispatcher = new DeliveryDispatcher(uow, {
-      crm: new SandboxCrmProviderImpl(target),
-      messaging: new SandboxMessagingProviderImpl(target),
-      clock,
-      retry: RETRY,
-      brandId: "test",
-    });
-    /** Runs the due jobs, then relays and sends every delivery, as the worker's loops would. */
-    const work = async () => {
-      for (;;) {
-        const job = await uow.run((repos) => repos.jobs.claimNext("worker", clock.now()));
-        if (!job) break;
-        await handlers[job.type](job.payload);
-        await uow.run((repos) => repos.jobs.complete(job.id));
-      }
-      await relay.tick();
-      for (let id = queued.shift(); id; id = queued.shift()) await dispatcher.dispatch(id);
-    };
-
-    const { package: draft } = await packages.create(avery, {
-      seller,
-      property: {
-        streetLine: "4471 Wrenfield Hollow Rd",
-        zip: "78704",
-        propertyType: "SINGLE_FAMILY",
-        beds: 3,
-        baths: 2,
-        sqft: 1_600,
-        yearBuilt: 1985,
-        condition: "FAIR",
-      },
-      priceExpectationMin: 250_000,
-      priceExpectationMax: 300_000,
-      closingWindowStart: day(20),
-      closingWindowEnd: day(45),
-      currentlyListed: false,
-      eligiblePrograms: ["CASH_OFFER"],
-    });
-    const packageId = draft.id;
-    await uow.run((repos) =>
-      repos.photos.add({
-        packageId,
-        storageKey: "photos/0.jpg",
-        contentType: "image/jpeg",
-        sizeBytes: 1_000,
-        position: 0,
-      }),
-    );
-    await new PublicationWorkflow(uow, { clock }).publish(avery, packageId, { version: 1 });
-    await work();
-
-    const offer = await new OfferService(uow, { clock }).create(summit, packageId, {
-      price: 280_000,
-      paymentType: "CASH",
-      closingDate: day(30),
-      earnestMoney: 5_000,
-      contingencies: ["INSPECTION"],
-      feesAndConcessions: 0,
-      expiresAt: inDays(2).toISOString(),
-    });
-    await work();
-
-    await new DecisionWorkflow(uow, { clock }).record(avery, packageId, {
-      type: "ACCEPT",
-      offerId: offer.id,
-      version: offer.version,
-    });
-    await work();
-
-    let parts = await deals.get(avery, packageId);
-    const milestones: DealMilestone[] = ["UNDER_CONTRACT", "INSPECTION", "CLOSING", "CLOSED"];
-    for (const milestone of milestones) {
-      parts = await deals.recordMilestone(avery, parts.deal.id, {
-        milestone,
-        version: parts.deal.version,
-      });
-      await work();
-    }
-
-    expect(parts.deal.status).toBe("CLOSED");
+    expect(closed.deal.status).toBe("CLOSED");
     const pkg = await db.query(`SELECT status FROM "ListingPackage" WHERE id = $1`, [packageId]);
     expect(pkg.rows).toEqual([{ status: "CLOSED" }]);
     const deliveries = await db.query<{ target: string; status: string }>(
@@ -242,5 +287,13 @@ describe("the whole loop", () => {
         sellerContact: seller,
       }),
     ]);
+  });
+
+  it("logs no seller name, email, phone, or street, even for the delivery that failed", () => {
+    const logs = logLines.join("\n");
+    expect(logs).toContain("delivery needs attention");
+    for (const detail of [seller.fullName, seller.email, seller.phone, STREET]) {
+      expect(logs).not.toContain(detail);
+    }
   });
 });

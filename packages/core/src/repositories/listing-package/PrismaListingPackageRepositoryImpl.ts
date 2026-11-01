@@ -7,13 +7,21 @@ import type {
   ListingPackagePatch,
   NewListingPackage,
 } from "./IListingPackageRepository.js";
-import { toListingPackage } from "./listing-package.mapper.js";
+import { toDate, toListingPackage } from "./listing-package.mapper.js";
 
 export class PrismaListingPackageRepositoryImpl implements IListingPackageRepository {
   constructor(private readonly db: Prisma.TransactionClient) {}
 
   async create(pkg: NewListingPackage): Promise<ListingPackage> {
-    return toListingPackage(await this.db.listingPackage.create({ data: pkg }));
+    return toListingPackage(
+      await this.db.listingPackage.create({
+        data: {
+          ...pkg,
+          closingWindowStart: toDate(pkg.closingWindowStart),
+          closingWindowEnd: toDate(pkg.closingWindowEnd),
+        },
+      }),
+    );
   }
 
   async findForAgent(agentId: string, id: string): Promise<ListingPackage | null> {
@@ -30,14 +38,20 @@ export class PrismaListingPackageRepositoryImpl implements IListingPackageReposi
   }
 
   async findByAddressHash(addressHash: string) {
-    return this.db.listingPackage.findUnique({
-      where: { addressHash },
+    return this.db.listingPackage.findFirst({
+      where: { addressHash, status: { not: "WITHDRAWN" } },
       select: { id: true, agentId: true },
     });
   }
 
   async update(id: string, version: number, patch: ListingPackagePatch): Promise<ListingPackage> {
-    const data = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+    const data: Prisma.ListingPackageUpdateManyMutationInput = Object.fromEntries(
+      Object.entries(patch).filter(([, v]) => v !== undefined),
+    );
+    if (patch.closingWindowStart !== undefined)
+      data.closingWindowStart = toDate(patch.closingWindowStart);
+    if (patch.closingWindowEnd !== undefined)
+      data.closingWindowEnd = toDate(patch.closingWindowEnd);
     const { count } = await this.db.listingPackage.updateMany({
       where: { id, version },
       data: { ...data, version: { increment: 1 } },

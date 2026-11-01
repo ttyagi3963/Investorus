@@ -90,6 +90,10 @@ export class ListingPackageService implements IListingPackageService {
         addressHash,
         priceExpectationMin: data.priceExpectationMin,
         priceExpectationMax: data.priceExpectationMax,
+        closingWindowStart: data.closingWindowStart ?? null,
+        closingWindowEnd: data.closingWindowEnd ?? null,
+        currentlyListed: data.currentlyListed ?? null,
+        eligiblePrograms: data.eligiblePrograms ?? [],
       });
       return { package: pkg, seller: savedSeller, property: savedProperty, photos: [] };
     });
@@ -138,6 +142,18 @@ export class ListingPackageService implements IListingPackageService {
           field: "priceExpectationMax",
           message: "Must be at least the minimum price",
         });
+      const start =
+        data.closingWindowStart !== undefined
+          ? data.closingWindowStart
+          : current.closingWindowStart;
+      const end =
+        data.closingWindowEnd !== undefined ? data.closingWindowEnd : current.closingWindowEnd;
+      if (start && end && start > end) {
+        errors.push({
+          field: "closingWindowEnd",
+          message: "Must be on or after the start of the closing window",
+        });
+      }
       const email = data.seller?.email !== undefined ? data.seller.email : seller.email;
       const phone = data.seller?.phone !== undefined ? data.seller.phone : seller.phone;
       if (email === null && phone === null) {
@@ -159,6 +175,10 @@ export class ListingPackageService implements IListingPackageService {
         addressHash,
         priceExpectationMin: data.priceExpectationMin,
         priceExpectationMax: data.priceExpectationMax,
+        closingWindowStart: data.closingWindowStart,
+        closingWindowEnd: data.closingWindowEnd,
+        currentlyListed: data.currentlyListed,
+        eligiblePrograms: data.eligiblePrograms,
       });
       const savedSeller = data.seller ? await repos.sellers.update(seller.id, data.seller) : seller;
       const savedProperty = data.property

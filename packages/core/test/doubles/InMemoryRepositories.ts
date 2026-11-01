@@ -82,13 +82,21 @@ export class InMemoryPropertyRepository implements IPropertyRepository {
 export class InMemoryListingPackageRepository implements IListingPackageRepository {
   readonly rows = new Map<string, ListingPackage & { addressHash: string }>();
   async create(pkg: NewListingPackage) {
-    if ([...this.rows.values()].some((r) => r.addressHash === pkg.addressHash)) {
-      throw new Error("unique constraint ListingPackage_addressHash_key");
+    if (
+      [...this.rows.values()].some(
+        (r) => r.addressHash === pkg.addressHash && r.status !== "WITHDRAWN",
+      )
+    ) {
+      throw new Error("unique constraint ListingPackage_one_active_per_address");
     }
-    const row = {
+    const row: ListingPackage & { addressHash: string } = {
       id: nextId("package"),
       ...pkg,
-      status: "DRAFT" as const,
+      status: "DRAFT",
+      round: 1,
+      offerDeadline: null,
+      publishedAt: null,
+      listingVersion: 0,
       version: 1,
       createdAt: NOW,
       updatedAt: NOW,
@@ -104,7 +112,9 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
     return [...this.rows.values()].filter((r) => r.agentId === agentId);
   }
   async findByAddressHash(addressHash: string) {
-    const row = [...this.rows.values()].find((r) => r.addressHash === addressHash);
+    const row = [...this.rows.values()].find(
+      (r) => r.addressHash === addressHash && r.status !== "WITHDRAWN",
+    );
     return row ? { id: row.id, agentId: row.agentId } : null;
   }
   async update(id: string, version: number, patch: ListingPackagePatch) {

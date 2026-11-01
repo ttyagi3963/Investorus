@@ -17,6 +17,22 @@
       "types": "./dist/buy-box/index.d.ts",
       "import": "./dist/buy-box/index.js"
     },
+    "./jobs": {
+      "types": "./dist/jobs/index.d.ts",
+      "import": "./dist/jobs/index.js"
+    },
+    "./match": {
+      "types": "./dist/match/index.d.ts",
+      "import": "./dist/match/index.js"
+    },
+    "./notification": {
+      "types": "./dist/notification/index.d.ts",
+      "import": "./dist/notification/index.js"
+    },
+    "./offer": {
+      "types": "./dist/offer/index.d.ts",
+      "import": "./dist/offer/index.js"
+    },
     "./investor": {
       "types": "./dist/investor/index.d.ts",
       "import": "./dist/investor/index.js"

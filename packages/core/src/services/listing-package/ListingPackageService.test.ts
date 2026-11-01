@@ -45,6 +45,23 @@ describe("ListingPackageService", () => {
     ]);
   });
 
+  it("checks an edit to one end of the closing window against the stored other end", async () => {
+    const s = service();
+    const created = await s.create(avery, {
+      ...draft,
+      closingWindowStart: "2026-12-01",
+      closingWindowEnd: "2026-12-31",
+    });
+    const id = created.package.id;
+    const early = await s
+      .update(avery, id, { version: 1, closingWindowEnd: "2026-11-15" })
+      .catch((e: unknown) => e);
+    expect(fields(early)).toEqual(["closingWindowEnd"]);
+    await expect(
+      s.update(avery, id, { version: 1, closingWindowStart: null, closingWindowEnd: "2026-11-15" }),
+    ).resolves.toBeDefined();
+  });
+
   it("takes the city, state, and default neighborhood from the ZIP", async () => {
     const created = await service().create(avery, draft);
     expect(created.property).toMatchObject({

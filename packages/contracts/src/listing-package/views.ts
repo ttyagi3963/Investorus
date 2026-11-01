@@ -6,6 +6,7 @@ import type { Photo } from "../photo/photo.js";
 import type { Property } from "../property/property.js";
 import type { Seller } from "../seller/seller.js";
 import type { ListingPackage, PackageStatus } from "./listing-package.js";
+import type { OfferProgram } from "./programs.js";
 
 export type AgentPackageParts = {
   package: ListingPackage;
@@ -23,8 +24,16 @@ export type AgentPackageView = {
   id: string;
   status: PackageStatus;
   version: number;
+  round: number;
+  listingVersion: number;
   priceExpectationMin: number;
   priceExpectationMax: number;
+  closingWindowStart: string | null;
+  closingWindowEnd: string | null;
+  currentlyListed: boolean | null;
+  eligiblePrograms: OfferProgram[];
+  offerDeadline: string | null;
+  publishedAt: string | null;
   seller: Pick<Seller, "fullName" | "email" | "phone">;
   property: Omit<Property, "id" | "createdAt" | "updatedAt">;
   photos: { id: string; position: number; contentType: string; sizeBytes: number; url: string }[];
@@ -41,6 +50,7 @@ export type AgentPackageSummary = {
   zip: string;
   priceExpectationMin: number;
   priceExpectationMax: number;
+  offerDeadline: string | null;
   photoCount: number;
   updatedAt: string;
 };
@@ -51,8 +61,16 @@ export function toAgentPackageView(parts: SignedAgentPackageParts): AgentPackage
     id: pkg.id,
     status: pkg.status,
     version: pkg.version,
+    round: pkg.round,
+    listingVersion: pkg.listingVersion,
     priceExpectationMin: pkg.priceExpectationMin,
     priceExpectationMax: pkg.priceExpectationMax,
+    closingWindowStart: pkg.closingWindowStart,
+    closingWindowEnd: pkg.closingWindowEnd,
+    currentlyListed: pkg.currentlyListed,
+    eligiblePrograms: pkg.eligiblePrograms,
+    offerDeadline: pkg.offerDeadline?.toISOString() ?? null,
+    publishedAt: pkg.publishedAt?.toISOString() ?? null,
     seller: { fullName: seller.fullName, email: seller.email, phone: seller.phone },
     property: {
       streetLine: p.streetLine,
@@ -95,6 +113,7 @@ export function toAgentPackageSummary(parts: AgentPackageParts): AgentPackageSum
     zip: property.zip,
     priceExpectationMin: pkg.priceExpectationMin,
     priceExpectationMax: pkg.priceExpectationMax,
+    offerDeadline: pkg.offerDeadline?.toISOString() ?? null,
     photoCount: parts.photos.length,
     updatedAt: pkg.updatedAt.toISOString(),
   };

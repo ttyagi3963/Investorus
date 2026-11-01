@@ -4,12 +4,26 @@
 import { z } from "zod";
 import { createPropertyInputSchema, updatePropertyInputSchema } from "../property/inputs.js";
 import { createSellerInputSchema, updateSellerInputSchema } from "../seller/inputs.js";
+import { OFFER_PROGRAMS } from "./programs.js";
 
 const price = z.number().int().positive();
 const minAtMostMax = {
   message: "Must be at least the minimum price",
   path: ["priceExpectationMax"],
 };
+// The seller's terms, which publishing requires but a draft may leave out (FR-012).
+const terms = {
+  closingWindowStart: z.iso.date(),
+  closingWindowEnd: z.iso.date(),
+  currentlyListed: z.boolean(),
+  eligiblePrograms: z.array(z.enum(OFFER_PROGRAMS)),
+};
+const windowInOrder = {
+  message: "Must be on or after the start of the closing window",
+  path: ["closingWindowEnd"],
+};
+const ordered = (p: { closingWindowStart?: string | null; closingWindowEnd?: string | null }) =>
+  !p.closingWindowStart || !p.closingWindowEnd || p.closingWindowStart <= p.closingWindowEnd;
 
 export const createListingPackageInputSchema = z
   .object({
@@ -17,8 +31,13 @@ export const createListingPackageInputSchema = z
     property: createPropertyInputSchema,
     priceExpectationMin: price,
     priceExpectationMax: price,
+    closingWindowStart: terms.closingWindowStart.optional(),
+    closingWindowEnd: terms.closingWindowEnd.optional(),
+    currentlyListed: terms.currentlyListed.optional(),
+    eligiblePrograms: terms.eligiblePrograms.optional(),
   })
-  .refine((p) => p.priceExpectationMin <= p.priceExpectationMax, minAtMostMax);
+  .refine((p) => p.priceExpectationMin <= p.priceExpectationMax, minAtMostMax)
+  .refine(ordered, windowInOrder);
 export type CreateListingPackageInput = z.input<typeof createListingPackageInputSchema>;
 
 /**
@@ -33,6 +52,10 @@ export const updateListingPackageInputSchema = z
     property: updatePropertyInputSchema.optional(),
     priceExpectationMin: price.optional(),
     priceExpectationMax: price.optional(),
+    closingWindowStart: terms.closingWindowStart.nullable().optional(),
+    closingWindowEnd: terms.closingWindowEnd.nullable().optional(),
+    currentlyListed: terms.currentlyListed.nullable().optional(),
+    eligiblePrograms: terms.eligiblePrograms.optional(),
   })
   .refine(
     (p) =>
@@ -40,5 +63,17 @@ export const updateListingPackageInputSchema = z
       p.priceExpectationMax === undefined ||
       p.priceExpectationMin <= p.priceExpectationMax,
     minAtMostMax,
-  );
+  )
+  .refine(ordered, windowInOrder);
 export type UpdateListingPackageInput = z.input<typeof updateListingPackageInputSchema>;
+
+/** POST /listing-packages/:id/publication. The deadline defaults to now + 72 hours. */
+export const publishInputSchema = z.object({
+  version: z.number().int().positive(),
+  offerDeadline: z.iso.datetime().optional(),
+});
+export type PublishInput = z.input<typeof publishInputSchema>;
+
+/** POST /listing-packages/:id/withdrawal. */
+export const withdrawInputSchema = z.object({ version: z.number().int().positive() });
+export type WithdrawInput = z.input<typeof withdrawInputSchema>;

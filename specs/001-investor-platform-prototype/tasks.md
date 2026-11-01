@@ -1364,7 +1364,7 @@ the shortcuts, and a script measures the build and start limits.
   line of that run, including a failed delivery, and finds no seller name, email, phone, or street.
 
 - [X] T355 Record the Sprint 8 goal, decisions, and tasks in this section; add "Sprint 8" to the board and mirror the section
-- [ ] T356 The home page: what the prototype demonstrates (the deal loop, the outage demo, the brand switch), the demo accounts, and links to sign in, the sandbox (`PUBLIC_SANDBOX_URL`), and the style guide, with the brand switcher; brand words from the brand's content (from T103)
+- [X] T356 The home page: what the prototype demonstrates (the deal loop, the outage demo, the brand switch), the demo accounts, and links to sign in, the sandbox (`PUBLIC_SANDBOX_URL`), and the style guide, with the brand switcher; brand words from the brand's content (from T103)
 - [X] T357 One-click demo sign-in on the sign-in page: each demo account signs in with one press through the real session flow (design gap)
 - [ ] T358 Role pages: a signed-in user who opens another role's pages goes to their role's home (proxy.ts), and the header shows the user's name from `GET /me` (from T105, T106)
 - [ ] T359 Status tabs with counts on the agent's packages (All, Draft, Open for offers, Offers in, Under contract) and the investor's matched listings (Open, Offered, All) (design gap)

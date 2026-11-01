@@ -356,6 +356,8 @@ model Match {
   firstMatchedAt             DateTime       @default(now())
   // The listing version the investor was last told about, so an edit notifies them once.
   lastNotifiedListingVersion Int?
+  // When a buy-box-change match went out in the daily digest email (T336; FR-023).
+  digestedAt                 DateTime?
 
   @@unique([packageId, investorId, round])
   @@index([investorId])
@@ -382,20 +384,20 @@ enum JobStatus {
 // partial unique index (migration) allows one live job per (type, dedupeKey). correlationId is
 // the request that enqueued it, logged with every line of its run. error is redacted.
 model Job {
-  id            String    @id @default(cuid())
+  id            String       @id @default(cuid())
   type          JobType
-  status        JobStatus @default(QUEUED)
+  status        JobStatus    @default(QUEUED)
   dedupeKey     String
   payload       Json
-  runAt         DateTime  @default(now())
-  retryCount    Int       @default(0)
-  maxRetries    Int       @default(3)
+  runAt         DateTime     @default(now())
+  retryCount    Int          @default(0)
+  maxRetries    Int          @default(3)
   error         String?
   lockedAt      DateTime?
   lockedBy      String?
   correlationId String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
   importBatch   ImportBatch?
 
   @@index([status, runAt])
@@ -678,4 +680,59 @@ model IdempotencyKey {
   createdAt      DateTime          @default(now())
 
   @@unique([userId, key])
+}
+
+enum DeliveryTarget {
+  CRM
+  EMAIL
+  SMS
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENDING
+  SENT
+  RETRYING
+  NEEDS_ATTENTION
+}
+
+// One change an outside service must hear about (T336; constitution XVIII, contracts/events.md),
+// written in the same transaction as the change, so a rolled-back change sends nothing and a saved
+// one is never lost. `type` is checked against EVENT_TYPES in code; `payload` never carries seller
+// details. Append-only, except that the worker's relay marks it relayed once (migration).
+model OutboxEvent {
+  id            String     @id @default(cuid())
+  type          String
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  occurredAt    DateTime   @default(now())
+  relayedAt     DateTime?
+  correlationId String?
+  deliveries    Delivery[]
+
+  @@index([aggregateType, aggregateId, occurredAt])
+}
+
+// One message to one outside target (T336): an email or text to an investor, or a listing update
+// to the CRM. Its id is the Idempotency-Key the provider sees, so a retry is never applied twice.
+// recipientRef is an investor ID (EMAIL, SMS) or the package ID (CRM), never contact data.
+// lastError is redacted. queuedAt is null until the relay puts it on the BullMQ queue.
+model Delivery {
+  id            String         @id @default(cuid())
+  outboxEventId String
+  outboxEvent   OutboxEvent    @relation(fields: [outboxEventId], references: [id])
+  target        DeliveryTarget
+  recipientRef  String
+  status        DeliveryStatus @default(PENDING)
+  attempts      Int            @default(0)
+  lastError     String?
+  nextAttemptAt DateTime?
+  queuedAt      DateTime?
+  sentAt        DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([outboxEventId, target, recipientRef])
+  @@index([status])
 }

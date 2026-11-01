@@ -173,6 +173,12 @@ export async function seedConfig(prisma: PrismaClient): Promise<void> {
   const entries: { key: string; value: Prisma.InputJsonValue }[] = [
     { key: "netProceeds", value: { closingCostPct: 0.02, flatFees: 1_500 } },
     { key: "reconfirmHours", value: 48 },
+    // About five minutes of retries before a delivery needs attention (contracts/events.md).
+    {
+      key: "deliveryRetry",
+      value: { baseMs: 2_000, factor: 2, capMs: 60_000, jitter: 0.2, attempts: 10 },
+    },
+    { key: "matchDigest", value: { hourUtc: 14 } },
   ];
   for (const { key, value } of entries) {
     await prisma.configEntry.upsert({ where: { key }, create: { key, value }, update: {} });

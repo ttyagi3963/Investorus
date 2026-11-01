@@ -655,6 +655,100 @@ the submission rehearsal passes.
 
 ---
 
+## Sprint 4: Investors Manage Their Buy Boxes, and Operations Import the Investor List
+
+**Goal** (owner, 2026-11-01: "finish User Story 5"): an investor creates, edits, pauses, and
+resumes one or more buy boxes, and a refused save names the field and says why. Saving a box
+matches it at once against every package still taking offers, and a new match appears on the
+investor's dashboard and in their inbox. Operations upload the legacy investor spreadsheet: valid
+rows create or update the investor and their one default buy box, each invalid row is reported
+with its reason, and importing the same file again duplicates nothing.
+
+**Decisions** (proposed by Claude on 2026-11-01 while the owner was away, following spec.md,
+data-model.md, contracts/api.md, and contracts/investor-import.md; for the owner to confirm):
+- **The registry holds the rules** (XIX.3): each criterion's definition in
+  packages/contracts/src/buy-box/criteria.ts gains its field schema and form metadata, and
+  `buyBoxInputSchema` is composed from them, so the editor, the service, and the import share one
+  set of rules. A refusal names the field and says why: min above max ("Min price must not be above
+  max price"), an empty list ("Choose at least one, or leave it blank for any"), a state that is not
+  a US state code, or a geography mode that disagrees with its entries. One rule needs I/O and so
+  lives in the service: every ZIP must be known to `IGeoProvider` (the same check the import uses).
+  The database CHECKs from Sprint 2 stay as the last line.
+- **A save is versioned and matched in one change** (FR-060, FR-023): `version` + 1, a
+  BuyBoxVersion snapshot (append-only), an audit entry, and, when the criteria or the status
+  changed, a MATCH_BUY_BOX job (dedupe `MATCH_BUY_BOX:{buyBoxId}:{version}`). A rename or a new
+  strategy label matches nothing new. A stale `version` is a ConflictError. Pause and resume are a
+  status change. An investor sees and saves only their own boxes; the ops views come with US6.
+- **Matching a saved box** (FR-023): `MatchingWorkflow.evaluateBuyBox` runs the evaluator against
+  the current listing version of every package still accepting offers whose deadline has not
+  passed. A box that was saved again since, paused, or whose investor is inactive or has expired
+  proof of funds matches nothing (a stale job is harmless). A new match is created with trigger
+  BUY_BOX_CHANGE, an in-app "matches your buy box" notice, and a MATCH_DECISION audit entry, as a
+  publish's matches are; an investor already matched to the package gets the box added to the
+  match and no second notice. An edit that stops a box matching leaves its matches alone, so
+  shared packages stay visible.
+- **The daily digest waits for the outbox** (deviation, in plan.md Complexity Tracking): FR-023's
+  digest is an email, and email is delivered only through the outbox (T059–T064, US6). Until then
+  a buy box match reaches the dashboard and the inbox, and nothing is sent by email or SMS. The
+  digest tasks (T220, T221) move to the outbox's sprint.
+- **Missed-by-one-criterion** (T222, T223) is a stretch in Phase 7 and is left out of this sprint.
+- **The import follows contracts/investor-import.md.** The browser uploads the CSV with an
+  `UploadInstruction` (`text/csv`, at most 5 MB), the api checks it with `stat`, records an
+  ImportBatch, and queues IMPORT_INVESTORS (202). The worker reads the file through a new
+  `IStorageProvider.read` (the sandbox gets an internal read route; S3 uses GetObject), so the
+  worker now gets the storage settings. Each row runs in its own change; a row result is unique per
+  batch and row, so a retried job skips the rows it already did. A row matches an investor by
+  `Investor ID` (the new `Investor.externalRef`), else by email; an email that already belongs to
+  another investor rejects the row. The batch's status comes from its job, with a file-level
+  refusal (too large, too many rows, a missing required column) recorded on the batch.
+  IMPORT_COMPLETED is audited with the counts. Imported investors get no sign-in: the file carries
+  no passwords, and inviting them is later scope.
+- **A small ops area**: `morgan@example.com` (OPS) is seeded, signs in to `/ops`, and has one page,
+  Import investors. The rest of the ops screens come with US6.
+- **Seed**: each seeded buy box gets its version 1 snapshot. The sample file is
+  `seed/legacy-investors.csv` at the repository root, where the reviewer can find it.
+- Tasks are listed in merge order, one PR per group. A task split out of a larger one names its
+  source; the source keeps the rest.
+
+### PR: plan (this section)
+
+- [X] T318 Record the Sprint 4 goal, decisions, and tasks in this section; add the digest deferral to plan.md Complexity Tracking; add "Sprint 4" to the board's Sprint field and mirror the section (`node scripts/board/sync-sprint.mjs --sprint 4 --apply`)
+
+### PR: the tables
+
+- [ ] T319 Add the Sprint 4 schema with its integration tests: `Investor.externalRef` (unique, nullable); the BuyBoxVersion table (`buyBoxId`, `version`, `snapshot` JSONB, `createdBy`; unique per box and version; append-only, a trigger); the match trigger BUY_BOX_CHANGE (its own migration); ImportBatch (`fileName`, `storageKey`, `jobId?`, `totalRows?`, `imported`, `updated`, `rejected`, `ignoredColumns`, `error?`, `createdBy`, `finishedAt?`) and ImportRowResult (`batchId`, `rowNumber`, `outcome` IMPORTED, UPDATED, or REJECTED, `reason?`, `investorId?`; unique per batch and row); then the contracts shaped from them; each job type arrives with its handler (T321, T322) (from T030, T031, T184)
+
+### PR: buy boxes (packages/contracts, packages/core)
+
+- [ ] T320 Put the buy box rules in the registry (tests first): each criterion's field schema and form metadata in criteria.ts, `buyBoxInputSchema` (name, strategy, status, geography mode and its states or ZIP codes, every criterion, each blank for "any") composed from them, and the US state codes; each rule's refusal names its field (from T022)
+- [ ] T321 Save buy boxes and match them (tests first): `BuyBoxService` (`list` default first, `get`, `create`, `update` with pause and resume; only the investor's own; the ZIP codes checked with `IGeoProvider`; version + 1, the BuyBoxVersion snapshot, BUY_BOX_SAVED audited, and MATCH_BUY_BOX when the criteria or status changed, all in one change; a stale version is a ConflictError); the buy box repository's reads and writes; `MatchingWorkflow.evaluateBuyBox` and the MATCH_BUY_BOX job type, payload schema, and handler (from T178, T185, T218, T219)
+
+### PR: the import (packages/core, apps/sandbox, apps/worker)
+
+- [ ] T322 Import the legacy investor file (tests first): `seed/legacy-investors.csv` (30 rows: 26 valid, 4 invalid, one unknown column); `parseLegacyCsv` (columns only; each row mapped to the buy box input and checked with `buyBoxInputSchema`, failures reported with the CSV column name); `IStorageProvider.read` with the sandbox's internal read route and S3's GetObject; `InvestorImportWorkflow` (`requestUpload`, `start`, `run`, `getBatch`) with the import repository; the IMPORT_INVESTORS job type and handler; the worker's storage settings; then packages/core/test/investor-import.int.test.ts (26 imported and 4 rejected, then 0 imported, 26 updated, and 4 rejected, with the investor, buy box, and version counts unchanged) (from T179, T180, T181, T182, T184, T186)
+
+### PR: api and seed
+
+- [ ] T323 Add the routes in contracts/api.md: GET and POST `/investor/buy-boxes`, GET and PUT `/investor/buy-boxes/:id`; POST `/ops/investor-imports/uploads`, POST `/ops/investor-imports` (202), and GET `/ops/investor-imports/:batchId`; the idempotency middleware covers PUT as well as POST and PATCH, since the buy box save is the api's first PUT (XX.2; plan.md and contracts/api.md updated), with a test that a retried PUT replays its answer; the typed client modules; seed `morgan@example.com` (OPS) and each seeded box's version 1 snapshot (from T183, T187)
+
+### PR: screens (apps/web)
+
+- [ ] T324 Investor buy boxes: the list at `/investor/buy-boxes` (name, status, strategy, default badge; add a box; pause and resume) and the editor at `/investor/buy-boxes/[id]` and `/investor/buy-boxes/new`, its fields generated from the registry's form metadata, each criterion blank for "any", field-level errors, and a note that changes apply to new packages and to packages still taking offers; a link in the investor header (from T188)
+- [ ] T325 The ops area and its import page: OPS signs in to `/ops`; the page at `/ops/imports` uploads the CSV with the returned instruction, polls the batch, and shows the counts, the ignored columns, and a table of row results with reasons (from T189)
+
+Every screen in T324–T325 keeps XI: each field has a label, errors are tied to their field and
+announced, and the upload's progress is announced politely.
+
+**Checkpoint**: `docker compose up --build` on a clean machine; harbor saving Min Price above Max
+Price is refused with the field named, and clearing every property type is refused; ridge adds
+a second box whose ZIP code covers an open package that ridge's narrow box does not fit, and the
+package appears on ridge's dashboard and inbox within a minute; a paused box matches nothing;
+morgan imports `seed/legacy-investors.csv` (26 imported, 4 rejected with reasons) and again (0
+imported, 26 updated, 4 rejected), with one default box per investor; the submission rehearsal
+passes.
+
+---
+
 ## Phase 2: Foundational (Blocking Prerequisites)
 
 **Purpose**: Contracts, database, core infrastructure, the outbox and job engine, providers,

@@ -12,3 +12,4 @@ export { PostgresDatabaseImpl } from "./unit-of-work/PostgresDatabaseImpl.js";
 export { SandboxCrmProviderImpl } from "./providers/crm/SandboxCrmProviderImpl.js";
 export { SandboxMessagingProviderImpl } from "./providers/messaging/SandboxMessagingProviderImpl.js";
 export { BullMqDeliveryQueueImpl } from "./providers/delivery-queue/BullMqDeliveryQueueImpl.js";
+export { SandboxSimulationProviderImpl } from "./providers/simulation/SandboxSimulationProviderImpl.js";

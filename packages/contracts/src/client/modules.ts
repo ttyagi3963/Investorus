@@ -25,7 +25,18 @@ import type {
   WinningInvestorPackageView,
 } from "../listing-package/investor-views.js";
 import type { AgentPackageSummary, AgentPackageView } from "../listing-package/views.js";
+import type { DeliveryStatus, DeliveryTarget } from "../events/events.js";
 import type { NotificationView } from "../notification/notification.js";
+import type {
+  CrmComparisonRow,
+  DeliveryView,
+  MatchExplanation,
+  OpsPackageRow,
+  PackageTrace,
+  SimulationMode,
+  SimulationModes,
+  SimulationService,
+} from "../ops/ops.js";
 import type { ComparisonSort, OfferComparisonView } from "../offer/comparison.js";
 import type {
   CounterResponseInput,
@@ -146,4 +157,30 @@ export const photosClient = (api: ApiClient) => ({
       "DELETE",
       `/listing-packages/${encodeURIComponent(packageId)}/photos/${encodeURIComponent(photoId)}`,
     ),
+});
+
+/** Operations' console (T341): packages and their trace, deliveries, the CRM, and outage modes. */
+export const opsClient = (api: ApiClient) => ({
+  packages: () => api.request<OpsPackageRow[]>("GET", "/ops/listing-packages"),
+  trace: (id: string) =>
+    api.request<PackageTrace>("GET", `/ops/listing-packages/${encodeURIComponent(id)}/trace`),
+  explainMatch: (id: string, investorId: string) =>
+    api.request<MatchExplanation>(
+      "GET",
+      `/ops/listing-packages/${encodeURIComponent(id)}/matches/${encodeURIComponent(investorId)}`,
+    ),
+  deliveries: (status?: DeliveryStatus) =>
+    api.request<DeliveryView[]>(
+      "GET",
+      status ? `/ops/deliveries?status=${status}` : "/ops/deliveries",
+    ),
+  retryDelivery: (id: string) =>
+    api.request<undefined>("POST", `/ops/deliveries/${encodeURIComponent(id)}/retry`),
+  retryAll: (target?: DeliveryTarget) =>
+    api.request<{ count: number }>("POST", "/ops/deliveries/retry-all", target ? { target } : {}),
+  sendDigestsNow: () => api.request<{ jobId: string }>("POST", "/ops/match-digests"),
+  crmComparison: () => api.request<CrmComparisonRow[]>("GET", "/ops/crm-comparison"),
+  simulations: () => api.request<SimulationModes>("GET", "/ops/simulations"),
+  setSimulation: (service: SimulationService, mode: SimulationMode) =>
+    api.request<SimulationModes>("PUT", `/ops/simulations/${service}`, { mode }),
 });

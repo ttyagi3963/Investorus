@@ -12,6 +12,7 @@ export {
   dealsClient,
   investorClient,
   investorImportsClient,
+  opsClient,
   listingPackagesClient,
   notificationsClient,
   photosClient,

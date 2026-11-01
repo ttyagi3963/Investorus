@@ -132,6 +132,9 @@ const ACTION_TEXT: Record<AuditAction, (details: Record<string, unknown>) => str
   PII_ACCESSED: () => "The buyer viewed the seller's contact details",
   BUY_BOX_SAVED: () => "A buy box was saved",
   IMPORT_COMPLETED: () => "An investor import finished",
+  MATCH_DIGESTS_SENT: () => "The daily match digest went out",
+  DELIVERY_RETRIED: () => "Operations retried a delivery",
+  SIMULATION_CHANGED: () => "Operations changed a simulated outage",
 };
 
 export const timelineText = (entry: TimelineEntryView) => ACTION_TEXT[entry.action](entry.details);

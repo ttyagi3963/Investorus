@@ -37,6 +37,10 @@
       "types": "./dist/events/index.d.ts",
       "import": "./dist/events/index.js"
     },
+    "./ops": {
+      "types": "./dist/ops/index.d.ts",
+      "import": "./dist/ops/index.js"
+    },
     "./offer": {
       "types": "./dist/offer/index.d.ts",
       "import": "./dist/offer/index.js"

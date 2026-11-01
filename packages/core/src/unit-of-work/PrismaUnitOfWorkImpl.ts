@@ -18,6 +18,7 @@ import { PrismaMatchRepositoryImpl } from "../repositories/match/PrismaMatchRepo
 import { PrismaNotificationRepositoryImpl } from "../repositories/notification/PrismaNotificationRepositoryImpl.js";
 import { withOutboxEvents } from "../outbox/with-outbox-events.js";
 import { PrismaOfferRepositoryImpl } from "../repositories/offer/PrismaOfferRepositoryImpl.js";
+import { PrismaOpsQueryRepositoryImpl } from "../repositories/ops/PrismaOpsQueryRepositoryImpl.js";
 import { PrismaOutboxRepositoryImpl } from "../repositories/outbox/PrismaOutboxRepositoryImpl.js";
 import { PrismaPhotoRepositoryImpl } from "../repositories/photo/PrismaPhotoRepositoryImpl.js";
 import { PrismaPropertyRepositoryImpl } from "../repositories/property/PrismaPropertyRepositoryImpl.js";
@@ -54,6 +55,7 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
           imports: new PrismaImportRepositoryImpl(tx),
           outbox: new PrismaOutboxRepositoryImpl(tx),
           deliveries: new PrismaDeliveryRepositoryImpl(tx),
+          opsQuery: new PrismaOpsQueryRepositoryImpl(tx, this.cipher),
         }),
       ),
     );

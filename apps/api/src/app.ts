@@ -15,6 +15,7 @@ import { createDecisionsRouter } from "./routes/decisions.router.js";
 import { createHealthRouter } from "./routes/health.router.js";
 import { createInvestorImportsRouter } from "./routes/investor-imports.router.js";
 import { createMatchDigestsRouter } from "./routes/match-digests.router.js";
+import { createOpsRouter } from "./routes/ops.router.js";
 import { createInvestorRouter } from "./routes/investor.router.js";
 import { createListingPackagesRouter } from "./routes/listing-packages.router.js";
 import { createNotificationsRouter } from "./routes/notifications.router.js";
@@ -35,7 +36,9 @@ export function createApp(c: AppContainer): Express {
   const v1 = Router();
   v1.use(createHealthRouter(c.checkDatabase));
   v1.use(createSessionsRouter(c.auth));
-  v1.use(createListingPackagesRouter(c.packages, c.publication, c.presentPackage, c.presentSummary));
+  v1.use(
+    createListingPackagesRouter(c.packages, c.publication, c.presentPackage, c.presentSummary),
+  );
   v1.use(createPhotosRouter(c.photos));
   v1.use(createInvestorRouter(c.investorPackages, c.addPhotoUrls));
   v1.use(createOffersRouter(c.offers));
@@ -45,6 +48,7 @@ export function createApp(c: AppContainer): Express {
   v1.use(createBuyBoxesRouter(c.buyBoxes));
   v1.use(createInvestorImportsRouter(c.investorImports));
   v1.use(createMatchDigestsRouter(c.digests));
+  v1.use(createOpsRouter(c.ops));
   app.use("/api/v1", v1);
 
   app.use(notFound);

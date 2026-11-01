@@ -33,6 +33,7 @@ import type {
   IDeliveryRepository,
 } from "../../src/repositories/delivery/IDeliveryRepository.js";
 import type { DeliveryPlan } from "@clever/contracts/events";
+import type { IOpsQueryRepository } from "../../src/repositories/ops/IOpsQueryRepository.js";
 import {
   ALREADY_ACCEPTED,
   type DealPatch,
@@ -710,6 +711,11 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
   }
 }
 
+/** The operations read model is SQL joins and counts, tested against Postgres (ops.int.test.ts). */
+const OPS_QUERIES_NEED_POSTGRES = new Proxy({} as IOpsQueryRepository, {
+  get: () => () => Promise.reject(new Error("Operations reads are tested against Postgres")),
+});
+
 export class InMemoryUnitOfWork implements IUnitOfWork {
   readonly repos: UnitOfWorkRepositories & {
     sellers: InMemorySellerRepository;
@@ -753,6 +759,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       imports: new InMemoryImportRepository(),
       outbox,
       deliveries: new InMemoryDeliveryRepository(outbox),
+      opsQuery: OPS_QUERIES_NEED_POSTGRES,
     };
   }
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {

@@ -1,8 +1,9 @@
-// Reports an unexpected error as one structured pino `error` line, with its context passed through
-// redactPii so no PII reaches the log (constitution XII).
+// Reports an unexpected error as one structured pino `error` line. Its context goes through
+// redactPii and its message, stack, and cause through scrubPiiText, because an error often quotes
+// the value that broke it (constitution XII, XX.1).
 import type { Logger } from "pino";
 import { InfrastructureError } from "../../errors/InfrastructureError.js";
-import { redactPii } from "../../errors/redact-pii.js";
+import { redactPii, scrubPiiText } from "../../errors/redact-pii.js";
 import type { IErrorReporter } from "./IErrorReporter.js";
 
 export class LogErrorReporterImpl implements IErrorReporter {
@@ -13,11 +14,14 @@ export class LogErrorReporterImpl implements IErrorReporter {
       err instanceof Error
         ? {
             name: err.name,
-            message: err.message,
-            stack: err.stack,
-            cause: err instanceof InfrastructureError ? String(err.underlyingCause) : undefined,
+            message: scrubPiiText(err.message),
+            stack: err.stack === undefined ? undefined : scrubPiiText(err.stack),
+            cause:
+              err instanceof InfrastructureError
+                ? scrubPiiText(String(err.underlyingCause))
+                : undefined,
           }
-        : { message: String(err) };
+        : { name: "NonError", message: scrubPiiText(String(err)) };
     this.logger.error({ err: error, context: redactPii(context) }, error.message);
   }
 }

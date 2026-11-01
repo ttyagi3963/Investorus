@@ -29,12 +29,14 @@ import type { NewAuditEntry } from "../../repositories/audit/IAuditRepository.js
 import { snapshotAndQueueMatching } from "../../workflows/matching/queue-matching.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 
-/** A package with everything its agent sees: the seller, the property, and the photos. */
+/** A package with everything its agent sees: the seller, the property, the photos, and how many
+ * investors it matched in its current round. */
 export type AgentPackage = {
   package: ListingPackage;
   seller: Seller;
   property: Property;
   photos: Photo[];
+  matchedCount: number;
 };
 
 export interface IListingPackageService {
@@ -125,7 +127,13 @@ export class ListingPackageService implements IListingPackageService {
         eligiblePrograms: data.eligiblePrograms ?? [],
       });
       await repos.audit.append(this.auditEntry(actor, pkg.id, "PACKAGE_CREATED"));
-      return { package: pkg, seller: savedSeller, property: savedProperty, photos: [] };
+      return {
+        package: pkg,
+        seller: savedSeller,
+        property: savedProperty,
+        photos: [],
+        matchedCount: 0,
+      };
     });
   }
 
@@ -248,7 +256,8 @@ export class ListingPackageService implements IListingPackageService {
           ...(material && { listingVersion: pkg.listingVersion }),
         },
       });
-      return { package: pkg, seller: savedSeller, property: savedProperty, photos };
+      const matchedCount = await repos.matches.countByPackage(id, pkg.round);
+      return { package: pkg, seller: savedSeller, property: savedProperty, photos, matchedCount };
     });
   }
 
@@ -317,11 +326,12 @@ export async function loadAgentPackage(
   repos: UnitOfWorkRepositories,
   pkg: ListingPackage,
 ): Promise<AgentPackage> {
-  const [seller, property, photos] = await Promise.all([
+  const [seller, property, photos, matchedCount] = await Promise.all([
     repos.sellers.findById(pkg.sellerId),
     repos.properties.findById(pkg.propertyId),
     repos.photos.listByPackage(pkg.id),
+    repos.matches.countByPackage(pkg.id, pkg.round),
   ]);
   if (!seller || !property) throw new NotFoundError(NOT_FOUND);
-  return { package: pkg, seller, property, photos };
+  return { package: pkg, seller, property, photos, matchedCount };
 }

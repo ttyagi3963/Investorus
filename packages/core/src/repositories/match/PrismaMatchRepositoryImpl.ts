@@ -41,6 +41,10 @@ export class PrismaMatchRepositoryImpl implements IMatchRepository {
     return this.db.match.findMany({ where: { investorId }, orderBy: { firstMatchedAt: "desc" } });
   }
 
+  countByPackage(packageId: string, round: number): Promise<number> {
+    return this.db.match.count({ where: { packageId, round } });
+  }
+
   async listByPackage(packageId: string, round: number): Promise<Match[]> {
     return this.db.match.findMany({
       where: { packageId, round },

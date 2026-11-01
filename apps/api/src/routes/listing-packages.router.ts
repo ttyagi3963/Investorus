@@ -1,16 +1,19 @@
-// The agent's draft packages (T256, contracts/api.md): list, create (201), read, and edit. Each route
-// makes one service call and maps the result to its view; `presentPackage` (built in the container)
-// signs the photos' short-lived read links on the way.
+// The agent's packages (T256, T298, contracts/api.md): list, create (201), read, edit, publish,
+// withdraw, and the timeline of what happened. Each route makes one service call and maps the
+// result to its view; `presentPackage` (built in the container) signs the photos' short-lived read
+// links on the way.
+import { toTimelineEntryView } from "@clever/contracts/audit";
 import {
   toAgentPackageSummary,
   type AgentPackageParts,
   type AgentPackageView,
 } from "@clever/contracts/listing-package";
-import type { IListingPackageService } from "@clever/core";
+import type { IListingPackageService, IPublicationWorkflow } from "@clever/core";
 import { Router } from "express";
 
 export function createListingPackagesRouter(
   packages: IListingPackageService,
+  publication: IPublicationWorkflow,
   presentPackage: (parts: AgentPackageParts) => Promise<AgentPackageView>,
 ): Router {
   const router = Router();
@@ -29,6 +32,18 @@ export function createListingPackagesRouter(
   router.patch("/listing-packages/:id", async (req, res) => {
     const updated = await packages.update(res.locals.actor, req.params.id, req.body);
     res.status(200).json(await presentPackage(updated));
+  });
+  router.post("/listing-packages/:id/publication", async (req, res) => {
+    const published = await publication.publish(res.locals.actor, req.params.id, req.body);
+    res.status(200).json(await presentPackage(published));
+  });
+  router.post("/listing-packages/:id/withdrawal", async (req, res) => {
+    const withdrawn = await publication.withdraw(res.locals.actor, req.params.id, req.body);
+    res.status(200).json(await presentPackage(withdrawn));
+  });
+  router.get("/listing-packages/:id/timeline", async (req, res) => {
+    const entries = await packages.timeline(res.locals.actor, req.params.id);
+    res.status(200).json(entries.map(toTimelineEntryView));
   });
   return router;
 }

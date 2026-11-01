@@ -50,12 +50,13 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 
 | Method | Path | Role | Body / Response | Spec |
 | --- | --- | --- | --- | --- |
-| GET | `/listing-packages` | AGENT (own), OPS (all) | `?status=` → `AgentPackageSummary[]` | Story 2 |
+| GET | `/listing-packages` | AGENT (own), OPS (all) | `?status=` → `AgentPackageSummary[]` (each with `matchedCount`) | Story 2 |
 | POST | `/listing-packages` | AGENT | `CreatePackageInput` (seller, property, expectations) → 201 `AgentPackageView` (DRAFT); an address with an active package (any agent) → 409 `DUPLICATE_ACTIVE_LISTING`, with `details.existingPackageId` only if the caller owns it (the same check runs when an edit changes the address) | FR-010, FR-013 |
-| GET | `/listing-packages/:id` | AGENT (own), OPS | → `AgentPackageView` (full, with PII) | |
+| GET | `/listing-packages/:id` | AGENT (own), OPS | → `AgentPackageView` (full, with PII, and `matchedCount`: investors matched in the current round) | |
 | PATCH | `/listing-packages/:id` | AGENT (own) | `UpdatePackageInput` (partial; `undefined` = unchanged) + `version` → 200 | 202 with a re-match job if a material field changed after publish |
-| POST | `/listing-packages/:id/publication` | AGENT (own) | `{ offerDeadline?, version }` → 202 `{ jobId }` (MATCH_PACKAGE) | 400 lists invalid fields (FR-012) |
-| POST | `/listing-packages/:id/withdrawal` | AGENT (own) | `{ reason?, version }` → 200 | |
+| POST | `/listing-packages/:id/publication` | AGENT (own) | `{ offerDeadline?, version }` → 200 `AgentPackageView` (now ACCEPTING_OFFERS; the MATCH_PACKAGE job is queued in the same change and runs in the worker) | 400 lists invalid fields (FR-012) |
+| POST | `/listing-packages/:id/withdrawal` | AGENT (own) | `{ version }` → 200 `AgentPackageView` | |
+| GET | `/listing-packages/:id/timeline` | AGENT (own) | → `TimelineEntryView[]` (the package's audit entries, newest first, without per-investor match decisions) | Sprint 2 (T297) |
 | POST | `/listing-packages/:id/reopening` | AGENT (own) | `{ offerDeadline, version }` → 202 | Round + 1 |
 | PATCH | `/listing-packages/:id/offer-deadline` | AGENT (own) | `{ offerDeadline, version }` → 200 | Extend the deadline |
 | POST | `/listing-packages/:id/photo-uploads` | AGENT (own) | `{ contentType, sizeBytes }` → 201 `{ storageKey, upload: UploadInstruction }` | Vendor-neutral `{ url, method, headers, expiresAt }` ([providers.md](./providers.md)); the browser uploads directly (XIV) |
@@ -124,4 +125,4 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | Method | Path | Role | Body / Response |
 | --- | --- | --- | --- |
 | GET | `/notifications` | any | → `Notification[]` (own) |
-| POST | `/notifications/:id/read` | owner | → 200 |
+| POST | `/notifications/:id/read` | owner | → 204 |

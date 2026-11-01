@@ -5,6 +5,7 @@ export {
   PHOTO_CONTENT_TYPES,
   type Photo,
   type PhotoContentType,
+  type UploadInstruction,
 } from "./photo.js";
 export {
   addPhotoInputSchema,

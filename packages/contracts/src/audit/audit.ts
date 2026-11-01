@@ -4,8 +4,6 @@
 export const AUDIT_ACTIONS = ["PACKAGE_CREATED", "PACKAGE_UPDATED"] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
-export const AUDIT_ACTOR_TYPES = ["USER", "SYSTEM"] as const;
-export type AuditActorType = (typeof AUDIT_ACTOR_TYPES)[number];
+export type AuditActorType = "USER" | "SYSTEM";
 
-export const AUDIT_OUTCOMES = ["SUCCESS"] as const;
-export type AuditOutcome = (typeof AUDIT_OUTCOMES)[number];
+export type AuditOutcome = "SUCCESS";

@@ -629,7 +629,7 @@ data-model.md, and contracts/api.md; for the owner to confirm):
 
 ### PR: api
 
-- [X] T313 Add the routes in contracts/api.md: `POST /offers/:offerId/withdrawal`, `/counter-response`, and `/reconfirmation`; `POST /listing-packages/:id/reopening` and `PATCH /listing-packages/:id/offer-deadline`; `GET /listing-packages/:id/offer-comparison`; `POST /listing-packages/:id/decisions` (201 with the Decision); `GET /listing-packages/:id/deal`, `POST /deals/:dealId/milestones`, `POST /deals/:dealId/fall-through`, and `POST /listing-packages/:id/backup-promotions` (201 with the deal); wire the services in the api container and the three new job handlers in the worker's (from T150, T171, T129)
+- [X] T313 Add the routes in contracts/api.md: `POST /offers/:offerId/withdrawal`, `/counter-response`, and `/reconfirmation`; `POST /listing-packages/:id/reopening` and `PATCH /listing-packages/:id/offer-deadline`; `GET /listing-packages/:id/offer-comparison`; `POST /listing-packages/:id/decisions` (201 with the Decision); `GET /listing-packages/:id/deal`, `POST /deals/:dealId/milestones`, `POST /deals/:dealId/fall-through`, and `POST /listing-packages/:id/backup-promotions` (201 with the deal); wire the services in the api container (the worker's container already registers the three new job handlers: CLOSE_OFFER_ROUND and EXPIRE_OFFER in T306, EXPIRE_RECONFIRMATION in T311) (from T150, T171, T129)
 
 ### PR: seed
 

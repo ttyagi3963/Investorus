@@ -2,6 +2,7 @@
 // property packages/ui/src/styles/theme.css maps onto a utility. A brand's token set must supply
 // each; a web test keeps this list and theme.css in step.
 export const REQUIRED_BRAND_VARIABLES = [
+  "--brand-component-button-primary-radius",
   "--brand-component-input-height",
   "--brand-component-status-chip-font-size",
   "--brand-component-status-chip-font-weight",

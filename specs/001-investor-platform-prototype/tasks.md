@@ -531,7 +531,7 @@ backup, who must reconfirm within 48 hours. With no backups left, the agent reop
 a new round or withdraws it, and a package with no offers can have its deadline extended.
 
 **Decisions** (proposed by Claude on 2026-11-01 while the owner was away, following spec.md,
-data-model.md, and contracts/api.md; for the owner to confirm):
+data-model.md, and contracts/api.md; confirmed by the owner on 2026-11-01):
 - **Time-based rules are durable jobs** (FR-059, VIII), scheduled with a `runAt` in the same change
   that sets the time: `CLOSE_OFFER_ROUND` at the deadline (dedupe
   `CLOSE_OFFER_ROUND:{packageId}:{round}:{deadline}`), `EXPIRE_OFFER` at each revision's expiry

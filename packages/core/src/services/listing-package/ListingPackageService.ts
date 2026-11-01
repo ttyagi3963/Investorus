@@ -3,6 +3,7 @@
 // address (FR-013), keeps agents to their own packages (FR-080), checks an edit on the merged
 // result, because some rules span the stored row and the change, and audits each change (XII).
 import type { AuditAction } from "@clever/contracts/audit";
+import { MATERIAL_FIELDS } from "@clever/contracts/buy-box";
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -23,7 +24,9 @@ import type { Seller } from "@clever/contracts/seller";
 import type { IClock } from "../../providers/clock/IClock.js";
 import type { IGeoProvider, ZipInfo } from "../../providers/geo/IGeoProvider.js";
 import type { AddressHasher } from "../../providers/pii-cipher/IPiiCipher.js";
+import { toListingFacts, type ListingFacts } from "../../registry/listing-facts.js";
 import type { NewAuditEntry } from "../../repositories/audit/IAuditRepository.js";
+import { snapshotAndQueueMatching } from "../../workflows/matching/queue-matching.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 
 /** A package with everything its agent sees: the seller, the property, and the photos. */
@@ -45,6 +48,13 @@ type Deps = { geo: IGeoProvider; addressHash: AddressHasher; clock: IClock };
 
 const invalid = (fields: FieldError[]) => new ValidationError("Some fields are invalid", fields);
 const NOT_FOUND = "Package not found";
+
+const definedFields = <T extends object>(patch: T): Partial<T> =>
+  Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as Partial<T>;
+
+/** True when a field some criterion reads differs between the two versions of the listing. */
+const isMaterialChange = (before: ListingFacts, after: ListingFacts) =>
+  MATERIAL_FIELDS.some((field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]));
 
 /** The names of the fields an edit changes, never their values, for the audit entry. */
 const changedFields = ({ version: _version, ...data }: UpdateListingPackageInput): string[] =>
@@ -188,15 +198,31 @@ export class ListingPackageService implements IListingPackageService {
         : undefined;
       if (addressHash) await this.assertAddressFree(repos, addressHash, agentId, id);
 
-      // The version check comes first, so a stale edit changes nothing.
-      const pkg = await repos.packages.update(id, data.version, {
-        addressHash,
+      const packagePatch = {
         priceExpectationMin: data.priceExpectationMin,
         priceExpectationMax: data.priceExpectationMax,
         closingWindowStart: data.closingWindowStart,
         closingWindowEnd: data.closingWindowEnd,
         currentlyListed: data.currentlyListed,
         eligiblePrograms: data.eligiblePrograms,
+      };
+      // An edit to a field some criterion reads, after publish, is a new listing version that
+      // matching runs on again (FR-022).
+      const material =
+        current.status === "ACCEPTING_OFFERS" &&
+        isMaterialChange(
+          toListingFacts(current, property),
+          toListingFacts(
+            { ...current, ...definedFields(packagePatch) },
+            { ...property, ...definedFields(change), ...(place && place) },
+          ),
+        );
+
+      // The version check comes first, so a stale edit changes nothing.
+      const pkg = await repos.packages.update(id, data.version, {
+        addressHash,
+        ...packagePatch,
+        listingVersion: material ? current.listingVersion + 1 : undefined,
       });
       const savedSeller = data.seller ? await repos.sellers.update(seller.id, data.seller) : seller;
       const savedProperty = data.property
@@ -212,9 +238,13 @@ export class ListingPackageService implements IListingPackageService {
           })
         : property;
       const photos = await repos.photos.listByPackage(id);
+      if (material) await snapshotAndQueueMatching(repos, pkg, savedProperty);
       await repos.audit.append({
         ...this.auditEntry(actor, id, "PACKAGE_UPDATED"),
-        details: { fields: changedFields(data) },
+        details: {
+          fields: changedFields(data),
+          ...(material && { listingVersion: pkg.listingVersion }),
+        },
       });
       return { package: pkg, seller: savedSeller, property: savedProperty, photos };
     });
@@ -265,13 +295,21 @@ export class ListingPackageService implements IListingPackageService {
     }
   }
 
-  private async load(repos: UnitOfWorkRepositories, pkg: ListingPackage): Promise<AgentPackage> {
-    const [seller, property, photos] = await Promise.all([
-      repos.sellers.findById(pkg.sellerId),
-      repos.properties.findById(pkg.propertyId),
-      repos.photos.listByPackage(pkg.id),
-    ]);
-    if (!seller || !property) throw new NotFoundError(NOT_FOUND);
-    return { package: pkg, seller, property, photos };
+  private load(repos: UnitOfWorkRepositories, pkg: ListingPackage): Promise<AgentPackage> {
+    return loadAgentPackage(repos, pkg);
   }
+}
+
+/** A package with its seller, property, and photos, as its agent sees it. */
+export async function loadAgentPackage(
+  repos: UnitOfWorkRepositories,
+  pkg: ListingPackage,
+): Promise<AgentPackage> {
+  const [seller, property, photos] = await Promise.all([
+    repos.sellers.findById(pkg.sellerId),
+    repos.properties.findById(pkg.propertyId),
+    repos.photos.listByPackage(pkg.id),
+  ]);
+  if (!seller || !property) throw new NotFoundError(NOT_FOUND);
+  return { package: pkg, seller, property, photos };
 }

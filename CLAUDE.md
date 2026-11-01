@@ -28,10 +28,11 @@ Turborepo monorepo:
 ## How work merges (trunk-based)
 
 - `main` is the trunk and must stay releasable: the submission zip must start with one command.
-- One task, or a small group, per short-lived branch named `t###-short-summary`, cut from `main`.
-  Merge it within about a day. Do not stack branches on unmerged branches.
-- Squash merge. The PR uses `.github/pull_request_template.md` and says `Closes #N` for the
-  task's board issue.
+- One branch and one PR per batch of work (normally a sprint), named `t###-short-summary` after
+  its first task and cut from `main`, with one commit per task. Do not open a PR per task, and
+  do not stack branches on unmerged branches.
+- Squash merge. The PR uses `.github/pull_request_template.md` and says `Closes #N` for every
+  task's board issue it covers.
 - Merge only when every check is green: `lint-typecheck`, `unit-tests`, `integration-tests`,
   `security`, and `submission-rehearsal` when it runs. The free private plan
   has no rulesets, so this is enforced by convention.

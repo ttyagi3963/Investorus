@@ -1,6 +1,7 @@
 // Guards the sign-in rules (T078, research R12): the right email and password get an 8-hour token
 // naming the user, role, and agent; every failure gets the same message, so a caller cannot learn
 // which emails have accounts.
+import { randomBytes } from "node:crypto";
 import { ValidationError } from "@clever/contracts/common";
 import type { UserCredentials } from "@clever/contracts/user";
 import bcrypt from "bcryptjs";
@@ -10,7 +11,8 @@ import { InMemoryUnitOfWork } from "../../../test/doubles/InMemoryRepositories.j
 import { AuthService } from "./AuthService.js";
 
 const NOW = new Date("2026-11-01T12:00:00Z");
-const SECRET = "test-jwt-secret-0123456789abcdef";
+/** Made fresh for each run, so no secret-like value sits in the code. */
+const SECRET = randomBytes(32).toString("hex");
 const at = (email: string, active = true): UserCredentials => ({
   user: {
     id: `user-${email}`,

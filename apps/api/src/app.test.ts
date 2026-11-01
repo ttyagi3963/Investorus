@@ -57,7 +57,7 @@ const container: AppContainer = {
   buyBoxes: { list: unused, get: unused, create: unused, update: unused },
   investorImports: { requestUpload: unused, start: unused, run: unused, getBatch: unused },
   digests: { sendNow: unused },
-  brands: { list: unused, getTheme: unused, updateTheme: unused },
+  brands: { list: unused, getTheme: unused, getTokens: unused, updateTheme: unused },
   ops: {
     queries: { listPackages: unused, trace: unused, explainMatch: unused },
     deliveries: { list: unused, retry: unused, retryAll: unused },
@@ -126,6 +126,7 @@ describe("brand routes", () => {
       ...container,
       brands: {
         list: unused,
+        getTokens: unused,
         updateTheme: unused,
         getTheme: async (brandId) => ({
           brandId,

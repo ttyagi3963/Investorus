@@ -1,7 +1,7 @@
 // The "New import" card (T325, T332): the CSV chooser on a dashed drop-style area, with the file
 // limit and what an import does, and any problem with the chosen file or the upload under it.
 import { MAX_IMPORT_BYTES } from "@clever/contracts/investor";
-import { Card, PhotoPicker } from "@clever/ui";
+import { Card, FilePicker } from "@clever/ui";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import type { ErrorInfo } from "@/lib/errors";
 
@@ -29,7 +29,7 @@ export function ImportUploadCard({ onChoose, isUploading, error }: ImportUploadC
         >
           <path d="M12 16V4M7 9l5-5 5 5M5 20h14" />
         </svg>
-        <PhotoPicker
+        <FilePicker
           label={isUploading ? "Uploading…" : "Choose the CSV file to import"}
           acceptedTypes={[".csv", "text/csv"]}
           isDisabled={isUploading}

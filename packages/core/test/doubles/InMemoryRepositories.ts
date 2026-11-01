@@ -747,8 +747,9 @@ export class InMemoryBrandRepository implements IBrandRepository {
   async findById(id: string) {
     return this.rows.get(id) ?? null;
   }
-  async updateTokens(id: string, tokens: unknown) {
-    const row = this.rows.get(id)!;
+  async updateTokens(id: string, tokens: unknown, expectedVersion: number) {
+    const row = this.rows.get(id);
+    if (row?.tokenVersion !== expectedVersion) return null;
     row.tokens = tokens;
     row.tokenVersion += 1;
     return row.tokenVersion;

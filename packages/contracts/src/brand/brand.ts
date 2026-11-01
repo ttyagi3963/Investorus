@@ -35,6 +35,9 @@ export type BrandThemeView = {
   content: BrandContent;
 };
 
+/** A brand's token file as operations edit it (GET /ops/brands/:id/tokens). */
+export type BrandTokensView = { brandId: string; tokenVersion: number; tokens: unknown };
+
 /** One reason a token set was refused, with the token or variable it concerns. */
 export type BrandProblem = { field: string; message: string };
 

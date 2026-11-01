@@ -9,6 +9,7 @@ export {
   type BrandProblem,
   type BrandSummary,
   type BrandThemeView,
+  type BrandTokensView,
   type BrandValidation,
 } from "./brand.js";
 export { REQUIRED_BRAND_VARIABLES } from "./required.js";

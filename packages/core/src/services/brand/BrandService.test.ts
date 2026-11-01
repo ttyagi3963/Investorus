@@ -1,9 +1,10 @@
-// Guards the brand rules (T348; FR-093, FR-095): only operations change a brand's theme; a token set
-// the validator refuses saves nothing and comes back with each failure as a field error; a saved
-// theme bumps the brand's version, so caches replace it, and is audited.
+// Guards the brand rules (T348, T353; FR-093, FR-095): only operations change a brand's theme; a
+// token set the validator refuses saves nothing and comes back with each failure as a field error; a
+// saved theme bumps the brand's version, so caches replace it, and is audited; a save over a version
+// another operator already replaced is refused.
 import { readFileSync } from "node:fs";
 import type { Actor } from "@clever/contracts/auth";
-import { ForbiddenError, ValidationError } from "@clever/contracts/common";
+import { ConflictError, ForbiddenError, ValidationError } from "@clever/contracts/common";
 import { describe, expect, it } from "vitest";
 import { InMemoryUnitOfWork } from "../../../test/doubles/InMemoryRepositories.js";
 import { BrandService } from "./BrandService.js";
@@ -33,8 +34,12 @@ describe("BrandService.updateTheme", () => {
     const broken = structuredClone(tokens);
     delete broken.layout["page-padding-x"];
 
-    await expect(brands.updateTheme(agent, "clever", { tokens })).rejects.toThrow(ForbiddenError);
-    const refused = await brands.updateTheme(ops, "clever", { tokens: broken }).catch((e) => e);
+    await expect(brands.updateTheme(agent, "clever", { tokens, tokenVersion: 1 })).rejects.toThrow(
+      ForbiddenError,
+    );
+    const refused = await brands
+      .updateTheme(ops, "clever", { tokens: broken, tokenVersion: 1 })
+      .catch((e) => e);
 
     expect(refused).toBeInstanceOf(ValidationError);
     expect(refused.details.fields).toContainEqual(
@@ -44,11 +49,13 @@ describe("BrandService.updateTheme", () => {
     expect(uow.repos.audit.entries).toEqual([]);
   });
 
-  it("saves a valid set under the next version and audits who changed it", async () => {
+  it("saves a valid set under the next version, audits it, and refuses a save over a stale version", async () => {
     const { uow, tokens, brands } = setup();
 
-    const theme = await brands.updateTheme(ops, "clever", { tokens });
+    const theme = await brands.updateTheme(ops, "clever", { tokens, tokenVersion: 1 });
+    const stale = brands.updateTheme(ops, "clever", { tokens, tokenVersion: 1 });
 
+    await expect(stale).rejects.toThrow(ConflictError);
     expect(theme.tokenVersion).toBe(2);
     expect(uow.repos.audit.entries).toEqual([
       expect.objectContaining({

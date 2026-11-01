@@ -1311,7 +1311,7 @@ contracts/design-tokens.md, for the owner to confirm):
 - [X] T350 The partner brand "Larkspur Home Offers": `seed/brands/larkspur/` tokens and content, its logo, its font, and `partner.localhost` as its host (from T201)
 - [X] T351 The brand switcher on the home page, sign-in, and the style guide: a React Aria select of the brands that sets the `brand` cookie through a server action and refreshes (from T203)
 - [X] T352 The living style guide at `/design-system`: every semantic color with its value, the type scale, spacing, and every component in each state, in the active brand (from T204)
-- [ ] T353 The operations theme editor at `/ops/brands`: each brand's tokens as JSON to edit or upload, saved through the api, with the refused variables and contrast pairs listed (from T205)
+- [X] T353 The operations theme editor at `/ops/brands`: each brand's tokens as JSON to edit or upload, saved through the api, with the refused variables and contrast pairs listed (from T205)
 - [ ] T354 Documentation: contracts/design-tokens.md, data-model.md (Brand), api.md, plan.md (the brand shortcut row), README (switching brands)
 
 **Checkpoint**: open http://partner.localhost:3000 and see Larkspur on every screen, with no code

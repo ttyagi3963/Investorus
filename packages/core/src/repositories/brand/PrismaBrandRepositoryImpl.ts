@@ -15,16 +15,22 @@ export class PrismaBrandRepositoryImpl implements IBrandRepository {
   async findById(id: string): Promise<BrandRecord | null> {
     return this.db.brand.findUnique({
       where: { id },
-      select: { id: true, name: true, hosts: true, tokens: true, content: true, tokenVersion: true },
+      select: {
+        id: true,
+        name: true,
+        hosts: true,
+        tokens: true,
+        content: true,
+        tokenVersion: true,
+      },
     });
   }
 
-  async updateTokens(id: string, tokens: unknown): Promise<number> {
-    const row = await this.db.brand.update({
-      where: { id },
+  async updateTokens(id: string, tokens: unknown, expectedVersion: number) {
+    const { count } = await this.db.brand.updateMany({
+      where: { id, tokenVersion: expectedVersion },
       data: { tokens: tokens as Prisma.InputJsonValue, tokenVersion: { increment: 1 } },
-      select: { tokenVersion: true },
     });
-    return row.tokenVersion;
+    return count === 1 ? expectedVersion + 1 : null;
   }
 }

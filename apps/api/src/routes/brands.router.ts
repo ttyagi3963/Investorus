@@ -1,7 +1,7 @@
 // The brands (T348; contracts/api.md): the list for the switcher and the host mapping, and a brand's
 // theme, both public because the sign-in page needs them; the theme is cached by its version (ETag
-// and a short max-age), so the web app re-reads it only after a change. Operations replace a brand's
-// tokens. One service call each; the service checks who may change a brand.
+// and a short max-age), so the web app re-reads it only after a change. Operations read and replace
+// a brand's tokens (T353). One service call each; the service checks who may change a brand.
 import type { IBrandService } from "@clever/core";
 import { Router } from "express";
 
@@ -16,6 +16,9 @@ export function createBrandsRouter(brands: IBrandService): Router {
     res.set({ ETag: etag, "Cache-Control": "public, max-age=60" });
     if (req.headers["if-none-match"] === etag) return void res.status(304).end();
     res.status(200).json(theme);
+  });
+  router.get("/ops/brands/:id/tokens", async (req, res) => {
+    res.status(200).json(await brands.getTokens(res.locals.actor, req.params.id));
   });
   router.put("/ops/brands/:id/theme", async (req, res) => {
     res.status(200).json(await brands.updateTheme(res.locals.actor, req.params.id, req.body));

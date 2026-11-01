@@ -725,7 +725,7 @@ data-model.md, contracts/api.md, and contracts/investor-import.md; for the owner
 
 ### PR: the import (packages/core, apps/sandbox, apps/worker)
 
-- [ ] T322 Import the legacy investor file (tests first): `seed/legacy-investors.csv` (30 rows: 26 valid, 4 invalid, one unknown column); `parseLegacyCsv` (columns only; each row mapped to the buy box input and checked with `buyBoxInputSchema`, failures reported with the CSV column name); `IStorageProvider.read` with the sandbox's internal read route and S3's GetObject; `InvestorImportWorkflow` (`requestUpload`, `start`, `run`, `getBatch`) with the import repository; the IMPORT_INVESTORS job type and handler; the worker's storage settings; then packages/core/test/investor-import.int.test.ts (26 imported and 4 rejected, then 0 imported, 26 updated, and 4 rejected, with the investor, buy box, and version counts unchanged) (from T179, T180, T181, T182, T184, T186)
+- [X] T322 Import the legacy investor file (tests first): `seed/legacy-investors.csv` (30 rows: 26 valid, 4 invalid, one unknown column); `parseLegacyCsv` (columns only; each row mapped to the buy box input and checked with `buyBoxInputSchema`, failures reported with the CSV column name); `IStorageProvider.read` with the sandbox's internal read route and S3's GetObject; `InvestorImportWorkflow` (`requestUpload`, `start`, `run`, `getBatch`) with the import repository; the IMPORT_INVESTORS job type and handler; the worker's storage settings; then packages/core/test/investor-import.int.test.ts (26 imported and 4 rejected, then 0 imported, 26 updated, and 4 rejected, with the investor, buy box, and version counts unchanged) (from T179, T180, T181, T182, T184, T186)
 
 ### PR: api and seed
 

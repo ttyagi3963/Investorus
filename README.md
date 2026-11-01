@@ -41,11 +41,15 @@ Every demo account uses the password **`demo1234`**. The seed creates them autom
 | Investor | `summit@example.com` | Two buy boxes that both match the sample listing |
 | Investor | `harbor@example.com` | One broad buy box |
 | Investor | `ridge@example.com` | A deliberately narrow buy box (often not matched) |
+| Investor | `cobalt@example.com` | An offer on Blake's seeded listing |
+| Investor | `dune@example.com` | An offer on Blake's seeded listing |
 | Operations | `morgan@example.com` | Timelines, deliveries, and recovery from outages |
 
-> **Status:** Sprint 1 is in. Open <http://localhost:3000/login>; it is pre-filled with the demo
-> agent. Sign in, then build, edit, and add photos to draft listing packages. The other accounts
-> arrive with their features (see [tasks.md](specs/001-investor-platform-prototype/tasks.md)).
+> **Status:** Sprints 1–3 are in. Open <http://localhost:3000/login> and pick an account. Avery
+> builds and publishes a package, which is matched to investors who then make offers. Blake's
+> seeded listing already has four offers: compare them, accept one, and track the deal to closing.
+> If it falls through, promote a backup, then sign in as that investor to reconfirm. The operations
+> account arrives with its features (see [tasks.md](specs/001-investor-platform-prototype/tasks.md)).
 
 ## Using S3 (optional)
 

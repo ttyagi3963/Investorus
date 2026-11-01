@@ -1,8 +1,10 @@
-// The words the agent screens use for the package's codes (T301): offer programs, statuses, the
-// fields a publish can be blocked by, and the timeline's actions. One place, so every screen says
-// the same thing.
+// The words the screens use for the codes (T301, T315): offer programs, package, offer, and deal
+// statuses, the fields a publish can be blocked by, and the timeline's actions. One place, so every
+// screen says the same thing.
 import type { AuditAction, TimelineEntryView } from "@clever/contracts/audit";
+import type { DealStatus } from "@clever/contracts/deal";
 import type { OfferProgram, PackageStatus } from "@clever/contracts/listing-package";
+import type { OfferStatus } from "@clever/contracts/offer";
 
 export const PROGRAM_LABELS: Record<OfferProgram, string> = {
   CASH_OFFER: "Cash offer",
@@ -21,6 +23,29 @@ export const STATUS_LABELS: Record<PackageStatus, string> = {
   CLOSED: "Closed",
   FELL_THROUGH: "Fell through",
   WITHDRAWN: "Withdrawn",
+};
+
+export const OFFER_STATUS_LABELS: Record<OfferStatus, string> = {
+  ACTIVE: "Active",
+  COUNTERED: "Countered",
+  BACKUP: "Backup offer",
+  ACCEPTED: "Accepted",
+  DECLINED: "Declined",
+  WITHDRAWN: "Withdrawn",
+  EXPIRED: "Expired",
+  FELL_THROUGH: "Fell through",
+  DECLINED_TO_RECONFIRM: "Declined to reconfirm",
+};
+
+export const DEAL_STATUS_LABELS: Record<DealStatus, string> = {
+  PENDING_RECONFIRMATION: "Waiting for the backup to reconfirm",
+  OFFER_ACCEPTED: "Offer accepted",
+  UNDER_CONTRACT: "Under contract",
+  INSPECTION: "Inspection",
+  CLOSING: "Closing",
+  CLOSED: "Closed",
+  FELL_THROUGH: "Fell through",
+  RECONFIRM_DECLINED: "Backup did not reconfirm",
 };
 
 /** The fields a publish names, by api field path. */

@@ -4,7 +4,7 @@
 import type { AgentPackageView } from "@clever/contracts/listing-package";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { describeError } from "@/lib/errors";
-import { formatUsd, timelineText } from "./labels";
+import { OFFER_STATUS_LABELS, formatUsd, timelineText } from "./labels";
 import { usePackageOffers, usePackageTimeline } from "./queries";
 
 const SECTION = "flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card";
@@ -30,7 +30,7 @@ export function OffersAndTimeline({ pkg }: { pkg: AgentPackageView }) {
             <li key={offer.id} className="rounded-control border border-default p-inset-md">
               <p className="font-heading">
                 {formatUsd(offer.price)} · {offer.paymentType === "CASH" ? "Cash" : "Financed"}
-                {offer.status === "DECLINED" ? " · Declined" : ""}
+                {` · ${OFFER_STATUS_LABELS[offer.status]}`}
               </p>
               <p className="text-label text-muted">
                 Closes {offer.closingDate} · Earnest money {formatUsd(offer.earnestMoney)} ·

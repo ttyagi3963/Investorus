@@ -4,7 +4,7 @@
 // empty states.
 import Link from "next/link";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
-import { STATUS_LABELS, formatUsd } from "@/features/listing-package/labels";
+import { OFFER_STATUS_LABELS, STATUS_LABELS, formatUsd } from "@/features/listing-package/labels";
 import { useMatchedPackages } from "@/features/offers/queries";
 import { timeLeft, useNow } from "@/features/offers/time-left";
 import { describeError } from "@/lib/errors";
@@ -48,8 +48,12 @@ export default function InvestorDashboard() {
                     ? timeLeft(pkg.offerDeadline, now)
                     : STATUS_LABELS[pkg.status]}
                 </span>
-                {pkg.myOfferStatus === "ACTIVE" && (
-                  <span className="text-label font-heading">Offer made</span>
+                {pkg.myOfferStatus && (
+                  <span className="text-label font-heading">
+                    {pkg.myOfferStatus === "ACTIVE"
+                      ? "Offer made"
+                      : `Your offer: ${OFFER_STATUS_LABELS[pkg.myOfferStatus].toLowerCase()}`}
+                  </span>
                 )}
               </span>
             </Link>

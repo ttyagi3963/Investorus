@@ -11,3 +11,4 @@ export { Select, type SelectOption, type SelectProps } from "./primitives/Select
 export { TextField, type TextFieldProps } from "./primitives/TextField.js";
 export { ConfirmDialog, type ConfirmDialogProps } from "./primitives/ConfirmDialog.js";
 export { PopoverPanel, type PopoverPanelProps } from "./primitives/PopoverPanel.js";
+export { FormDialog, type FormDialogProps } from "./primitives/FormDialog.js";

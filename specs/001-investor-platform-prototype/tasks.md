@@ -593,9 +593,9 @@ data-model.md, and contracts/api.md; for the owner to confirm):
   and promotion; the agent on the round closing, a counter response, and a reconfirmation or its
   timeout. The agent's layout gets the same inbox as the investor's.
 - **Seeded deal data:** a second agent, `blake@example.com`, with a package that has offers from
-  four investors (summit, harbor, and two new ones; ridge's narrow box does not fit it), so the comparison works at once; the later deal states
-  (inspection, fallen through, closed) are reached by clicking through, and T177 keeps seeding
-  them.
+  four investors (summit, harbor, and two new ones; ridge's narrow box does not fit it), so the
+  comparison works at once; the later deal states (inspection, fallen through, closed) are reached
+  by clicking through, and T177 keeps seeding them.
 - **Later scope, not deviations:** REJECTED audit entries for refused actions (a refusal rolls back
   its change, so it needs its own transaction); the ops views of offers and deals (US6); the
   revision history drawer and the "investor deactivated" flag (T154).
@@ -637,9 +637,9 @@ data-model.md, and contracts/api.md; for the owner to confirm):
 
 ### PR: screens (apps/web)
 
-- [ ] T315 Agent comparison and decisions: a "Compare offers" link on the package page; the comparison page at `/agent/packages/[id]/compare` (every offer side by side; sort by net proceeds, closing date, or certainty; a breakdown popover for each net figure; expired offers marked and not selectable); accept with confirmation, counter with the offer terms, and decline all with a note, never optimistic (XIII); a 409 shows its message; the typed client calls for these routes; the agent's layout gets the notification inbox (from T172, T173, T174)
-- [ ] T316 Agent deal tracker and the round controls: the deal page at `/agent/packages/[id]/deal` (the milestones as a step list; buttons only for the allowed next milestones; fall through with a required reason; the ranked backups with Promote; reopen with a new deadline or withdraw when none remain); Extend deadline on an open or no-offers package and Reopen on a no-offers package, on the package page; the new statuses and timeline entries labelled (from T175)
-- [ ] T317 Investor side: withdraw an offer (with confirmation); a counter shown with Accept, Decline, or revise; a backup notice with withdraw and extend expiry; a reconfirm panel with the time left before `reconfirmBy`; the buyer's deal status; the seller contact card for the winner; the dashboard badges for the new offer statuses (from T176)
+- [X] T315 Agent comparison and decisions: a "Compare offers" link on the package page; the comparison page at `/agent/packages/[id]/compare` (every offer side by side; sort by net proceeds, closing date, or certainty; a breakdown popover for each net figure; expired offers marked and not selectable); accept with confirmation, counter with the offer terms, and decline all with a note, never optimistic (XIII); a 409 shows its message; the typed client calls for these routes; the agent's layout gets the notification inbox (from T172, T173, T174)
+- [X] T316 Agent deal tracker and the round controls: the deal page at `/agent/packages/[id]/deal` (the milestones as a step list; buttons only for the allowed next milestones; fall through with a required reason; the ranked backups with Promote; reopen with a new deadline or withdraw when none remain); Extend deadline on an open or no-offers package and Reopen on a no-offers package, on the package page; the new statuses and timeline entries labelled (from T175)
+- [X] T317 Investor side: withdraw an offer (with confirmation); a counter shown with Accept, Decline, or revise; a backup notice with withdraw and extend expiry; a reconfirm panel with the time left before `reconfirmBy`; the buyer's deal status; the seller contact card for the winner; the dashboard badges for the new offer statuses (from T176)
 
 Every screen in T315–T317 keeps XI: each control has a label, dialogs and popovers move focus in and back and work from the keyboard, refusals are announced as alerts, and a countdown is announced politely, not every second.
 

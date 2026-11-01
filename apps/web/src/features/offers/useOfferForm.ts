@@ -37,7 +37,7 @@ export function useOfferForm(packageId: string, myOffer: OfferView | null) {
     if (actionKey.current?.terms !== sent) actionKey.current = { key: newKey(), terms: sent };
     const options = { idempotencyKey: actionKey.current.key };
     try {
-      if (myOffer?.status === "ACTIVE") {
+      if (myOffer?.status === "ACTIVE" || myOffer?.status === "COUNTERED") {
         await investor.reviseOffer(myOffer.id, { ...terms, version: myOffer.version }, options);
       } else {
         await investor.makeOffer(packageId, terms, options);

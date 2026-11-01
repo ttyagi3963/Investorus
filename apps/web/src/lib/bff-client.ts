@@ -2,6 +2,7 @@
 // the session cookie's token, so browser code never sees the token.
 import {
   createApiClient,
+  dealsClient,
   investorClient,
   listingPackagesClient,
   notificationsClient,
@@ -16,3 +17,4 @@ export const listingPackages = listingPackagesClient(bff);
 export const photos = photosClient(bff);
 export const investor = investorClient(bff);
 export const notifications = notificationsClient(bff);
+export const deals = dealsClient(bff);

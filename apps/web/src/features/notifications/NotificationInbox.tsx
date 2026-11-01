@@ -1,5 +1,5 @@
 "use client";
-// The in-app inbox in the investor header (T300): a button with the unread count opens a panel
+// The in-app inbox in the investor and agent headers (T300, T315): a button with the unread count opens a panel
 // (Escape or a click outside closes it) with the notifications, newest first; opening one marks it
 // read and goes to its package. The list refreshes every 15 seconds, and a polite live region
 // announces when the unread count goes up, so a new match reaches screen reader users too.
@@ -13,7 +13,8 @@ import { describeError } from "@/lib/errors";
 
 const inboxKey = ["notifications"] as const;
 
-export function NotificationInbox() {
+/** `packagesPath` is where this role's package pages live, for example `/agent/packages`. */
+export function NotificationInbox({ packagesPath }: { packagesPath: string }) {
   const queryClient = useQueryClient();
   const { data, isError, error } = useQuery({
     queryKey: inboxKey,
@@ -61,14 +62,14 @@ export function NotificationInbox() {
                   <span className="text-label">{n.body}</span>
                   {n.packageId && (
                     <Link
-                      href={`/investor/packages/${n.packageId}`}
+                      href={`${packagesPath}/${n.packageId}`}
                       className="text-label text-link underline"
                       onClick={() => {
                         if (!n.read) markRead.mutate(n.id);
                         close();
                       }}
                     >
-                      Open the listing
+                      Open it
                     </Link>
                   )}
                 </li>

@@ -3,7 +3,16 @@
 // others go through the BFF's proxy to the api with the cookie's token.
 import type { TimelineEntryView } from "../audit/audit.js";
 import type {
+  CreateDecisionInput,
+  FallThroughInput,
+  MilestoneInput,
+  PromoteBackupInput,
+  ReconfirmationInput,
+} from "../deal/inputs.js";
+import type { DealView, DecisionView } from "../deal/views.js";
+import type {
   CreateListingPackageInput,
+  OfferDeadlineInput,
   PublishInput,
   UpdateListingPackageInput,
   WithdrawInput,
@@ -11,10 +20,17 @@ import type {
 import type {
   InvestorPackageSummary,
   InvestorPackageView,
+  WinningInvestorPackageView,
 } from "../listing-package/investor-views.js";
 import type { AgentPackageSummary, AgentPackageView } from "../listing-package/views.js";
 import type { NotificationView } from "../notification/notification.js";
-import type { CreateOfferInput, ReviseOfferInput } from "../offer/inputs.js";
+import type { ComparisonSort, OfferComparisonView } from "../offer/comparison.js";
+import type {
+  CounterResponseInput,
+  CreateOfferInput,
+  ReviseOfferInput,
+  WithdrawOfferInput,
+} from "../offer/inputs.js";
 import type { OfferView } from "../offer/offer.js";
 import type { AddPhotoInput, CreatePhotoUploadInput } from "../photo/inputs.js";
 import type { Photo, PhotoUpload } from "../photo/photo.js";
@@ -23,6 +39,7 @@ import type { UserView } from "../user/views.js";
 import type { ApiClient, RequestOptions } from "./http.js";
 
 const pkgPath = (id: string) => `/listing-packages/${encodeURIComponent(id)}`;
+const offerPath = (id: string) => `/offers/${encodeURIComponent(id)}`;
 
 /** The BFF's session route: it keeps the token in an HTTP-only cookie and returns only the user. */
 export const sessionClient = (api: ApiClient) => ({
@@ -44,17 +61,46 @@ export const listingPackagesClient = (api: ApiClient) => ({
     api.request<AgentPackageView>("POST", `${pkgPath(id)}/withdrawal`, input),
   timeline: (id: string) => api.request<TimelineEntryView[]>("GET", `${pkgPath(id)}/timeline`),
   offers: (id: string) => api.request<OfferView[]>("GET", `${pkgPath(id)}/offers`),
+  reopen: (id: string, input: OfferDeadlineInput) =>
+    api.request<AgentPackageView>("POST", `${pkgPath(id)}/reopening`, input),
+  extendDeadline: (id: string, input: OfferDeadlineInput) =>
+    api.request<AgentPackageView>("PATCH", `${pkgPath(id)}/offer-deadline`, input),
+  comparison: (id: string, sort: ComparisonSort) =>
+    api.request<OfferComparisonView>("GET", `${pkgPath(id)}/offer-comparison?sort=${sort}`),
+  decide: (id: string, input: CreateDecisionInput) =>
+    api.request<DecisionView>("POST", `${pkgPath(id)}/decisions`, input),
+  deal: (id: string) => api.request<DealView>("GET", `${pkgPath(id)}/deal`),
+  promoteBackup: (id: string, input: PromoteBackupInput) =>
+    api.request<DealView>("POST", `${pkgPath(id)}/backup-promotions`, input),
+});
+
+/** The agent's deal after acceptance (T316). */
+export const dealsClient = (api: ApiClient) => ({
+  recordMilestone: (dealId: string, input: MilestoneInput) =>
+    api.request<DealView>("POST", `/deals/${encodeURIComponent(dealId)}/milestones`, input),
+  fallThrough: (dealId: string, input: FallThroughInput) =>
+    api.request<DealView>("POST", `/deals/${encodeURIComponent(dealId)}/fall-through`, input),
 });
 
 /** What a matched investor reads, and their offers (T302). */
 export const investorClient = (api: ApiClient) => ({
   packages: () => api.request<InvestorPackageSummary[]>("GET", "/investor/packages"),
+  /** The winning investor's answer also carries the seller's contact and the street (T312). */
   package: (id: string) =>
-    api.request<InvestorPackageView>("GET", `/investor/packages/${encodeURIComponent(id)}`),
+    api.request<InvestorPackageView | WinningInvestorPackageView>(
+      "GET",
+      `/investor/packages/${encodeURIComponent(id)}`,
+    ),
   makeOffer: (packageId: string, input: CreateOfferInput, options?: RequestOptions) =>
     api.request<OfferView>("POST", `${pkgPath(packageId)}/offers`, input, options),
   reviseOffer: (offerId: string, input: ReviseOfferInput, options?: RequestOptions) =>
     api.request<OfferView>("PATCH", `/offers/${encodeURIComponent(offerId)}`, input, options),
+  withdrawOffer: (offerId: string, input: WithdrawOfferInput) =>
+    api.request<OfferView>("POST", `${offerPath(offerId)}/withdrawal`, input),
+  respondToCounter: (offerId: string, input: CounterResponseInput) =>
+    api.request<OfferView>("POST", `${offerPath(offerId)}/counter-response`, input),
+  reconfirm: (offerId: string, input: ReconfirmationInput) =>
+    api.request<OfferView>("POST", `${offerPath(offerId)}/reconfirmation`, input),
 });
 
 /** The signed-in user's in-app inbox (T300). */

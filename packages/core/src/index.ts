@@ -54,6 +54,10 @@ export {
 } from "./services/offer-comparison/OfferComparisonService.js";
 export { DecisionWorkflow, type IDecisionWorkflow } from "./workflows/decision/DecisionWorkflow.js";
 export {
+  DealLifecycleWorkflow,
+  type IDealLifecycleWorkflow,
+} from "./workflows/deal-lifecycle/DealLifecycleWorkflow.js";
+export {
   NotificationService,
   type INotificationService,
 } from "./services/notification/NotificationService.js";

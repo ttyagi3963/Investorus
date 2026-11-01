@@ -47,7 +47,12 @@ function setup(handler: () => Promise<void>, failedStatus: Job["status"]) {
   const run = () =>
     runNextJob({
       uow,
-      handlers: { MATCH_PACKAGE: handler, CLOSE_OFFER_ROUND: handler, EXPIRE_OFFER: handler },
+      handlers: {
+        MATCH_PACKAGE: handler,
+        CLOSE_OFFER_ROUND: handler,
+        EXPIRE_OFFER: handler,
+        EXPIRE_RECONFIRMATION: handler,
+      },
       logger,
       reporter: { report },
       clock: { now: () => new Date() },

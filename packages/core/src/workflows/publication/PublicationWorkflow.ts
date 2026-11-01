@@ -39,8 +39,13 @@ export interface IPublicationWorkflow {
 }
 
 /** Where a withdraw, a reopen, and an extension may start from (data-model.md, PackageStatus). */
-const WITHDRAWABLE: PackageStatus[] = ["DRAFT", "ACCEPTING_OFFERS", "NO_OFFERS_RECEIVED"];
-const REOPENABLE: PackageStatus[] = ["NO_OFFERS_RECEIVED"];
+const WITHDRAWABLE: PackageStatus[] = [
+  "DRAFT",
+  "ACCEPTING_OFFERS",
+  "NO_OFFERS_RECEIVED",
+  "FELL_THROUGH",
+];
+const REOPENABLE: PackageStatus[] = ["NO_OFFERS_RECEIVED", "FELL_THROUGH"];
 const EXTENDABLE: PackageStatus[] = ["ACCEPTING_OFFERS", "NO_OFFERS_RECEIVED"];
 
 const HOUR = 3_600_000;
@@ -110,6 +115,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
       if (!WITHDRAWABLE.includes(current.status)) {
         throw new BusinessRuleError("This package cannot be withdrawn", "NOT_WITHDRAWABLE");
       }
+      await assertNoBackupDeciding(repos, packageId);
       const pkg = await repos.packages.update(packageId, data.version, { status: "WITHDRAWN" });
       const declined = await repos.offers.declineOpen(packageId, pkg.round);
       const property = await repos.properties.findById(pkg.propertyId);
@@ -142,6 +148,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
       if (!REOPENABLE.includes(current.status)) {
         throw new BusinessRuleError("This package cannot be reopened", "NOT_REOPENABLE");
       }
+      await assertNoBackupDeciding(repos, packageId);
       const pkg = await repos.packages.update(packageId, data.version, {
         status: "ACCEPTING_OFFERS",
         round: current.round + 1,
@@ -233,6 +240,13 @@ export class PublicationWorkflow implements IPublicationWorkflow {
     const pkg = await repos.packages.findForAgent(agentId, id);
     if (!pkg) throw new NotFoundError(NOT_FOUND);
     return pkg;
+  }
+}
+
+/** After a fall-through, a promoted backup's answer comes first (FR-057). */
+async function assertNoBackupDeciding(repos: UnitOfWorkRepositories, packageId: string) {
+  if (await repos.deals.findActiveByPackage(packageId)) {
+    throw new BusinessRuleError("A promoted backup is still deciding", "BACKUP_PENDING");
   }
 }
 

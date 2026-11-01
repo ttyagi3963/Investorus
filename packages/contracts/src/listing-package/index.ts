@@ -25,7 +25,9 @@ export {
 export {
   toInvestorPackageSummary,
   toInvestorPackageView,
+  toWinningInvestorPackageView,
   type InvestorPackageParts,
   type InvestorPackageSummary,
   type InvestorPackageView,
+  type WinningInvestorPackageView,
 } from "./investor-views.js";

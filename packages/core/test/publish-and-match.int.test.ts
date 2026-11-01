@@ -16,6 +16,7 @@ import { InvestorPackageQueryService } from "../src/services/investor-package/In
 import { ListingPackageService } from "../src/services/listing-package/ListingPackageService.js";
 import { NotificationService } from "../src/services/notification/NotificationService.js";
 import { PrismaUnitOfWorkImpl } from "../src/unit-of-work/PrismaUnitOfWorkImpl.js";
+import { DealLifecycleWorkflow } from "../src/workflows/deal-lifecycle/DealLifecycleWorkflow.js";
 import { MatchingWorkflow } from "../src/workflows/matching/MatchingWorkflow.js";
 import { OfferRoundWorkflow } from "../src/workflows/offer-round/OfferRoundWorkflow.js";
 import { PublicationWorkflow } from "../src/workflows/publication/PublicationWorkflow.js";
@@ -68,6 +69,7 @@ describe("publish and match", () => {
     const handlers = createJobHandlers({
       matching: new MatchingWorkflow(uow, { clock }),
       offerRound: new OfferRoundWorkflow(uow),
+      deals: new DealLifecycleWorkflow(uow, { clock }),
     });
     const inDays = (days: number) =>
       new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);

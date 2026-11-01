@@ -46,6 +46,7 @@ const parts = {
   },
   photos: [],
   myOffer: null,
+  myDeal: null,
   matchedAt: now,
 };
 // The kind of object a careless mapper might spread into a view.

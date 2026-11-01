@@ -23,7 +23,7 @@ export function createApp(c: AppContainer): Express {
   const v1 = Router();
   v1.use(createHealthRouter(c.checkDatabase));
   v1.use(createSessionsRouter(c.auth));
-  v1.use(createListingPackagesRouter(c.packages, c.photoUrl));
+  v1.use(createListingPackagesRouter(c.packages, c.presentPackage));
   v1.use(createPhotosRouter(c.photos));
   app.use("/api/v1", v1);
 

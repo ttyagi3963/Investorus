@@ -24,6 +24,11 @@ import {
   createLogger,
   createPrismaClient,
 } from "@clever/core/adapters";
+import {
+  toAgentPackageView,
+  type AgentPackageParts,
+  type AgentPackageView,
+} from "@clever/contracts/listing-package";
 import type { Logger } from "pino";
 import type { ApiEnv } from "./env.js";
 
@@ -31,7 +36,8 @@ export type AppContainer = Readonly<{
   auth: IAuthService;
   packages: IListingPackageService;
   photos: IPhotoService;
-  photoUrl: (storageKey: string) => Promise<string>;
+  /** A package's view, with each photo's short-lived read link signed. */
+  presentPackage: (parts: AgentPackageParts) => Promise<AgentPackageView>;
   checkDatabase: () => Promise<void>;
   logger: Logger;
   reporter: IErrorReporter;
@@ -46,8 +52,8 @@ export function createContainer(env: ApiEnv): AppContainer {
   const storage =
     env.STORAGE_PROVIDER === "s3"
       ? new S3StorageProviderImpl({
-          bucket: env.S3_BUCKET ?? "",
-          region: env.S3_REGION ?? "",
+          bucket: env.S3_BUCKET,
+          region: env.S3_REGION,
           clock,
         })
       : new SandboxStorageProviderImpl({
@@ -66,7 +72,16 @@ export function createContainer(env: ApiEnv): AppContainer {
       clock,
     }),
     photos: new PhotoService(uow, storage),
-    photoUrl: (storageKey: string) => storage.getReadUrl(storageKey),
+    presentPackage: async (parts) =>
+      toAgentPackageView({
+        ...parts,
+        photos: await Promise.all(
+          parts.photos.map(async (photo) => ({
+            ...photo,
+            url: await storage.getReadUrl(photo.storageKey),
+          })),
+        ),
+      }),
     checkDatabase: async () => {
       try {
         await prisma.$queryRaw`SELECT 1`;

@@ -7,6 +7,7 @@ import { PrismaBuyBoxRepositoryImpl } from "../repositories/buy-box/PrismaBuyBox
 import { PrismaConfigRepositoryImpl } from "../repositories/config/PrismaConfigRepositoryImpl.js";
 import { PrismaDealRepositoryImpl } from "../repositories/deal/PrismaDealRepositoryImpl.js";
 import { PrismaDecisionRepositoryImpl } from "../repositories/decision/PrismaDecisionRepositoryImpl.js";
+import { PrismaImportRepositoryImpl } from "../repositories/import/PrismaImportRepositoryImpl.js";
 import { PrismaInvestorRepositoryImpl } from "../repositories/investor/PrismaInvestorRepositoryImpl.js";
 import { PrismaJobRepositoryImpl } from "../repositories/job/PrismaJobRepositoryImpl.js";
 import { PrismaListingPackageRepositoryImpl } from "../repositories/listing-package/PrismaListingPackageRepositoryImpl.js";
@@ -45,6 +46,7 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
         investors: new PrismaInvestorRepositoryImpl(tx),
         decisions: new PrismaDecisionRepositoryImpl(tx, this.cipher),
         deals: new PrismaDealRepositoryImpl(tx, this.cipher),
+        imports: new PrismaImportRepositoryImpl(tx),
       }),
     );
   }

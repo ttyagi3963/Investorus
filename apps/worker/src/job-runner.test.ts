@@ -50,6 +50,7 @@ function setup(handler: () => Promise<void>, failedStatus: Job["status"]) {
       handlers: {
         MATCH_PACKAGE: handler,
         MATCH_BUY_BOX: handler,
+        IMPORT_INVESTORS: handler,
         CLOSE_OFFER_ROUND: handler,
         EXPIRE_OFFER: handler,
         EXPIRE_RECONFIRMATION: handler,

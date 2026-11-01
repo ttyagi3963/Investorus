@@ -2,6 +2,9 @@
 // individual files, so the files can change without breaking callers.
 export {
   IMPORT_ROW_OUTCOMES,
+  MAX_IMPORT_BYTES,
+  importUploadRequestSchema,
+  startImportSchema,
   type ImportBatch,
   type ImportRowOutcome,
   type ImportRowResult,

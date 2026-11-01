@@ -78,7 +78,11 @@ services:
       context: .
       target: worker
     image: investor-platform-worker:local
-    env_file: .env
+    # The worker reads uploaded files (the investor import), so it gets the api's storage choice.
+    env_file:
+      - .env
+      - path: .env.local
+        required: false
     depends_on:
       migrate:
         condition: service_completed_successfully

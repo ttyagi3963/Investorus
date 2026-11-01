@@ -21,6 +21,7 @@ import type {
   NewAuditEntry,
 } from "../../src/repositories/audit/IAuditRepository.js";
 import type { IBuyBoxRepository } from "../../src/repositories/buy-box/IBuyBoxRepository.js";
+import type { IImportRepository } from "../../src/repositories/import/IImportRepository.js";
 import type { IConfigRepository } from "../../src/repositories/config/IConfigRepository.js";
 import {
   ALREADY_ACCEPTED,
@@ -257,6 +258,9 @@ export class InMemoryBuyBoxRepository implements IBuyBoxRepository {
   }
   async findById(id: string) {
     return this.boxes.find((box) => box.id === id) ?? null;
+  }
+  async findDefault(investorId: string) {
+    return this.boxes.find((box) => box.investorId === investorId && box.isDefault) ?? null;
   }
   async findMatchable(id: string, version: number, now: Date) {
     const box = await this.findById(id);
@@ -508,12 +512,31 @@ export class InMemoryConfigRepository implements IConfigRepository {
   }
 }
 
-/** Every investor is named after its ID unless a test names it. */
+/** Every investor is named after its ID unless a test names it. The import's writes need Postgres. */
 export class InMemoryInvestorRepository implements IInvestorRepository {
   readonly names = new Map<string, string>();
   async findCompanyNames(ids: string[]) {
     return new Map(ids.map((id) => [id, this.names.get(id) ?? id]));
   }
+  async findIdForImport(): Promise<string | null> {
+    throw new Error("The import is tested against Postgres");
+  }
+  async save(): Promise<string> {
+    throw new Error("The import is tested against Postgres");
+  }
+}
+
+/** The import is tested against Postgres (test/investor-import.int.test.ts). */
+export class InMemoryImportRepository implements IImportRepository {
+  private unused(): never {
+    throw new Error("The import is tested against Postgres");
+  }
+  createBatch = async () => this.unused();
+  setJob = async () => this.unused();
+  findBatch = async () => this.unused();
+  doneRowNumbers = async () => this.unused();
+  addRowResult = async () => this.unused();
+  finish = async () => this.unused();
 }
 
 export class InMemoryDecisionRepository implements IDecisionRepository {
@@ -591,6 +614,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
     investors: InMemoryInvestorRepository;
     decisions: InMemoryDecisionRepository;
     deals: InMemoryDealRepository;
+    imports: InMemoryImportRepository;
   };
   constructor(users: UserCredentials[] = []) {
     this.repos = {
@@ -610,6 +634,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       investors: new InMemoryInvestorRepository(),
       decisions: new InMemoryDecisionRepository(),
       deals: new InMemoryDealRepository(),
+      imports: new InMemoryImportRepository(),
     };
   }
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {

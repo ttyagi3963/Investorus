@@ -81,6 +81,14 @@ export class PrismaBuyBoxRepositoryImpl implements IBuyBoxRepository {
     return row ? toBuyBox(row) : null;
   }
 
+  async findDefault(investorId: string): Promise<BuyBox | null> {
+    const row = await this.db.buyBox.findFirst({
+      where: { investorId, isDefault: true },
+      include: { geography: true },
+    });
+    return row ? toBuyBox(row) : null;
+  }
+
   async findMatchable(id: string, version: number, now: Date): Promise<BuyBox | null> {
     const row = await this.db.buyBox.findFirst({
       where: {

@@ -7,6 +7,7 @@ import { MATCH_TRIGGERS } from "../match/match.js";
 export const JOB_TYPES = [
   "MATCH_PACKAGE",
   "MATCH_BUY_BOX",
+  "IMPORT_INVESTORS",
   "CLOSE_OFFER_ROUND",
   "EXPIRE_OFFER",
   "EXPIRE_RECONFIRMATION",
@@ -47,6 +48,10 @@ export const matchBuyBoxPayloadSchema = z.object({
   version: z.number().int().positive(),
 });
 export type MatchBuyBoxPayload = z.infer<typeof matchBuyBoxPayloadSchema>;
+
+/** IMPORT_INVESTORS: read one uploaded legacy investor file into investors and default boxes. */
+export const importInvestorsPayloadSchema = z.object({ batchId: z.string().min(1) });
+export type ImportInvestorsPayload = z.infer<typeof importInvestorsPayloadSchema>;
 
 /** CLOSE_OFFER_ROUND: end a round's offers at its deadline (the deadline names which one). */
 export const closeOfferRoundPayloadSchema = z.object({

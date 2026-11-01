@@ -5,12 +5,15 @@
 // CSV column name. Rows are numbered as the spreadsheet shows them, the header being row 1.
 import { buyBoxInputSchema, type BuyBoxInput } from "@clever/contracts/buy-box";
 import { ValidationError } from "@clever/contracts/common";
-import type { InvestorStatus, InvestorType } from "@clever/contracts/investor";
+import {
+  MAX_IMPORT_BYTES,
+  type InvestorStatus,
+  type InvestorType,
+} from "@clever/contracts/investor";
 import { z } from "zod";
 import type { IGeoProvider } from "../../providers/geo/IGeoProvider.js";
 import { checkZips } from "../../services/buy-box/check-zips.js";
 
-export const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const MAX_ROWS = 10_000;
 
 /** The investor a valid row describes; `externalRef` is the upsert key, else `email`. */
@@ -260,8 +263,9 @@ function boxOf(cell: (column: Column) => string, geo: IGeoProvider): BuyBoxInput
 }
 
 export function parseLegacyCsv(file: Buffer, geo: IGeoProvider): ParsedFile {
-  if (file.byteLength > MAX_FILE_BYTES) throw new FileRefusedError("The file is larger than 5 MB");
-  const [header = [], ...lines] = parseCsv(file.toString("utf8").replace(/^﻿/, ""));
+  if (file.byteLength > MAX_IMPORT_BYTES)
+    throw new FileRefusedError("The file is larger than 5 MB");
+  const [header = [], ...lines] = parseCsv(file.toString("utf8").replace(/^\uFEFF/, ""));
   if (lines.length > MAX_ROWS) throw new FileRefusedError("The file has more than 10,000 rows");
 
   const index = new Map(header.map((name, i) => [name.trim().toLowerCase(), i]));

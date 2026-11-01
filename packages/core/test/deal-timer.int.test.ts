@@ -33,6 +33,7 @@ function boot(now: () => Date) {
     matching: new MatchingWorkflow(uow, { clock }),
     offerRound: new OfferRoundWorkflow(uow),
     deals,
+    imports: { run: () => Promise.reject(new Error("No imports in this test")) },
   });
   return { uow, deals, handlers };
 }

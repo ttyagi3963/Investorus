@@ -5,6 +5,7 @@ import type { IBuyBoxRepository } from "../repositories/buy-box/IBuyBoxRepositor
 import type { IConfigRepository } from "../repositories/config/IConfigRepository.js";
 import type { IDealRepository } from "../repositories/deal/IDealRepository.js";
 import type { IDecisionRepository } from "../repositories/decision/IDecisionRepository.js";
+import type { IImportRepository } from "../repositories/import/IImportRepository.js";
 import type { IInvestorRepository } from "../repositories/investor/IInvestorRepository.js";
 import type { IJobRepository } from "../repositories/job/IJobRepository.js";
 import type { IListingPackageRepository } from "../repositories/listing-package/IListingPackageRepository.js";
@@ -34,6 +35,7 @@ export interface UnitOfWorkRepositories {
   investors: IInvestorRepository;
   decisions: IDecisionRepository;
   deals: IDealRepository;
+  imports: IImportRepository;
 }
 
 export interface IUnitOfWork {

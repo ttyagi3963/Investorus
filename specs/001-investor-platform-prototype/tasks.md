@@ -517,6 +517,144 @@ submission rehearsal passes.
 
 ---
 
+## Sprint 3: The Agent Compares Offers, the Seller Chooses, and the Deal Is Tracked to Closing
+
+**Goal** (owner, 2026-11-01: "Next up: Sprint 3, comparing offers and closing the deal"): the offer
+round ends on time: a job closes it at the deadline (a package with no offers moves to "No offers
+received") and another expires each offer at its expiry. Investors can withdraw an offer. The
+agent compares the offers side by side by estimated net proceeds, closing date, and certainty, with
+the calculation explained, and records the seller's choice: accept one, counter one, or decline
+all. Only one offer can ever be accepted; the others become backup offers, which their investors
+can withdraw or extend. The winner sees the seller's contact details and the street. The agent
+moves the deal through its milestones in order to closing; a deal that falls through can promote a
+backup, who must reconfirm within 48 hours. With no backups left, the agent reopens the package for
+a new round or withdraws it, and a package with no offers can have its deadline extended.
+
+**Decisions** (proposed by Claude on 2026-11-01 while the owner was away, following spec.md,
+data-model.md, and contracts/api.md; for the owner to confirm):
+- **Time-based rules are durable jobs** (FR-059, VIII), scheduled with a `runAt` in the same change
+  that sets the time: `CLOSE_OFFER_ROUND` at the deadline (dedupe
+  `CLOSE_OFFER_ROUND:{packageId}:{round}:{deadline}`), `EXPIRE_OFFER` at each revision's expiry
+  (`EXPIRE_OFFER:{offerId}:{revision}`), and `EXPIRE_RECONFIRMATION` at `reconfirmBy`
+  (`EXPIRE_RECONFIRMATION:{dealId}`). Each handler re-reads the row and does nothing when the job
+  is stale (a newer deadline, revision, or decision), so a late or repeated job is harmless. The
+  worker claims due jobs by the injected clock, so a test can move time instead of sleeping.
+- **The deadline closes the round, not the package.** With no open offers the package moves to
+  NO_OFFERS_RECEIVED and the agent is told; with offers it stays ACCEPTING_OFFERS, new offers and
+  revisions are refused (FR-044, already enforced), and the agent can still decide (data-model.md).
+- **Statuses follow data-model.md's state machines.** The package adds NO_OFFERS_RECEIVED,
+  OFFER_ACCEPTED, UNDER_CONTRACT, INSPECTION, CLOSING, CLOSED, and FELL_THROUGH (CLOSED joins
+  WITHDRAWN in freeing the address); the offer adds COUNTERED, WITHDRAWN, EXPIRED, ACCEPTED,
+  FELL_THROUGH, BACKUP, and DECLINED_TO_RECONFIRM, and the one-offer index covers ACTIVE, COUNTERED,
+  BACKUP, and ACCEPTED (FR-042, FR-045). A Deal row tracks the accepted offer; at most one deal per
+  package is active (a partial unique index, FR-053). Decisions are append-only rows.
+- **Exactly one acceptance wins** because accepting first inserts the Deal: a second, concurrent
+  accept waits on the unique index and gets "This package already has an accepted offer" (409).
+- **A decision names the version it acted on:** the offer's for ACCEPT and COUNTER (an offer
+  revised since the agent opened it is refused, so the seller never accepts terms they did not
+  see), and the package's for DECLINE_ALL and a backup promotion.
+- **Counters are agent revisions** (FR-052). The offer then shows the counter terms as COUNTERED,
+  visible only to that investor, who accepts them (a new investor revision with those terms),
+  declines them (a new investor revision restoring their last own terms; the agent is told), or
+  revises freely before the deadline. Every revision schedules its own EXPIRE_OFFER.
+- **Net proceeds come from configuration** (FR-051, IX): a ConfigEntry table holds `netProceeds`
+  (`closingCostPct` 0.02, `flatFees` $1,500, demo values) and `reconfirmHours` (48), seeded in the
+  migrate step and read when offers are compared or a backup is promoted. Editing them is the ops
+  config screen (US6). `estimatedNetProceeds = price − feesAndConcessions − round(price ×
+  closingCostPct) − flatFees`, with each subtraction listed. Certainty ranks by number of
+  contingencies, with cash ahead of financed on ties.
+- **The seller's choice is recorded by the agent** (FR-052); ops cannot record decisions (FR-080).
+  The comparison, decisions, and the deal tracker are the package's agent's only; the ops views of
+  them come with US6.
+- **The winner sees the seller** (FR-031): only the investor whose offer is ACCEPTED on the
+  package's active or closed deal gets the seller's name, email, phone, and street, and each such
+  read writes a PII_ACCESSED audit entry. After a fall-through they get the PII-free view again;
+  backups never see PII. The investor view also carries their own deal's status and `reconfirmBy`,
+  so the buyer sees the milestone and a promoted backup sees their countdown, without a separate
+  deal route for investors.
+- **Milestones only in order** (FR-055): OFFER_ACCEPTED → UNDER_CONTRACT → INSPECTION → CLOSING →
+  CLOSED; anything else is refused with the allowed next steps. The package status mirrors the
+  deal. Closing declines the remaining backups. The fall-through reason and a decision's note are
+  free text that could hold seller details, so they are encrypted at rest like the seller columns
+  (XII), shown only to the agent, and kept out of audit details and notices.
+- **Reopen and extend.** Reopen (from NO_OFFERS_RECEIVED or FELL_THROUGH) starts round + 1 with a
+  new deadline, a new listing version, and a new MATCH_PACKAGE (match trigger REOPEN), so matched
+  investors are told again (FR-058); leftover backups are declined. Extend (from ACCEPTING_OFFERS or
+  NO_OFFERS_RECEIVED) sets a later deadline in the same round and tells the matched investors.
+  Withdraw also works from NO_OFFERS_RECEIVED and FELL_THROUGH. Both are refused while a promoted
+  backup is still deciding. Reopen answers 200 with the agent view, like publish (contracts/api.md
+  is updated), since there is no job status route yet.
+- **Offer withdrawal** (FR-043, FR-054): an ACTIVE, COUNTERED, or BACKUP offer can be withdrawn at
+  any time before it is accepted, even after the deadline; a BACKUP offer's expiry can be extended
+  after the deadline (only `expiresAt` changes, as a new revision).
+- **Notifications stay in-app**, written in the same change (as in Sprint 2; the outbox events in
+  events.md wait with the outbox, T059–T064): the winner, the backups, and the other matched
+  investors on acceptance (FR-054); the investor on a counter, decline, milestone, fall-through,
+  and promotion; the agent on the round closing, a counter response, and a reconfirmation or its
+  timeout. The agent's layout gets the same inbox as the investor's.
+- **Seeded deal data:** a second agent, `blake@example.com`, with a package that has offers from
+  the three demo investors plus one more, so the comparison works at once; the later deal states
+  (inspection, fallen through, closed) are reached by clicking through, and T177 keeps seeding
+  them.
+- **Later scope, not deviations:** REJECTED audit entries for refused actions (a refusal rolls back
+  its change, so it needs its own transaction); the ops views of offers and deals (US6); the
+  revision history drawer and the "investor deactivated" flag (T154).
+- Tasks are listed in merge order, one PR per group. A task split out of a larger one names its
+  source; the source keeps the rest.
+
+### PR: plan (this section)
+
+- [X] T303 Record the Sprint 3 goal, decisions, and tasks in this section; update plan.md Complexity Tracking (in-app notices only, now also for decisions and deals) and contracts/api.md (reopen answers 200 with the agent view; the deal route is the agent's; the investor view carries the buyer's deal and the winner's seller contact); add "Sprint 3" to the board's Sprint field and mirror the section (`node scripts/board/sync-sprint.mjs --sprint 3 --apply`)
+
+### PR: the deal tables
+
+- [ ] T304 Add the Sprint 3 schema with its integration tests: the package statuses (their own migration, as before) with the address index freed by CLOSED as well as WITHDRAWN; the offer statuses with the one-offer index over ACTIVE, COUNTERED, BACKUP, and ACCEPTED; `OfferRevision.author` (INVESTOR or AGENT, default INVESTOR); the Decision table (append-only: `packageId`, `round`, `type` ACCEPT, COUNTER, or DECLINE_ALL, `offerId?` required for ACCEPT and COUNTER by a CHECK, `actorUserId`, `note?`, encrypted); the Deal table (`packageId`, `offerId` unique, `status`, `fellThroughReason?` required when FELL_THROUGH and encrypted, `promotedFromBackup`, `reconfirmBy?` required while PENDING_RECONFIRMATION, `version`; one active deal per package, a partial unique index); ConfigEntry (`key` unique, `value` JSONB, `updatedAt`); the job types CLOSE_OFFER_ROUND, EXPIRE_OFFER, and EXPIRE_RECONFIRMATION; the match trigger REOPEN; and the Sprint 3 notification types; then the contracts shaped from them: the statuses, `Deal` and `Decision`, the job payload schemas, the config value schemas (`netProceeds`, `reconfirmHours`), and the new audit actions (from T031, T032, T164)
+
+### PR: the offer round on time (packages/core)
+
+- [ ] T305 Schedule a job for later: `jobs.enqueue` takes an optional `runAt`, and `claimNext(workerId, now)` claims only jobs due by the injected clock, which the worker passes; extend packages/core/test/jobs.int.test.ts (a job due later is not claimed until then) (from T056)
+- [ ] T306 Close the offer round at the deadline and expire offers at their expiry (CLOSE_OFFER_ROUND and EXPIRE_OFFER in packages/core/src/jobs/; handler tests first): publish, reopen, and an extended deadline schedule CLOSE_OFFER_ROUND at the deadline, and every offer revision schedules EXPIRE_OFFER at its expiry, in the same change; at the deadline a package with no open offers moves to NO_OFFERS_RECEIVED, its agent is notified, and OFFER_ROUND_CLOSED is audited, and one with offers stays ACCEPTING_OFFERS; a job for an old deadline does nothing; an ACTIVE, COUNTERED, or BACKUP offer past its expiry becomes EXPIRED (audited, investor told), and a job for an older revision or an accepted offer does nothing (from T141, T147, T148)
+- [ ] T307 Withdraw offers and reopen or extend a package's round (tests first): offer withdrawal (`OfferService.withdraw`: ACTIVE, COUNTERED, or BACKUP, by its investor, even after the deadline; audited OFFER_WITHDRAWN; a new offer is allowed afterwards before the deadline) and, in `PublicationWorkflow`, `reopen` (from NO_OFFERS_RECEIVED or FELL_THROUGH: round + 1, a new deadline, listing version + 1 with its snapshot, MATCH_PACKAGE for the new round, leftover backups declined, audited PACKAGE_REOPENED) and `extendDeadline` (from ACCEPTING_OFFERS or NO_OFFERS_RECEIVED: a later deadline within 30 days, the matched investors told, audited OFFER_DEADLINE_EXTENDED); withdraw also from NO_OFFERS_RECEIVED and FELL_THROUGH and declines COUNTERED and BACKUP offers too; reopen, extend, and withdraw are refused while a promoted backup is deciding (from T146, T148, T125)
+
+### PR: comparing and deciding (packages/core)
+
+- [ ] T308 Compare offers by net proceeds (tests first): `computeNetProceeds(offer, assumptions)` and `certaintyRank(offer)` in packages/core/src/services/offer-comparison/net-proceeds.ts and `OfferComparisonService.compare(actor, packageId, query)` (the package's agent only; ACTIVE, COUNTERED, and BACKUP offers in the round with the investor's company name, each row's breakdown, and `acceptable` false for an expired or non-ACTIVE offer; sorted by net proceeds (desc), closing date (asc), or certainty (asc); the `netProceeds` assumptions from ConfigEntry returned with the rows); add the config and investor repositories it reads (from T156, T157, T166)
+- [ ] T309 Record the seller's decision: accept one offer, counter one, or decline all (`DecisionWorkflow` in packages/core/src/workflows/decision/; tests first): ACCEPT inserts the Deal first (the unique index turns a second accept into BusinessRuleError "This package already has an accepted offer"), then sets the offer ACCEPTED, every other ACTIVE or COUNTERED offer BACKUP, and the package OFFER_ACCEPTED, writes the Decision, audits DECISION_RECORDED with the backup offer IDs, and notifies the winner, each backup, and every other matched investor; an expired or non-ACTIVE offer, or a stale offer version, is refused; the decision repository encrypts the note with `IPiiCipher` (an integration test: it is not stored as plain text; a unit test: it reaches no audit entry or notification); COUNTER writes an AGENT revision, sets COUNTERED, and notifies that investor only; DECLINE_ALL declines every open offer and notifies each investor; only the package's agent decides (OPS → ForbiddenError); then the accept race integration test in packages/core/test/accept-race.int.test.ts (two concurrent accepts of different offers → one Deal, and the loser gets BusinessRuleError) (from T158, T162, T165, T167)
+- [ ] T310 Let investors answer a counter and keep a backup offer (tests first), in `OfferService`: `respondToCounter` (ACCEPT adopts the counter terms as a new INVESTOR revision and sets ACTIVE; DECLINE writes a new INVESTOR revision with the investor's last own terms, sets ACTIVE, and notifies the agent; only the offer's investor), a revise of a COUNTERED offer (ACTIVE again, before the deadline), and extending a BACKUP offer's expiry (only `expiresAt` may change; allowed after the deadline) (from T159, T169)
+
+### PR: the deal to closing (packages/core)
+
+- [ ] T311 Track the deal to closing, with fall-through and backup promotion (`DealLifecycleWorkflow` in packages/core/src/workflows/deal-lifecycle/; tests first, FakeClock): `get` (the package's latest deal for its agent, with `allowedNextMilestones` and the unexpired backups ranked by net proceeds); `recordMilestone` (only in order, otherwise ConflictError with `allowedNext`; the package mirrors the deal; the buyer is notified; audited DEAL_MILESTONE; CLOSED refuses every change and declines the remaining backups); `fallThrough` (a reason, required, which the deal repository encrypts with `IPiiCipher` (an integration test: it is not stored as plain text; a unit test: it reaches no audit entry or notification); the deal, the winning offer, and the package FELL_THROUGH; the buyer told; audited DEAL_FELL_THROUGH); `promoteBackup` (an unexpired BACKUP offer on a FELL_THROUGH package; a Deal in PENDING_RECONFIRMATION with `reconfirmBy` = now + `reconfirmHours`, EXPIRE_RECONFIRMATION queued for then; the investor told; audited BACKUP_PROMOTED); `reconfirm` (CONFIRM → the deal and the package OFFER_ACCEPTED and the offer ACCEPTED; DECLINE → RECONFIRM_DECLINED and the offer DECLINED_TO_RECONFIRM; the agent told either way); and the EXPIRE_RECONFIRMATION handler (the same as DECLINE once `reconfirmBy` passes; a reconfirmed deal is untouched); then the deal timer integration test in packages/core/test/deal-timer.int.test.ts (promote, recreate the job runner as after a restart, move the clock 48 h: EXPIRE_RECONFIRMATION runs once and the deal is RECONFIRM_DECLINED) (from T160, T163, T168)
+- [ ] T312 Reveal the seller to the winning investor only (test first), in `InvestorPackageQueryService.getForInvestor`: only the investor whose offer is ACCEPTED on the package's active or closed deal gets `sellerContact` and `streetLine`, each such read audits PII_ACCESSED, and a backup or a fallen-through buyer gets the PII-free view; the view carries the investor's own deal (`status`, `reconfirmBy`) (from T161, T170)
+
+### PR: api
+
+- [ ] T313 Add the routes in contracts/api.md: `POST /offers/:offerId/withdrawal`, `/counter-response`, and `/reconfirmation`; `POST /listing-packages/:id/reopening` and `PATCH /listing-packages/:id/offer-deadline`; `GET /listing-packages/:id/offer-comparison`; `POST /listing-packages/:id/decisions` (201 with the Decision); `GET /listing-packages/:id/deal`, `POST /deals/:dealId/milestones`, `POST /deals/:dealId/fall-through`, and `POST /listing-packages/:id/backup-promotions` (201 with the deal); wire the services in the api container and the three new job handlers in the worker's (from T150, T171, T129)
+
+### PR: seed
+
+- [ ] T314 Seed the deal demo in the migrate step: `blake@example.com` (AGENT, `demo1234`), one more investor, and one published package of Blake's in Austin, matched to the four investors, each with an offer that differs in price, payment, contingencies, and closing date, so the comparison and acceptance work at once; the config entries; the rehearsal signs in as Blake (from T177)
+
+### PR: screens (apps/web)
+
+- [ ] T315 Agent comparison and decisions: a "Compare offers" link on the package page; the comparison page at `/agent/packages/[id]/compare` (every offer side by side; sort by net proceeds, closing date, or certainty; a breakdown popover for each net figure; expired offers marked and not selectable); accept with confirmation, counter with the offer terms, and decline all with a note, never optimistic (XIII); a 409 shows its message; the typed client calls for these routes; the agent's layout gets the notification inbox (from T172, T173, T174)
+- [ ] T316 Agent deal tracker and the round controls: the deal page at `/agent/packages/[id]/deal` (the milestones as a step list; buttons only for the allowed next milestones; fall through with a required reason; the ranked backups with Promote; reopen with a new deadline or withdraw when none remain); Extend deadline on an open or no-offers package and Reopen on a no-offers package, on the package page; the new statuses and timeline entries labelled (from T175)
+- [ ] T317 Investor side: withdraw an offer (with confirmation); a counter shown with Accept, Decline, or revise; a backup notice with withdraw and extend expiry; a reconfirm panel with the time left before `reconfirmBy`; the buyer's deal status; the seller contact card for the winner; the dashboard badges for the new offer statuses (from T176)
+
+Every screen in T315–T317 keeps XI: each control has a label, dialogs and popovers move focus in and back and work from the keyboard, refusals are announced as alerts, and a countdown is announced politely, not every second.
+
+**Checkpoint**: `docker compose up --build` on a clean machine; Blake opens the seeded package,
+compares the offers sorted by net proceeds with each breakdown, and accepts the top one; the
+winner sees the seller's contact details (one PII_ACCESSED entry) and the others see "Backup
+offer"; Blake moves the deal to Under contract and Inspection, and a skip to Closed is refused with
+the allowed steps; Blake marks it fell through, promotes the best backup, and that investor
+reconfirms, so the deal is back at "Offer accepted"; Blake closes it, and the address is free;
+avery publishes a package that gets no offers, and at the deadline it shows "No offers received"
+and can be reopened; `pnpm test:integration` covers the accept race and the reconfirmation timer;
+the submission rehearsal passes.
+
+---
+
 ## Phase 2: Foundational (Blocking Prerequisites)
 
 **Purpose**: Contracts, database, core infrastructure, the outbox and job engine, providers,

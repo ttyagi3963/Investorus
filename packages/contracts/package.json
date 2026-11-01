@@ -5,6 +5,10 @@
   "type": "module",
   "description": "Shared Zod schemas, domain types, and the typed REST client (Constitution V). Imports nothing from apps.",
   "exports": {
+    "./common": {
+      "types": "./dist/common/index.d.ts",
+      "import": "./dist/common/index.js"
+    },
     "./user": {
       "types": "./dist/user/index.d.ts",
       "import": "./dist/user/index.js"

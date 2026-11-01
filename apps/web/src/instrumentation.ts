@@ -1,13 +1,8 @@
 // Stops the web server at startup when a required setting is missing or invalid (constitution XII).
 // Next runs register() when the server starts, never during `next build`, which has no settings.
-// Next logs the error but keeps serving, so this exits to make the failure visible.
-import { serverEnv } from "./env";
-
-export function register(): void {
-  try {
-    serverEnv();
-  } catch (error) {
-    process.stderr.write(`Invalid web settings: ${String(error)}\n`);
-    process.exit(1);
-  }
+// Next also compiles this file for the Edge runtime, so the Node-only check is imported only on Node.
+export async function register(): Promise<void> {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const { checkSettingsOrExit } = await import("./check-settings");
+  checkSettingsOrExit();
 }

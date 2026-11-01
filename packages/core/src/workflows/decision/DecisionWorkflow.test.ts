@@ -102,7 +102,7 @@ describe("DecisionWorkflow", () => {
 
   it("lets only the agent decide: operations cannot", async () => {
     const { pkg, summit, decisions } = await setup();
-    const ops: Actor = { userId: "user-ops", role: "OPS" };
+    const ops: Actor = { userId: "user-ops", role: "OPS", agentId: null };
     await expect(
       decisions.record(ops, pkg.id, {
         type: "ACCEPT",

@@ -14,11 +14,11 @@ Ports are exported from `@clever/core`. Implementations are exported only from
 
 | Port | Methods | Prototype implementation | Wired in | Selected by | Production target |
 | --- | --- | --- | --- | --- | --- |
-| `ICrmProvider` | `upsertListingStatus(record, idempotencyKey)` | `SandboxCrmProviderImpl` | worker | `CRM_PROVIDER=sandbox` | `HubspotCrmProviderImpl` (private-app access token) |
+| `ICrmProvider` | `upsertListing(record, idempotencyKey)` → `"APPLIED" \| "STALE"` (the record carries the status snapshot, the seller's contact, and `occurredAt`) | `SandboxCrmProviderImpl` | worker | `CRM_PROVIDER=sandbox` | `HubspotCrmProviderImpl` (private-app access token) |
 | `IMessagingProvider` | `sendEmail(msg, key)`, `sendSms(msg, key)` | `SandboxMessagingProviderImpl` | worker | `MESSAGING_PROVIDER=sandbox` | SendGrid / Twilio impls |
 | `IStorageProvider` | `createUpload(key, contentType, sizeBytes)` → `Promise<UploadInstruction>`, `getPublicUrl(key)` → `string` (a photo's permanent public address, T326), `stat(key)` → `{ contentType, sizeBytes }` or `null` (the api records a photo's type and size from storage, not from the client), `read(key)` (server-side read, used by the CSV import), `put(key, body, contentType)` (server-side write, used only by the seed) | `SandboxStorageProviderImpl` (HMAC-signed URLs) | api, worker | `STORAGE_PROVIDER=sandbox` | `S3StorageProviderImpl` (presigned PUT, `STORAGE_PROVIDER=s3`) |
-| `ICrmMirrorReader` | `listListings()` (read-only) | `SandboxCrmMirrorReaderImpl` | api (ops CRM comparison) | `CRM_PROVIDER=sandbox` | `HubspotCrmMirrorReaderImpl` |
-| `ISellerContactReader` | `getForPackage(packageId)` | `PrismaSellerContactReaderImpl` (decrypts; caller audits `PII_ACCESSED`) | worker (CRM delivery only) | — | same |
+| `ICrmMirrorReader` | `listListings()` (read-only) | `SandboxSimulationProviderImpl` (the sandbox's `GET /crm/listings`) | api (ops CRM comparison) | `CRM_PROVIDER=sandbox` | `HubspotCrmMirrorReaderImpl` |
+| `IDeliveryQueue` / `IDeliveryConsumer` | `enqueue(deliveryIds)`; `startConsumer(dispatch, options)`, `close()` | `BullMqDeliveryQueueImpl` (BullMQ on Redis; `jobId` = the delivery's ID; dead-letter queue `deliveries-dlq`) | worker | — | same |
 | `IGeoProvider` | `lookup(zip)` → `{ city, state, neighborhood }`, or `null` for a ZIP outside the reference set | `StaticGeoProviderImpl` (bundled ZIP list for the seeded markets) | api, worker | — | USPS / Smarty impl |
 | `ISimulationControlProvider` | `get()`, `set(service, mode)` | `SandboxSimulationProviderImpl` | api | — | none in production |
 | `IErrorReporter` | `report(error, context)` | `LogErrorReporterImpl` | api, worker | `ERROR_REPORTER=log` | `SentryErrorReporterImpl` |
@@ -27,9 +27,13 @@ Ports are exported from `@clever/core`. Implementations are exported only from
 | `IUnitOfWork` | `run(work: (repos) => Promise<T>)` | `PrismaUnitOfWorkImpl` (one interactive transaction) | api, worker | — | same |
 | `IDatabase` (T276) | `uow` (the `IUnitOfWork` above), `check()`, `dispose()` | `PostgresDatabaseImpl` (the Prisma client, `PrismaUnitOfWorkImpl`, `SELECT 1`, disconnect); built in one line of each app's `container.ts` | api, worker | — | any database: a new `IDatabase` implementation plus that one line |
 
-The api container never receives `ICrmProvider` or `IMessagingProvider`. Outbound calls happen
-only in the worker's delivery consumers, after the outbox (XVIII). The api's only CRM access is
-the read-only `ICrmMirrorReader`.
+The api container never receives `ICrmProvider`, `IMessagingProvider`, or the delivery queue.
+Outbound calls happen only in the worker's delivery consumer, after the outbox (XVIII). The api's
+only CRM access is the read-only `ICrmMirrorReader`.
+
+The seller's contact for a CRM update is read through the unit of work (the seller repository
+decrypts it) by the delivery dispatcher, which audits the read (`PII_ACCESSED`); no separate
+seller-contact port was needed (Sprint 6).
 
 ### Upload instruction (vendor-neutral, decided 2026-10-30)
 

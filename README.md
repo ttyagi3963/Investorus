@@ -22,7 +22,7 @@ built images and the stored data, and the seed adds no duplicates.
 | --- | --- | --- |
 | Web app | http://localhost:3000 | The app for agents, investors, and operations |
 | API | http://localhost:4000/api/v1/health | The backend (the web app talks to it for you) |
-| Sandbox | http://localhost:4100 | Stand-ins for the CRM, email/SMS, and file storage, so nothing calls a paid service |
+| Sandbox | http://localhost:4100 | Stand-ins for the CRM, email/SMS, and file storage, so nothing calls a paid service. Its page shows the CRM's records, every email and text the platform sent, and each service's simulated outage |
 
 To stop: `Ctrl+C`, or `docker compose down`. To start over with an empty database:
 `docker compose down -v`.
@@ -38,14 +38,14 @@ Every demo account uses the password **`demo1234`**. The seed creates them autom
 | --- | --- | --- |
 | Agent | `avery@example.com` | Building and publishing a listing package |
 | Agent | `blake@example.com` | Comparing offers and tracking deals to close |
-| Investor | `summit@example.com` | Two buy boxes that both match the sample listing |
+| Investor | `summit@example.com` | Two buy boxes that both match the sample listing; has a phone number, so match notices also arrive as texts |
 | Investor | `harbor@example.com` | One broad buy box |
 | Investor | `ridge@example.com` | A deliberately narrow buy box (often not matched); add a second one to see it matched |
 | Investor | `cobalt@example.com` | An offer on Blake's seeded listing |
 | Investor | `dune@example.com` | An offer on Blake's seeded listing |
-| Operations | `morgan@example.com` | Importing the legacy investor list (`seed/legacy-investors.csv`) |
+| Operations | `morgan@example.com` | The operations console: each package's full history, failed deliveries and retries, simulated outages, the CRM comparison, and the legacy investor import |
 
-> **Status:** Sprints 1–5 are in, and every screen uses the Clever design system (Sprint 5). Open
+> **Status:** Sprints 1–6 are in, and every screen uses the Clever design system (Sprint 5). Open
 > <http://localhost:3000/login> and pick an account. Avery
 > builds and publishes a package, which is matched to investors who then make offers. Blake's
 > seeded listing already has four offers: compare them, accept one, and track the deal to closing.
@@ -54,8 +54,23 @@ Every demo account uses the password **`demo1234`**. The seed creates them autom
 > against listings still taking offers. The operations account imports
 > [seed/legacy-investors.csv](seed/legacy-investors.csv) under **Investor imports**: 26 rows are
 > imported and 4 rejected with their reasons, and importing it again duplicates nothing. The other
-> operations screens arrive with their features (see
-> [tasks.md](specs/001-investor-platform-prototype/tasks.md)).
+> operations console shows each package's history and every email, text, and CRM update with
+> its outcome (see **Try an outage** below).
+
+## Try an outage
+
+Emails, texts, and CRM updates leave through a transactional outbox and a Redis queue, so an
+outside service being down never fails anyone's action and loses nothing.
+
+1. Sign in as `morgan@example.com`, open **Simulations**, and set the CRM to **Down** and
+   messaging to **Garbage**.
+2. In another browser, sign in as `avery@example.com` and publish a package (or as an investor,
+   make an offer). It succeeds.
+3. Back as morgan, **Failed jobs** shows the deliveries retrying; after about five minutes of
+   retries they need attention. **Packages** → the package shows the same in its trace.
+4. Set both services back to **Up** and press **Retry all**. Every delivery is sent once: the
+   sandbox page (http://localhost:4100) shows the CRM record and the messages, and **CRM** shows the
+   listing in sync.
 
 ## Using S3 (optional)
 

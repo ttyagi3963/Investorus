@@ -2,6 +2,10 @@
 // of them or none (constitution IV). Each repository a service may use is listed here.
 import type { IAuditRepository } from "../repositories/audit/IAuditRepository.js";
 import type { IBuyBoxRepository } from "../repositories/buy-box/IBuyBoxRepository.js";
+import type { IConfigRepository } from "../repositories/config/IConfigRepository.js";
+import type { IDealRepository } from "../repositories/deal/IDealRepository.js";
+import type { IDecisionRepository } from "../repositories/decision/IDecisionRepository.js";
+import type { IInvestorRepository } from "../repositories/investor/IInvestorRepository.js";
 import type { IJobRepository } from "../repositories/job/IJobRepository.js";
 import type { IListingPackageRepository } from "../repositories/listing-package/IListingPackageRepository.js";
 import type { IListingVersionRepository } from "../repositories/listing-version/IListingVersionRepository.js";
@@ -26,6 +30,10 @@ export interface UnitOfWorkRepositories {
   notifications: INotificationRepository;
   offers: IOfferRepository;
   jobs: IJobRepository;
+  config: IConfigRepository;
+  investors: IInvestorRepository;
+  decisions: IDecisionRepository;
+  deals: IDealRepository;
 }
 
 export interface IUnitOfWork {

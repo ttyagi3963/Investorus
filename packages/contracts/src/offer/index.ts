@@ -14,10 +14,20 @@ export {
   type RevisionAuthor,
 } from "./offer.js";
 export {
+  counterResponseSchema,
   createOfferInputSchema,
   reviseOfferInputSchema,
   withdrawOfferInputSchema,
+  type CounterResponseInput,
   type CreateOfferInput,
   type ReviseOfferInput,
   type WithdrawOfferInput,
 } from "./inputs.js";
+export {
+  COMPARISON_SORTS,
+  comparisonQuerySchema,
+  type ComparisonSort,
+  type NetProceedsLine,
+  type OfferComparisonRow,
+  type OfferComparisonView,
+} from "./comparison.js";

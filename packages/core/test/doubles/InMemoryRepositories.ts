@@ -5,12 +5,13 @@
 import type { BuyBox } from "@clever/contracts/buy-box";
 import type { AuditEntry } from "@clever/contracts/audit";
 import { BusinessRuleError, ConflictError } from "@clever/contracts/common";
+import type { Deal, Decision } from "@clever/contracts/deal";
 import type { Investor } from "@clever/contracts/investor";
 import type { Job } from "@clever/contracts/jobs";
 import type { ListingPackage } from "@clever/contracts/listing-package";
 import type { Match } from "@clever/contracts/match";
 import type { Notification } from "@clever/contracts/notification";
-import type { Offer, OfferStatus, OfferTerms } from "@clever/contracts/offer";
+import type { Offer, OfferStatus, OfferTerms, RevisionAuthor } from "@clever/contracts/offer";
 import type { Photo } from "@clever/contracts/photo";
 import type { Property } from "@clever/contracts/property";
 import type { Seller } from "@clever/contracts/seller";
@@ -20,6 +21,17 @@ import type {
   NewAuditEntry,
 } from "../../src/repositories/audit/IAuditRepository.js";
 import type { IBuyBoxRepository } from "../../src/repositories/buy-box/IBuyBoxRepository.js";
+import type { IConfigRepository } from "../../src/repositories/config/IConfigRepository.js";
+import {
+  ALREADY_ACCEPTED,
+  type IDealRepository,
+  type NewDeal,
+} from "../../src/repositories/deal/IDealRepository.js";
+import type {
+  IDecisionRepository,
+  NewDecision,
+} from "../../src/repositories/decision/IDecisionRepository.js";
+import type { IInvestorRepository } from "../../src/repositories/investor/IInvestorRepository.js";
 import type { IJobRepository, NewJob } from "../../src/repositories/job/IJobRepository.js";
 import type {
   IListingVersionRepository,
@@ -38,6 +50,7 @@ import {
   OPEN_OFFER_STATUSES,
   type IOfferRepository,
   type NewOffer,
+  type RevisionOptions,
 } from "../../src/repositories/offer/IOfferRepository.js";
 import type {
   IListingPackageRepository,
@@ -311,7 +324,12 @@ export class InMemoryNotificationRepository implements INotificationRepository {
 /** Offers with the partial unique index (one live offer per investor, package, round) and versions. */
 export class InMemoryOfferRepository implements IOfferRepository {
   readonly rows: Offer[] = [];
-  readonly revisions: { offerId: string; revision: number; terms: OfferTerms }[] = [];
+  readonly revisions: {
+    offerId: string;
+    revision: number;
+    author: RevisionAuthor;
+    terms: OfferTerms;
+  }[] = [];
   async create({ packageId, investorId, round, ...terms }: NewOffer) {
     if (
       this.rows.some(
@@ -337,7 +355,7 @@ export class InMemoryOfferRepository implements IOfferRepository {
       updatedAt: NOW,
     };
     this.rows.push(offer);
-    this.revisions.push({ offerId: offer.id, revision: 1, terms });
+    this.revisions.push({ offerId: offer.id, revision: 1, author: "INVESTOR", terms });
     return { ...offer };
   }
   async findById(id: string) {
@@ -353,15 +371,27 @@ export class InMemoryOfferRepository implements IOfferRepository {
   async listByPackage(packageId: string, round: number) {
     return this.rows.filter((r) => r.packageId === packageId && r.round === round);
   }
-  async revise(id: string, version: number, terms: OfferTerms) {
+  async revise(
+    id: string,
+    version: number,
+    terms: OfferTerms,
+    { author = "INVESTOR", status }: RevisionOptions = {},
+  ) {
     const row = this.rows.find((r) => r.id === id);
     if (!row || row.version !== version) throw new ConflictError("This offer changed.");
     Object.assign(row, terms, {
+      ...(status && { status }),
       currentRevision: row.currentRevision + 1,
       version: row.version + 1,
     });
-    this.revisions.push({ offerId: id, revision: row.currentRevision, terms });
+    this.revisions.push({ offerId: id, revision: row.currentRevision, author, terms });
     return { ...row };
+  }
+  async findLastTerms(offerId: string, author: RevisionAuthor) {
+    return (
+      this.revisions.filter((r) => r.offerId === offerId && r.author === author).at(-1)?.terms ??
+      null
+    );
   }
   async updateStatus(id: string, version: number, status: OfferStatus) {
     const row = this.rows.find((r) => r.id === id);
@@ -420,6 +450,64 @@ export class InMemoryJobRepository implements IJobRepository {
   }
 }
 
+/** The seeded values (T314), so a comparison or a promotion reads what the demo reads. */
+export class InMemoryConfigRepository implements IConfigRepository {
+  readonly values = new Map<string, unknown>([
+    ["netProceeds", { closingCostPct: 0.02, flatFees: 1_500 }],
+    ["reconfirmHours", 48],
+  ]);
+  async findValue(key: string) {
+    return this.values.get(key) ?? null;
+  }
+}
+
+/** Every investor is named after its ID unless a test names it. */
+export class InMemoryInvestorRepository implements IInvestorRepository {
+  readonly names = new Map<string, string>();
+  async findCompanyNames(ids: string[]) {
+    return new Map(ids.map((id) => [id, this.names.get(id) ?? id]));
+  }
+}
+
+export class InMemoryDecisionRepository implements IDecisionRepository {
+  readonly rows: Decision[] = [];
+  async append(decision: NewDecision) {
+    const row: Decision = { id: nextId("decision"), ...decision, createdAt: NOW };
+    this.rows.push(row);
+    return { ...row };
+  }
+}
+
+/** Deals with the partial unique index: one active deal per package. */
+export class InMemoryDealRepository implements IDealRepository {
+  readonly rows: Deal[] = [];
+  async create(deal: NewDeal) {
+    if (await this.findActiveByPackage(deal.packageId)) {
+      throw new BusinessRuleError(ALREADY_ACCEPTED, "PACKAGE_HAS_ACCEPTED_OFFER");
+    }
+    const row: Deal = {
+      id: nextId("deal"),
+      ...deal,
+      fellThroughReason: null,
+      promotedFromBackup: false,
+      reconfirmBy: null,
+      version: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    this.rows.push(row);
+    return { ...row };
+  }
+  async findActiveByPackage(packageId: string) {
+    const row = this.rows.find(
+      (r) =>
+        r.packageId === packageId &&
+        !["CLOSED", "FELL_THROUGH", "RECONFIRM_DECLINED"].includes(r.status),
+    );
+    return row ? { ...row } : null;
+  }
+}
+
 export class InMemoryUnitOfWork implements IUnitOfWork {
   readonly repos: UnitOfWorkRepositories & {
     sellers: InMemorySellerRepository;
@@ -433,6 +521,10 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
     notifications: InMemoryNotificationRepository;
     offers: InMemoryOfferRepository;
     jobs: InMemoryJobRepository;
+    config: InMemoryConfigRepository;
+    investors: InMemoryInvestorRepository;
+    decisions: InMemoryDecisionRepository;
+    deals: InMemoryDealRepository;
   };
   constructor(users: UserCredentials[] = []) {
     this.repos = {
@@ -448,6 +540,10 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       notifications: new InMemoryNotificationRepository(),
       offers: new InMemoryOfferRepository(),
       jobs: new InMemoryJobRepository(),
+      config: new InMemoryConfigRepository(),
+      investors: new InMemoryInvestorRepository(),
+      decisions: new InMemoryDecisionRepository(),
+      deals: new InMemoryDealRepository(),
     };
   }
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {

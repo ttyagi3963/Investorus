@@ -8,9 +8,12 @@ export const LIVE_OFFER_STATUSES: OfferStatus[] = ["ACTIVE", "COUNTERED", "BACKU
 
 /** The offers still waiting on the seller's decision, which a withdrawal or a reopen declines. */
 export const OPEN_OFFER_STATUSES: OfferStatus[] = ["ACTIVE", "COUNTERED", "BACKUP"];
-import type { Offer, OfferStatus, OfferTerms } from "@clever/contracts/offer";
+import type { Offer, OfferStatus, OfferTerms, RevisionAuthor } from "@clever/contracts/offer";
 
 export type NewOffer = OfferTerms & { packageId: string; investorId: string; round: number };
+
+/** Who writes a revision (an agent's is a counter) and the status the offer takes with it. */
+export type RevisionOptions = { author?: RevisionAuthor; status?: OfferStatus };
 
 export interface IOfferRepository {
   /**
@@ -23,10 +26,13 @@ export interface IOfferRepository {
   findLatest(packageId: string, investorId: string, round: number): Promise<Offer | null>;
   listByPackage(packageId: string, round: number): Promise<Offer[]>;
   /**
-   * Replaces the terms and writes the next revision, only if the stored version is `version`;
+   * Replaces the terms and writes the next revision (by the investor unless `author` says the
+   * agent), optionally moving the offer to `status`, only if the stored version is `version`;
    * otherwise throws ConflictError.
    */
-  revise(id: string, version: number, terms: OfferTerms): Promise<Offer>;
+  revise(id: string, version: number, terms: OfferTerms, options?: RevisionOptions): Promise<Offer>;
+  /** The terms of the newest revision `author` wrote, or null. */
+  findLastTerms(offerId: string, author: RevisionAuthor): Promise<OfferTerms | null>;
   /**
    * Moves the offer to `status`, only if the stored version is `version`; otherwise throws
    * ConflictError.

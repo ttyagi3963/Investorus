@@ -3,11 +3,14 @@
 // version refusal, one package per address, stage 1 of matching, one match per investor and
 // round, and one live job per dedupe key. `run` does not roll back.
 import type { BuyBox } from "@clever/contracts/buy-box";
-import { ConflictError } from "@clever/contracts/common";
+import type { AuditEntry } from "@clever/contracts/audit";
+import { BusinessRuleError, ConflictError } from "@clever/contracts/common";
 import type { Investor } from "@clever/contracts/investor";
 import type { Job } from "@clever/contracts/jobs";
 import type { ListingPackage } from "@clever/contracts/listing-package";
 import type { Match } from "@clever/contracts/match";
+import type { Notification } from "@clever/contracts/notification";
+import type { Offer, OfferTerms } from "@clever/contracts/offer";
 import type { Photo } from "@clever/contracts/photo";
 import type { Property } from "@clever/contracts/property";
 import type { Seller } from "@clever/contracts/seller";
@@ -30,7 +33,7 @@ import type {
   INotificationRepository,
   NewNotification,
 } from "../../src/repositories/notification/INotificationRepository.js";
-import type { IOfferRepository } from "../../src/repositories/offer/IOfferRepository.js";
+import type { IOfferRepository, NewOffer } from "../../src/repositories/offer/IOfferRepository.js";
 import type {
   IListingPackageRepository,
   ListingPackagePatch,
@@ -178,9 +181,20 @@ export class InMemoryPhotoRepository implements IPhotoRepository {
 }
 
 export class InMemoryAuditRepository implements IAuditRepository {
-  readonly entries: NewAuditEntry[] = [];
-  async append(entry: NewAuditEntry) {
-    this.entries.push(entry);
+  readonly entries: AuditEntry[] = [];
+  async append({ details, ...entry }: NewAuditEntry) {
+    this.entries.push({
+      id: nextId("audit"),
+      occurredAt: new Date(NOW.getTime() + this.entries.length),
+      correlationId: null,
+      details: details ?? {},
+      ...entry,
+    });
+  }
+  async listForEntity(entityType: string, entityId: string) {
+    return this.entries
+      .filter((e) => e.entityType === entityType && e.entityId === entityId)
+      .reverse();
   }
 }
 
@@ -241,6 +255,16 @@ export class InMemoryMatchRepository implements IMatchRepository {
     this.rows.push(match);
     return { match: { ...match }, created: true };
   }
+  async findOne(packageId: string, investorId: string, round: number) {
+    return (
+      this.rows.find(
+        (r) => r.packageId === packageId && r.investorId === investorId && r.round === round,
+      ) ?? null
+    );
+  }
+  async listForInvestor(investorId: string) {
+    return this.rows.filter((r) => r.investorId === investorId).reverse();
+  }
   async markNotified(id: string, listingVersion: number) {
     this.rows.find((r) => r.id === id)!.lastNotifiedListingVersion = listingVersion;
   }
@@ -250,14 +274,81 @@ export class InMemoryMatchRepository implements IMatchRepository {
 }
 
 export class InMemoryNotificationRepository implements INotificationRepository {
-  readonly rows: NewNotification[] = [];
+  readonly rows: Notification[] = [];
   async create(notification: NewNotification) {
-    this.rows.push(notification);
+    this.rows.push({
+      id: nextId("notification"),
+      ...notification,
+      readAt: null,
+      createdAt: new Date(NOW.getTime() + this.rows.length),
+    });
+  }
+  async listForUser(userId: string) {
+    return this.rows.filter((r) => r.userId === userId).reverse();
+  }
+  async markRead(userId: string, id: string, at: Date) {
+    const row = this.rows.find((r) => r.id === id && r.userId === userId);
+    if (!row) return false;
+    row.readAt ??= at;
+    return true;
   }
 }
 
+/** Offers with the partial unique index (one ACTIVE per investor, package, round) and versions. */
 export class InMemoryOfferRepository implements IOfferRepository {
-  readonly rows: { packageId: string; round: number; status: "ACTIVE" | "DECLINED" }[] = [];
+  readonly rows: Offer[] = [];
+  readonly revisions: { offerId: string; revision: number; terms: OfferTerms }[] = [];
+  async create({ packageId, investorId, round, ...terms }: NewOffer) {
+    if (
+      this.rows.some(
+        (r) =>
+          r.packageId === packageId &&
+          r.investorId === investorId &&
+          r.round === round &&
+          r.status === "ACTIVE",
+      )
+    ) {
+      throw new BusinessRuleError("You already have an offer on this package", "OFFER_EXISTS");
+    }
+    const offer: Offer = {
+      id: nextId("offer"),
+      packageId,
+      investorId,
+      round,
+      ...terms,
+      status: "ACTIVE",
+      currentRevision: 1,
+      version: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    this.rows.push(offer);
+    this.revisions.push({ offerId: offer.id, revision: 1, terms });
+    return { ...offer };
+  }
+  async findById(id: string) {
+    const row = this.rows.find((r) => r.id === id);
+    return row ? { ...row } : null;
+  }
+  async findLatest(packageId: string, investorId: string, round: number) {
+    const mine = this.rows.filter(
+      (r) => r.packageId === packageId && r.investorId === investorId && r.round === round,
+    );
+    return mine.find((r) => r.status === "ACTIVE") ?? mine.at(-1) ?? null;
+  }
+  async listByPackage(packageId: string, round: number) {
+    return this.rows.filter((r) => r.packageId === packageId && r.round === round);
+  }
+  async revise(id: string, version: number, terms: OfferTerms) {
+    const row = this.rows.find((r) => r.id === id);
+    if (!row || row.version !== version) throw new ConflictError("This offer changed.");
+    Object.assign(row, terms, {
+      currentRevision: row.currentRevision + 1,
+      version: row.version + 1,
+    });
+    this.revisions.push({ offerId: id, revision: row.currentRevision, terms });
+    return { ...row };
+  }
   async declineOpen(packageId: string, round: number) {
     const open = this.rows.filter(
       (r) => r.packageId === packageId && r.round === round && r.status === "ACTIVE",

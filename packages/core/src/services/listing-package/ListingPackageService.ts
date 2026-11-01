@@ -2,7 +2,7 @@
 // service validates input, derives city and state from the ZIP, blocks a second package for an
 // address (FR-013), keeps agents to their own packages (FR-080), checks an edit on the merged
 // result, because some rules span the stored row and the change, and audits each change (XII).
-import type { AuditAction } from "@clever/contracts/audit";
+import type { AuditAction, AuditEntry } from "@clever/contracts/audit";
 import { MATERIAL_FIELDS } from "@clever/contracts/buy-box";
 import type { Actor } from "@clever/contracts/auth";
 import {
@@ -42,6 +42,8 @@ export interface IListingPackageService {
   get(actor: Actor, id: string): Promise<AgentPackage>;
   list(actor: Actor): Promise<AgentPackage[]>;
   update(actor: Actor, id: string, input: unknown): Promise<AgentPackage>;
+  /** What happened to the package, newest first, for its agent (T297). */
+  timeline(actor: Actor, id: string): Promise<AuditEntry[]>;
 }
 
 type Deps = { geo: IGeoProvider; addressHash: AddressHasher; clock: IClock };
@@ -247,6 +249,16 @@ export class ListingPackageService implements IListingPackageService {
         },
       });
       return { package: pkg, seller: savedSeller, property: savedProperty, photos };
+    });
+  }
+
+  async timeline(actor: Actor, id: string): Promise<AuditEntry[]> {
+    const agentId = this.agentOf(actor);
+    return this.uow.run(async (repos) => {
+      if (!(await repos.packages.findForAgent(agentId, id))) throw new NotFoundError(NOT_FOUND);
+      const entries = await repos.audit.listForEntity("ListingPackage", id);
+      // Each investor's match decision stays with operations; the agent sees the matched count.
+      return entries.filter((entry) => entry.action !== "MATCH_DECISION");
     });
   }
 

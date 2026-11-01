@@ -20,3 +20,10 @@ export {
   type AgentPackageView,
   type SignedAgentPackageParts,
 } from "./views.js";
+export {
+  toInvestorPackageSummary,
+  toInvestorPackageView,
+  type InvestorPackageParts,
+  type InvestorPackageSummary,
+  type InvestorPackageView,
+} from "./investor-views.js";

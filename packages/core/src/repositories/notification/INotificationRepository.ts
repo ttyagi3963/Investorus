@@ -6,4 +6,8 @@ export type NewNotification = Omit<Notification, "id" | "readAt" | "createdAt">;
 
 export interface INotificationRepository {
   create(notification: NewNotification): Promise<void>;
+  /** The user's notifications, newest first. */
+  listForUser(userId: string): Promise<Notification[]>;
+  /** Marks the user's own notification read; false when they have no such notification. */
+  markRead(userId: string, id: string, at: Date): Promise<boolean>;
 }

@@ -193,7 +193,18 @@ describe("PublicationWorkflow", () => {
       matchedBuyBoxIds: ["box-1"],
       trigger: "PUBLISH",
     });
-    uow.repos.offers.rows.push({ packageId: pkg.id, round: 1, status: "ACTIVE" });
+    await uow.repos.offers.create({
+      packageId: pkg.id,
+      investorId: "investor-summit",
+      round: 1,
+      price: 280_000,
+      paymentType: "CASH",
+      closingDate: "2026-12-01",
+      earnestMoney: 5_000,
+      contingencies: [],
+      feesAndConcessions: 0,
+      expiresAt: new Date("2026-11-03T12:00:00Z"),
+    });
 
     const { package: withdrawn } = await publication.withdraw(avery, pkg.id, {
       version: published.version,

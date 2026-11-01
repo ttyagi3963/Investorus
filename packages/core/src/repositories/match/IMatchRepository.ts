@@ -17,4 +17,8 @@ export interface IMatchRepository {
   /** Records the listing version the investor was last told about. */
   markNotified(id: string, listingVersion: number): Promise<void>;
   listByPackage(packageId: string, round: number): Promise<Match[]>;
+  /** The investor's access to the package in the round (FR-040), or null. */
+  findOne(packageId: string, investorId: string, round: number): Promise<Match | null>;
+  /** Every match of the investor, newest first. */
+  listForInvestor(investorId: string): Promise<Match[]>;
 }

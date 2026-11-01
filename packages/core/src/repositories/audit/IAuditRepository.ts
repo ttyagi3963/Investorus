@@ -1,6 +1,11 @@
 // The audit port (T282; constitution XII): appends one domain audit entry in the change's own
 // transaction. The adapter adds the time and the trace ID; `details` must never carry PII.
-import type { AuditAction, AuditActorType, AuditOutcome } from "@clever/contracts/audit";
+import type {
+  AuditAction,
+  AuditActorType,
+  AuditEntry,
+  AuditOutcome,
+} from "@clever/contracts/audit";
 
 export type NewAuditEntry = {
   actorType: AuditActorType;
@@ -14,4 +19,6 @@ export type NewAuditEntry = {
 
 export interface IAuditRepository {
   append(entry: NewAuditEntry): Promise<void>;
+  /** An entity's entries, newest first. */
+  listForEntity(entityType: string, entityId: string): Promise<AuditEntry[]>;
 }

@@ -1,7 +1,8 @@
 // The Match the app passes around, shaped from the Prisma `Match` model (T281): an investor's
 // access to a package in one offer round, created when one of their buy boxes matches (FR-022).
 
-export const MATCH_TRIGGERS = ["PUBLISH", "PACKAGE_EDIT", "REOPEN"] as const;
+/** What first shared the package: a publish, an edit, a reopen, or the investor saving a buy box. */
+export const MATCH_TRIGGERS = ["PUBLISH", "PACKAGE_EDIT", "REOPEN", "BUY_BOX_CHANGE"] as const;
 export type MatchTrigger = (typeof MATCH_TRIGGERS)[number];
 
 export type Match = {

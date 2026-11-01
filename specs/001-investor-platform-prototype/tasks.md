@@ -1184,7 +1184,7 @@ designs that need features not yet built are listed at the end of this section, 
 - [X] T329 The sign-in screen (design 01): the brand panel (name, headline, intro, steps) beside the sign-in card and the demo accounts
 - [X] T330 The agent screens (designs 02, 04, 05): the package list as a table with thumbnail, status chip, matched count, and deadline; the package page with the PageHeader, status, photos, form, offers, and timeline in cards; the new package page; the offer comparison; the deal page in the same system
 - [ ] T331 The investor screens (designs 06, 07, 08): opportunities as photo cards with location, time left, facts, and the seller's range; the package page with photos and the offer form; the buy box list and editor with chip choices
-- [ ] T332 The operations import screen (design 10): the new-import card beside the batch's results, with stat tiles and outcome chips
+- [X] T332 The operations import screen (design 10): the new-import card beside the batch's results, with stat tiles and outcome chips
 - [ ] T333 Documentation: contracts/design-tokens.md (the brand file is the bundle's DTCG file; the Sprint 1 seeded values are replaced), plan.md, README, and this section's list of what the designs show that is not built
 
 **Not built from the designs** (each needs a feature that does not exist yet; filled in by T333):

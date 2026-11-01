@@ -28,3 +28,6 @@ export type UploadInstruction = {
   /** ISO time; after it, ask for a new instruction. */
   expiresAt: string;
 };
+
+/** The answer to POST /listing-packages/:id/photo-uploads: the key to attach, and how to upload. */
+export type PhotoUpload = { storageKey: string; upload: UploadInstruction };

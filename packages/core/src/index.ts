@@ -26,3 +26,10 @@ export type {
   NewListingPackage,
 } from "./repositories/listing-package/IListingPackageRepository.js";
 export type { IPhotoRepository, NewPhoto } from "./repositories/photo/IPhotoRepository.js";
+export { AuthService, type IAuthService } from "./services/auth/AuthService.js";
+export {
+  ListingPackageService,
+  type AgentPackage,
+  type IListingPackageService,
+} from "./services/listing-package/ListingPackageService.js";
+export { PhotoService, type IPhotoService } from "./services/photo/PhotoService.js";

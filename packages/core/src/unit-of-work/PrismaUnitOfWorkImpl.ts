@@ -4,6 +4,10 @@ import type { PrismaClient } from "../generated/prisma/client.js";
 import type { IPiiCipher } from "../providers/pii-cipher/IPiiCipher.js";
 import { PrismaAuditRepositoryImpl } from "../repositories/audit/PrismaAuditRepositoryImpl.js";
 import { PrismaBuyBoxRepositoryImpl } from "../repositories/buy-box/PrismaBuyBoxRepositoryImpl.js";
+import { PrismaConfigRepositoryImpl } from "../repositories/config/PrismaConfigRepositoryImpl.js";
+import { PrismaDealRepositoryImpl } from "../repositories/deal/PrismaDealRepositoryImpl.js";
+import { PrismaDecisionRepositoryImpl } from "../repositories/decision/PrismaDecisionRepositoryImpl.js";
+import { PrismaInvestorRepositoryImpl } from "../repositories/investor/PrismaInvestorRepositoryImpl.js";
 import { PrismaJobRepositoryImpl } from "../repositories/job/PrismaJobRepositoryImpl.js";
 import { PrismaListingPackageRepositoryImpl } from "../repositories/listing-package/PrismaListingPackageRepositoryImpl.js";
 import { PrismaListingVersionRepositoryImpl } from "../repositories/listing-version/PrismaListingVersionRepositoryImpl.js";
@@ -37,6 +41,10 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
         notifications: new PrismaNotificationRepositoryImpl(tx),
         offers: new PrismaOfferRepositoryImpl(tx),
         jobs: new PrismaJobRepositoryImpl(tx),
+        config: new PrismaConfigRepositoryImpl(tx),
+        investors: new PrismaInvestorRepositoryImpl(tx),
+        decisions: new PrismaDecisionRepositoryImpl(tx, this.cipher),
+        deals: new PrismaDealRepositoryImpl(tx),
       }),
     );
   }

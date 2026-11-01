@@ -34,3 +34,17 @@ export const toRevisionTerms = (terms: OfferTerms) => ({
   ...terms,
   expiresAt: terms.expiresAt.toISOString(),
 });
+
+/** A revision row's terms back as domain terms; the row was written by `toRevisionTerms`. */
+export function fromRevisionTerms(json: unknown): OfferTerms {
+  const terms = json as ReturnType<typeof toRevisionTerms>;
+  return {
+    price: terms.price,
+    paymentType: terms.paymentType,
+    closingDate: terms.closingDate,
+    earnestMoney: terms.earnestMoney,
+    contingencies: terms.contingencies,
+    feesAndConcessions: terms.feesAndConcessions,
+    expiresAt: new Date(terms.expiresAt),
+  };
+}

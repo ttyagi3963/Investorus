@@ -29,3 +29,10 @@ export type ReviseOfferInput = z.input<typeof reviseOfferInputSchema>;
 /** POST /offers/:offerId/withdrawal (T307): names the version the investor read. */
 export const withdrawOfferInputSchema = z.object({ version: z.number().int().positive() });
 export type WithdrawOfferInput = z.input<typeof withdrawOfferInputSchema>;
+
+/** POST /offers/:offerId/counter-response (T310): take the agent's counter, or keep your own terms. */
+export const counterResponseSchema = z.object({
+  action: z.enum(["ACCEPT", "DECLINE"]),
+  version: z.number().int().positive(),
+});
+export type CounterResponseInput = z.input<typeof counterResponseSchema>;

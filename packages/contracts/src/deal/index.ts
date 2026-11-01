@@ -8,3 +8,5 @@ export {
   type Decision,
   type DecisionType,
 } from "./deal.js";
+export { createDecisionSchema, type CreateDecisionInput } from "./inputs.js";
+export { toDecisionView, type DecisionView } from "./views.js";

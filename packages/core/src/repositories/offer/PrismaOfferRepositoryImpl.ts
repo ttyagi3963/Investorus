@@ -2,15 +2,16 @@
 // ACTIVE offer hits the partial unique index, which becomes the same BusinessRuleError the service
 // raises, so two racing submits still leave one offer.
 import { BusinessRuleError, ConflictError } from "@clever/contracts/common";
-import type { Offer, OfferStatus, OfferTerms } from "@clever/contracts/offer";
+import type { Offer, OfferStatus, OfferTerms, RevisionAuthor } from "@clever/contracts/offer";
 import { Prisma } from "../../generated/prisma/client.js";
 import {
   LIVE_OFFER_STATUSES,
   OPEN_OFFER_STATUSES,
   type IOfferRepository,
   type NewOffer,
+  type RevisionOptions,
 } from "./IOfferRepository.js";
-import { toOffer, toOfferColumns, toRevisionTerms } from "./offer.mapper.js";
+import { fromRevisionTerms, toOffer, toOfferColumns, toRevisionTerms } from "./offer.mapper.js";
 
 export class PrismaOfferRepositoryImpl implements IOfferRepository {
   constructor(private readonly db: Prisma.TransactionClient) {}
@@ -57,11 +58,17 @@ export class PrismaOfferRepositoryImpl implements IOfferRepository {
     return rows.map(toOffer);
   }
 
-  async revise(id: string, version: number, terms: OfferTerms): Promise<Offer> {
+  async revise(
+    id: string,
+    version: number,
+    terms: OfferTerms,
+    { author = "INVESTOR", status }: RevisionOptions = {},
+  ): Promise<Offer> {
     const { count } = await this.db.offer.updateMany({
       where: { id, version },
       data: {
         ...toOfferColumns(terms),
+        ...(status && { status }),
         currentRevision: { increment: 1 },
         version: { increment: 1 },
       },
@@ -71,9 +78,17 @@ export class PrismaOfferRepositoryImpl implements IOfferRepository {
     }
     const row = await this.db.offer.findUniqueOrThrow({ where: { id } });
     await this.db.offerRevision.create({
-      data: { offerId: id, revision: row.currentRevision, terms: toRevisionTerms(terms) },
+      data: { offerId: id, revision: row.currentRevision, author, terms: toRevisionTerms(terms) },
     });
     return toOffer(row);
+  }
+
+  async findLastTerms(offerId: string, author: RevisionAuthor): Promise<OfferTerms | null> {
+    const row = await this.db.offerRevision.findFirst({
+      where: { offerId, author },
+      orderBy: { revision: "desc" },
+    });
+    return row ? fromRevisionTerms(row.terms) : null;
   }
 
   async updateStatus(id: string, version: number, status: OfferStatus): Promise<Offer> {

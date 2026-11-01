@@ -48,6 +48,12 @@ export {
 } from "./services/investor-package/InvestorPackageQueryService.js";
 export { OfferService, type IOfferService } from "./services/offer/OfferService.js";
 export {
+  OfferComparisonService,
+  type ComparisonEntry,
+  type IOfferComparisonService,
+} from "./services/offer-comparison/OfferComparisonService.js";
+export { DecisionWorkflow, type IDecisionWorkflow } from "./workflows/decision/DecisionWorkflow.js";
+export {
   NotificationService,
   type INotificationService,
 } from "./services/notification/NotificationService.js";

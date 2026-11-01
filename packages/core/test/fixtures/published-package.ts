@@ -76,7 +76,7 @@ export function world() {
     },
     passwordHash: "hash",
   } as UserCredentials;
-  const uow = new InMemoryUnitOfWork([averyLogin, ...["summit", "harbor"].map(login)]);
+  const uow = new InMemoryUnitOfWork([averyLogin, ...["summit", "harbor", "ridge"].map(login)]);
   const clock = { at: START, now: () => clock.at };
   const packages = new ListingPackageService(uow, {
     geo: new StaticGeoProviderImpl(),

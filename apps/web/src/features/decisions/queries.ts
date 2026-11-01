@@ -6,9 +6,9 @@ import { useQuery } from "@tanstack/react-query";
 import { listingPackages } from "../../lib/bff-client";
 import { packageKeys } from "../listing-package/queries";
 
-export const comparisonKey = (id: string, sort: ComparisonSort) =>
+const comparisonKey = (id: string, sort: ComparisonSort) =>
   [...packageKeys.one(id), "comparison", sort] as const;
-export const dealKey = (id: string) => [...packageKeys.one(id), "deal"] as const;
+const dealKey = (id: string) => [...packageKeys.one(id), "deal"] as const;
 
 export function useComparison(id: string, sort: ComparisonSort) {
   return useQuery({
@@ -17,6 +17,6 @@ export function useComparison(id: string, sort: ComparisonSort) {
   });
 }
 
-export function useDeal(id: string, enabled = true) {
-  return useQuery({ queryKey: dealKey(id), queryFn: () => listingPackages.deal(id), enabled });
+export function useDeal(id: string) {
+  return useQuery({ queryKey: dealKey(id), queryFn: () => listingPackages.deal(id) });
 }

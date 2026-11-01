@@ -21,7 +21,7 @@ Turborepo monorepo:
 - **Feature docs**: `specs/001-investor-platform-prototype/` (spec, plan, research, data model,
   contracts, quickstart).
 - **Tasks**: `specs/001-investor-platform-prototype/tasks.md` is the single source of truth for
-  work. The GitHub Projects board mirrors it (`node scripts/board/sync-sprint0.mjs`); never add
+  work. The GitHub Projects board mirrors it (`node scripts/board/sync-sprint.mjs --sprint N`); never add
   work to the board that is not in tasks.md.
 - Work is spec-driven (GitHub Spec Kit): spec → plan → tasks → implement. No code without a task.
 

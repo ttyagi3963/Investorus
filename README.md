@@ -34,19 +34,19 @@ nothing real.
 
 Every demo account uses the password **`demo1234`**. The seed creates them automatically.
 
-| Role | Username | Shows |
+| Role | Email | Shows |
 | --- | --- | --- |
-| Agent | `agent.avery` | Building and publishing a listing package |
-| Agent | `agent.blake` | Comparing offers and tracking deals to close |
-| Investor | `investor.summit` | Two buy boxes that both match the sample listing |
-| Investor | `investor.harbor` | One broad buy box |
-| Investor | `investor.ridge` | A deliberately narrow buy box (often not matched) |
-| Operations | `ops.morgan` | Timelines, deliveries, and recovery from outages |
+| Agent | `avery@example.com` | Building and publishing a listing package |
+| Agent | `blake@example.com` | Comparing offers and tracking deals to close |
+| Investor | `summit@example.com` | Two buy boxes that both match the sample listing |
+| Investor | `harbor@example.com` | One broad buy box |
+| Investor | `ridge@example.com` | A deliberately narrow buy box (often not matched) |
+| Operations | `morgan@example.com` | Timelines, deliveries, and recovery from outages |
 
-> **Status:** the startup above works today. The sign-in screen and these accounts arrive with
-> User Story 1 (tasks T089–T092 and T099 in
-> [tasks.md](specs/001-investor-platform-prototype/tasks.md)). Until then the home page is a
-> placeholder.
+> **Status:** the startup above works today. Sprint 1 adds the sign-in screen (pre-filled with
+> the demo agent) and the agent's listing packages; the other accounts arrive with their
+> features (see the Sprint 1 section of
+> [tasks.md](specs/001-investor-platform-prototype/tasks.md)).
 
 ## Development
 

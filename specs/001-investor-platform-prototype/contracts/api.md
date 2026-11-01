@@ -30,7 +30,7 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 
 | Method | Path | Role | Body / Response | Notes |
 | --- | --- | --- | --- | --- |
-| POST | `/sessions` | public | `{ username, password }` → 201 `{ token, user }` | The BFF stores the token in an HTTP-only cookie |
+| POST | `/sessions` | public | `{ email, password }` → 201 `{ token, user }` | The BFF stores the token in an HTTP-only cookie |
 | GET | `/me` | any | → `{ user, role, agentId?, investorId? }` | |
 | GET | `/health` | public | → `{ status, db, redis }` | Used by compose healthchecks |
 | GET | `/brands/:brandId/theme` | public | → `{ brandId, tokenVersion, cssVariables: Record<string,string>, content }` (cacheable, `ETag` = tokenVersion) | FR-092; the web root layout renders the variables |

@@ -207,7 +207,7 @@ below are the planning baseline.
 
 ## R12. Authentication and sessions (Principle XII)
 
-- **Decision**: Username and password, hashed with `bcryptjs` (pure JavaScript, so there are no
+- **Decision**: Email and password (email since 2026-10-31), hashed with `bcryptjs` (pure JavaScript, so there are no
   native build problems on a slim image). `apps/api` issues a signed JWT (HS256 via `jose`,
   8-hour expiry) carrying `userId`, `role`, and `investorId` or `agentId`. The `apps/web` BFF
   stores it in an HTTP-only, Secure, SameSite=Lax cookie and forwards it as a bearer token, so

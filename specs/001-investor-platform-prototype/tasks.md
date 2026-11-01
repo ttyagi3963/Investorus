@@ -498,7 +498,7 @@ it. Every request and job can be traced end to end.
 
 ### PR: seed
 
-- [ ] T299 Seed the demo investors and their buy boxes in the migrate step (upsert by email, as for the agent): `summit@example.com` (two boxes that both match the sample listing: Austin 78704, single family, Fair condition, $250k–$300k), `harbor@example.com` (one NATIONWIDE box), `ridge@example.com` (a narrow box that does not match), each with a User (INVESTOR, `demo1234`) and proof of funds a year out; record the expected matches in seed/expected-matches.json; the rehearsal signs in with every seeded account (from T138, T139)
+- [X] T299 Seed the demo investors and their buy boxes in the migrate step (upsert by email, as for the agent): `summit@example.com` (two boxes that both match the sample listing: Austin 78704, single family, Fair condition, $250k–$300k), `harbor@example.com` (one NATIONWIDE box), `ridge@example.com` (a narrow box that does not match), each with a User (INVESTOR, `demo1234`) and proof of funds a year out; record the sample listing and its expected matches in packages/core/src/infra/seed/expected-matches.json, which the seed test checks; the rehearsal signs in with every seeded account (from T138, T139)
 
 ### PR: screens (apps/web)
 

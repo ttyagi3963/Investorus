@@ -84,14 +84,16 @@ describe("session", () => {
     expect(cookie).toMatch(/Secure/);
   });
 
-  it("passes a failed sign-in back unchanged, even when the api's answer is not JSON", async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response("Bad Gateway", { status: 502 }));
+  it("sets no cookie when the api refuses the sign-in, and passes its answer back unchanged", async () => {
+    const refusal = { error: "Invalid email or password", code: "VALIDATION_FAILED" };
+    const fetch = vi.fn().mockResolvedValue(json(refusal, 400));
     const res = await signIn(fromSite("/bff/session", { method: "POST", body: "{}" }), {
       apiUrl: API,
       secureCookie: true,
       fetch,
     });
-    expect(res.status).toBe(502);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(refusal);
     expect(res.headers.get("Set-Cookie")).toBeNull();
   });
 

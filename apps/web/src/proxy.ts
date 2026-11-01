@@ -2,9 +2,10 @@
 // session cookie is sent to /login before any agent page renders. This is a convenience for the
 // browser; the api verifies the token on every request regardless.
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE } from "./bff/shared";
 
 export function proxy(request: NextRequest): NextResponse {
-  if (!request.cookies.get("session")) {
+  if (!request.cookies.get(SESSION_COOKIE)) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
   return NextResponse.next();

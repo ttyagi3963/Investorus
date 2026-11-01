@@ -2,8 +2,8 @@
 # opens and on every new push: inline comments on specific problems, plus one summary comment
 # that is updated in place on later pushes.
 #
-# The review is advisory (constitution XVII.3: the human reviewer is the gate). Every inline
-# comment opens a review thread, and the review-threads check stays red until each is resolved.
+# The review is advisory (constitution XVII.3: the human reviewer is the gate): its comments are
+# read and answered, but an open comment does not fail the PR.
 #
 # Security:
 # - Trigger is `pull_request`, never `pull_request_target`: workflows for fork PRs get no
@@ -106,5 +106,5 @@ jobs:
                should fix, minor) with links to the inline comments, and the principles you
                checked. Keep it under 300 words.
           claude_args: |
-            --max-turns 25
+            --max-turns 40
             --allowedTools "Read,Glob,Grep,mcp__github_inline_comment__create_inline_comment,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),Bash(gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments)"

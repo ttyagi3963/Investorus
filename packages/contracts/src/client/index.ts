@@ -8,6 +8,7 @@ export {
   type RequestOptions,
 } from "./http.js";
 export {
+  dealsClient,
   investorClient,
   listingPackagesClient,
   notificationsClient,

@@ -33,7 +33,8 @@ export function OfferForm({
 }) {
   const { submit, isPending, fieldErrors, error, saved } = useOfferForm(packageId, myOffer);
   const [paymentType, setPaymentType] = useState<string>(myOffer?.paymentType ?? "CASH");
-  const revising = myOffer?.status === "ACTIVE";
+  // A countered offer is revised too: the revision replaces the counter (FR-052).
+  const revising = myOffer?.status === "ACTIVE" || myOffer?.status === "COUNTERED";
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

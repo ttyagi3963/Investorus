@@ -13,7 +13,7 @@ export default function InvestorLayout({ children }: { children: ReactNode }) {
           Your matched listings
         </Link>
         <div className="flex items-center gap-inline-md">
-          <NotificationInbox />
+          <NotificationInbox packagesPath="/investor/packages" />
           <SignOutButton />
         </div>
       </header>

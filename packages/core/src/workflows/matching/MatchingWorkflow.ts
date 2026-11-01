@@ -12,7 +12,7 @@ import { evaluateBuyBox, type BuyBoxEvaluation } from "../../registry/evaluate-b
 import { EVALUATOR_VERSION } from "../../registry/evaluators.js";
 import type { NewNotification } from "../../repositories/notification/INotificationRepository.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
-import { placeOf } from "../publication/PublicationWorkflow.js";
+import { placeOf } from "../notice-text.js";
 
 export interface IMatchingWorkflow {
   evaluatePackage(packageId: string, round: number, listingVersion: number): Promise<void>;

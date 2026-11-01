@@ -24,6 +24,7 @@ import {
 } from "../../services/listing-package/ListingPackageService.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { snapshotAndQueueMatching } from "../matching/queue-matching.js";
+import { placeOf } from "../notice-text.js";
 
 export interface IPublicationWorkflow {
   publish(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage>;
@@ -157,10 +158,6 @@ function publishBlockers(
   }
   return errors;
 }
-
-/** City, state, and ZIP: never the street (no seller detail in a notification). */
-export const placeOf = (property: Property | null) =>
-  property ? `${property.city}, ${property.state} ${property.zip}` : "your area";
 
 const auditEntry = (
   actor: Actor,

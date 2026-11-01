@@ -28,6 +28,10 @@
     "./photo": {
       "types": "./dist/photo/index.d.ts",
       "import": "./dist/photo/index.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "import": "./dist/auth/index.js"
     }
   },
   "files": [

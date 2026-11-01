@@ -13,7 +13,12 @@ import { useState } from "react";
 import { listingPackages } from "../../lib/bff-client";
 import { packageKeys } from "./queries";
 
-export type SaveNotice = { tone: "error" | "saved"; message: string; existingPackageId?: string };
+export type SaveNotice = {
+  tone: "error" | "saved";
+  message: string;
+  existingPackageId?: string;
+  requestId?: string;
+};
 
 type SaveInput =
   | { mode: "create"; input: CreateListingPackageInput }
@@ -40,8 +45,12 @@ export function useSavePackage() {
       else setNotice({ tone: "saved", message: "Saved." });
     },
     onError: (err) => {
-      if (!(err instanceof ApiError)) {
-        setNotice({ tone: "error", message: "The package could not be saved. Try again." });
+      if (!(err instanceof ApiError) || err.status >= 500) {
+        setNotice({
+          tone: "error",
+          message: "The package could not be saved. Try again.",
+          requestId: err instanceof ApiError ? (err.requestId ?? undefined) : undefined,
+        });
         return;
       }
       setFieldErrors(Object.fromEntries(err.fields.map((f) => [f.field, f.message])));
@@ -50,6 +59,7 @@ export function useSavePackage() {
         tone: "error",
         message: err.message,
         existingPackageId: typeof existing === "string" ? existing : undefined,
+        requestId: err.requestId ?? undefined,
       });
     },
   });

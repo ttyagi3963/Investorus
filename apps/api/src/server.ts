@@ -1,12 +1,17 @@
-// Entry point. Sprint 0 shell (T232): listen on 0.0.0.0 so the port is reachable from outside
-// the container. T081 adds env parsing, the container, and dispose on shutdown.
+// Entry point (T255): check the settings, build the container, listen on 0.0.0.0 (PORT, default
+// 4000), and close the database pool on shutdown. A missing setting stops the process first.
 import { createApp } from "./app.js";
+import { createContainer } from "./container.js";
+import { parseEnv } from "./env.js";
 
-const port = Number(process.env.PORT ?? 4000);
-const server = createApp().listen(port, "0.0.0.0", () => {
-  process.stdout.write(`api listening on 0.0.0.0:${port}\n`);
+const env = parseEnv(process.env);
+const container = createContainer(env);
+const server = createApp(container).listen(env.PORT, "0.0.0.0", () => {
+  container.logger.info(`api listening on 0.0.0.0:${env.PORT}`);
 });
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
-  process.on(signal, () => server.close(() => process.exit(0)));
+  process.on(signal, () =>
+    server.close(() => void container.dispose().then(() => process.exit(0))),
+  );
 }

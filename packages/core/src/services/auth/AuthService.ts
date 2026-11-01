@@ -1,12 +1,18 @@
-// Signs a user in (T079, research R12): checks the email and password with bcrypt and issues an
-// 8-hour HS256 JWT naming the user, role, and agent. Every failure gets the same message, and an
-// unknown email still runs one bcrypt comparison, so neither the answer nor its timing tells a
-// caller which emails have accounts.
-import { createSessionSchema, type SessionResponse } from "@clever/contracts/auth";
-import { ValidationError } from "@clever/contracts/common";
-import { toUserView } from "@clever/contracts/user";
+// Sessions (T079, T253, research R12): signs a user in with bcrypt and issues an 8-hour HS256 JWT
+// naming the user, role, and agent; verifies a token on every request (HS256 only, unexpired, and a
+// payload that is a valid actor); and answers /me while the user is active. Every sign-in failure
+// gets the same message, and an unknown email still runs one bcrypt comparison, so neither the
+// answer nor its timing tells a caller which emails have accounts.
+import {
+  actorSchema,
+  createSessionSchema,
+  type Actor,
+  type SessionResponse,
+} from "@clever/contracts/auth";
+import { UnauthenticatedError, ValidationError } from "@clever/contracts/common";
+import { toUserView, type UserView } from "@clever/contracts/user";
 import bcrypt from "bcryptjs";
-import { SignJWT } from "jose";
+import { SignJWT, jwtVerify } from "jose";
 import type { IClock } from "../../providers/clock/IClock.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
 
@@ -17,6 +23,10 @@ const decoy = () => (decoyHash ??= bcrypt.hashSync("not-a-password", 10));
 
 export interface IAuthService {
   signIn(input: unknown): Promise<SessionResponse>;
+  /** The actor in a token this service signed; UnauthenticatedError for anything else. */
+  verify(token: string): Promise<Actor>;
+  /** The signed-in user's view (GET /me); UnauthenticatedError once they are inactive. */
+  me(actor: Actor): Promise<UserView>;
 }
 
 export class AuthService implements IAuthService {
@@ -44,5 +54,27 @@ export class AuthService implements IAuthService {
       .setExpirationTime(now + SESSION_SECONDS)
       .sign(this.key);
     return { token, user: toUserView(user) };
+  }
+
+  async verify(token: string): Promise<Actor> {
+    try {
+      const { payload } = await jwtVerify(token, this.key, {
+        algorithms: ["HS256"],
+        currentDate: this.options.clock.now(),
+      });
+      return actorSchema.parse({
+        userId: payload.userId,
+        role: payload.role,
+        agentId: payload.agentId,
+      });
+    } catch {
+      throw new UnauthenticatedError("Sign in again");
+    }
+  }
+
+  async me(actor: Actor): Promise<UserView> {
+    const user = await this.uow.run((repos) => repos.users.findById(actor.userId));
+    if (!user?.active) throw new UnauthenticatedError("Sign in again");
+    return toUserView(user);
   }
 }

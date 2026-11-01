@@ -1,11 +1,11 @@
-// Guards the sign-in rules (T078, research R12): the right email and password get an 8-hour token
-// naming the user, role, and agent; every failure gets the same message, so a caller cannot learn
-// which emails have accounts.
+// Guards the sign-in and token rules (T078, T253, research R12): the right email and password get an
+// 8-hour token naming the user, role, and agent; every failure gets the same message, so a caller
+// cannot learn which emails have accounts; and only an unexpired HS256 token we signed is accepted.
 import { randomBytes } from "node:crypto";
-import { ValidationError } from "@clever/contracts/common";
+import { UnauthenticatedError, ValidationError } from "@clever/contracts/common";
 import type { UserCredentials } from "@clever/contracts/user";
 import bcrypt from "bcryptjs";
-import { jwtVerify } from "jose";
+import { SignJWT, UnsecuredJWT, jwtVerify } from "jose";
 import { describe, expect, it } from "vitest";
 import { InMemoryUnitOfWork } from "../../../test/doubles/InMemoryRepositories.js";
 import { AuthService } from "./AuthService.js";
@@ -71,5 +71,49 @@ describe("AuthService.signIn", () => {
       expect(err).toBeInstanceOf(ValidationError);
       expect((err as ValidationError).message).toBe("Invalid email or password");
     }
+  });
+});
+
+describe("AuthService.verify", () => {
+  const claims = { userId: "user-avery@example.com", role: "AGENT", agentId: "agent-1" };
+  const sign = (alg: string, key = SECRET) =>
+    new SignJWT(claims)
+      .setProtectedHeader({ alg })
+      .setIssuedAt()
+      .setExpirationTime("1h")
+      .sign(new TextEncoder().encode(key));
+
+  it("returns the actor for a token it signed", async () => {
+    const { token } = await service().signIn({ email: "avery@example.com", password: "demo1234" });
+    expect(await service().verify(token)).toEqual(claims);
+  });
+
+  it("refuses an expired, tampered, wrongly signed, or unsigned token", async () => {
+    const { token } = await service().signIn({ email: "avery@example.com", password: "demo1234" });
+    const later = new AuthService(new InMemoryUnitOfWork(), {
+      jwtSecret: SECRET,
+      clock: { now: () => new Date(NOW.getTime() + 9 * 60 * 60 * 1000) },
+    });
+    const [head, body, sig] = token.split(".");
+    const tampered = `${head}.${Buffer.from(JSON.stringify({ ...claims, role: "OPS", agentId: null })).toString("base64url")}.${sig}`;
+    const refused = [
+      () => later.verify(token),
+      () => service().verify(tampered),
+      async () => service().verify(await sign("HS256", randomBytes(32).toString("hex"))),
+      async () => service().verify(await sign("HS512")),
+      () =>
+        service().verify(new UnsecuredJWT(claims).setIssuedAt().setExpirationTime("1h").encode()),
+      () => service().verify(`${head}.${body}`),
+    ];
+    for (const attempt of refused) {
+      await expect(attempt()).rejects.toBeInstanceOf(UnauthenticatedError);
+    }
+  });
+
+  it("answers /me only while the user is still active", async () => {
+    const actor = { userId: "user-avery@example.com", role: "AGENT" as const, agentId: "agent-1" };
+    expect(await service().me(actor)).toMatchObject({ email: "avery@example.com" });
+    const gone = { ...actor, userId: "user-gone@example.com" };
+    await expect(service().me(gone)).rejects.toBeInstanceOf(UnauthenticatedError);
   });
 });

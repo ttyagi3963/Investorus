@@ -11,7 +11,9 @@
 #   3. Unzip the submission into an empty folder inside it and run only
 #      `docker compose up --build`. The build must finish within 20 minutes.
 #   4. GET / must answer 200 within 5 minutes of the containers starting.
-#   5. Report memory: the highest program memory (anonymous memory, sampled every 2 s, excluding
+#   5. Sign in through the api with every demo account the seed creates (read from the seed in the
+#      zip), so the reviewer's credentials are proven to work, not just listed.
+#   6. Report memory: the highest program memory (anonymous memory, sampled every 2 s, excluding
 #      the file cache Linux fills and frees on demand) and the out-of-memory kill count, which
 #      must be 0.
 #
@@ -43,7 +45,7 @@ cleanup() {
 trap cleanup EXIT
 
 # --- 1. the memory cap is enforced ------------------------------------------------------------
-log "1/5 proving the ${MEMORY} memory cap is enforced"
+log "1/6 proving the ${MEMORY} memory cap is enforced"
 set +e
 docker run --rm --memory="$MEMORY" --memory-swap="$MEMORY" alpine:3 \
   sh -c 'head -c 2600m /dev/zero | tail > /dev/null'
@@ -56,7 +58,7 @@ else
 fi
 
 # --- 2. a 2 GB Docker-in-Docker daemon --------------------------------------------------------
-log "2/5 starting Docker-in-Docker (${MEMORY} memory, no swap, ${CPUS} CPUs)"
+log "2/6 starting Docker-in-Docker (${MEMORY} memory, no swap, ${CPUS} CPUs)"
 docker rm -f "$NAME" > /dev/null 2>&1 || true
 docker run -d --name "$NAME" --privileged \
   --memory="$MEMORY" --memory-swap="$MEMORY" --cpuset-cpus="0-$((CPUS - 1))" \
@@ -72,7 +74,7 @@ echo "Docker-in-Docker memory.max = $cap bytes"
 in_dind sh -c 'while sleep 2; do awk "/^anon /{print \$2}" /sys/fs/cgroup/memory.stat; done > /tmp/anon.samples' &
 
 # --- 3. unzip into an empty folder and run only `docker compose up --build` -------------------
-log "3/5 unzipping into an empty folder and running docker compose up --build"
+log "3/6 unzipping into an empty folder and running docker compose up --build"
 # Streamed through stdin, so it works the same from a Linux or a Windows shell.
 docker exec -i "$NAME" sh -c 'cat > /tmp/submission.zip' < "$ZIP"
 in_dind sh -c 'mkdir /submission && cd /submission && unzip -q /tmp/submission.zip && rm /tmp/submission.zip'
@@ -92,7 +94,7 @@ echo "docker compose up --build exited $up_rc after ${build_s}s"
 [ "$build_s" -le "$BUILD_LIMIT_S" ] || fail "build took ${build_s}s, over the 20-minute limit"
 
 # --- 4. the home page within 5 minutes --------------------------------------------------------
-log "4/5 waiting for GET / (limit ${HOME_LIMIT_S}s)"
+log "4/6 waiting for GET / (limit ${HOME_LIMIT_S}s)"
 home_s=""
 if [ "$up_rc" -eq 0 ]; then
   while :; do
@@ -104,8 +106,29 @@ if [ "$up_rc" -eq 0 ]; then
   done
 fi
 
-# --- 5. peak memory ---------------------------------------------------------------------------
-log "5/5 resource use"
+# --- 5. every seeded demo account signs in -------------------------------------------------------
+log "5/6 signing in with every seeded demo account"
+signed_in=0
+if [ -n "$home_s" ]; then
+  # The accounts come from the seed inside the zip: the ones the reviewer can really sign in with.
+  seed=$(in_dind cat /submission/packages/core/src/infra/seed/seed.ts)
+  password=$(printf '%s\n' "$seed" | sed -n 's/.*DEMO_PASSWORD = "\([^"]*\)".*/\1/p')
+  emails=$(printf '%s\n' "$seed" | grep -o 'email: "[^"]*"' | sed 's/email: "\(.*\)"/\1/' | sort -u)
+  [ -n "$password" ] && [ -n "$emails" ] || fail "could not read the demo accounts from the seed"
+  for email in $emails; do
+    body=$(printf '{"email":"%s","password":"%s"}' "$email" "$password")
+    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST http://localhost:4000/api/v1/sessions \
+      -H 'Content-Type: application/json' -d "$body" || true)
+    if [ "$code" = "201" ]; then
+      signed_in=$((signed_in + 1)); echo "ok: $email signed in"
+    else
+      fail "$email could not sign in (HTTP ${code:-none})"
+    fi
+  done
+fi
+
+# --- 6. peak memory ---------------------------------------------------------------------------
+log "6/6 resource use"
 cap_mb=$([ "$cap" != "max" ] && echo $(( cap / 1024 / 1024 )) || echo "max")
 anon_max=$(in_dind sh -c 'sort -n /tmp/anon.samples | tail -1' 2> /dev/null || echo "")
 anon_mb=$([ -n "$anon_max" ] && echo $(( anon_max / 1024 / 1024 )) || echo "n/a")
@@ -132,6 +155,7 @@ cat >> "$SUMMARY" <<EOF
 | Program memory peak (build and run, excludes file cache) | ${anon_mb} MB | ${cap_mb} MB |
 | Out-of-memory kills | ${oom_kills} | 0 |
 | Unzipped | $files files, $(( bytes / 1024 / 1024 )) MB | 20,000 files, 500 MB |
+| Demo accounts signed in | ${signed_in} | every seeded account |
 EOF
 
 if [ "${#failures[@]}" -gt 0 ]; then

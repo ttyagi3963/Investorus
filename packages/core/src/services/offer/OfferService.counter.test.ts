@@ -1,7 +1,9 @@
 // Guards how an investor answers a counter and keeps a backup offer (T310; FR-052, FR-054):
 // accepting a counter takes its terms as the investor's own revision; declining goes back to the
-// investor's last own terms and tells the agent; only the offer's investor answers; and a backup
-// offer's expiry can move later, even after the deadline, while every other term stays fixed.
+// investor's last own terms and tells the agent; terms that have expired are not revived; a
+// revision replaces a counter, but not after the deadline; only the offer's investor answers; and
+// a backup offer's expiry can move later, even after the deadline, while every other term stays
+// fixed.
 import { describe, expect, it } from "vitest";
 import { avery, investor, offer, world } from "../../../test/fixtures/published-package.js";
 import { DecisionWorkflow } from "../../workflows/decision/DecisionWorkflow.js";
@@ -49,6 +51,44 @@ describe("OfferService counter responses", () => {
 
     expect(answered).toMatchObject({ status: "ACTIVE", price: 280_000 });
     expect(await agentNotices()).toContain("COUNTER_ANSWERED");
+  });
+
+  it("refuses to bring back terms that have expired", async () => {
+    const w = world();
+    const pkg = await w.publish("12 Elm St", ["summit"]);
+    const offers = new OfferService(w.uow, { clock: w.clock });
+    const made = await offers.create(summit, pkg.id, offer({ expiresAt: "2026-11-02T00:00:00Z" }));
+    await new DecisionWorkflow(w.uow, { clock: w.clock }).record(avery, pkg.id, {
+      type: "COUNTER",
+      offerId: made.id,
+      version: made.version,
+      counterTerms: offer({ price: 295_000 }),
+    });
+    const counter = (await w.uow.repos.offers.findById(made.id))!;
+    w.clock.at = new Date("2026-11-02T06:00:00Z");
+
+    await expect(
+      offers.respondToCounter(summit, counter.id, { action: "DECLINE", version: counter.version }),
+    ).rejects.toMatchObject({ code: "TERMS_EXPIRED" });
+  });
+
+  it("replaces a counter with the investor's revision, but not after the deadline", async () => {
+    const first = await countered();
+    await expect(
+      first.offers.revise(summit, first.counter.id, {
+        ...offer({ price: 288_000 }),
+        version: first.counter.version,
+      }),
+    ).resolves.toMatchObject({ status: "ACTIVE", price: 288_000 });
+
+    const late = await countered();
+    late.clock.at = new Date(late.pkg.offerDeadline!.getTime() + 1);
+    await expect(
+      late.offers.revise(summit, late.counter.id, {
+        ...offer({ price: 288_000, expiresAt: "2026-11-10T12:00:00Z" }),
+        version: late.counter.version,
+      }),
+    ).rejects.toMatchObject({ code: "OFFER_DEADLINE_PASSED" });
   });
 
   it("lets only the offer's investor answer", async () => {

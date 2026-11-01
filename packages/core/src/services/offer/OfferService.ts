@@ -138,8 +138,15 @@ export class OfferService implements IOfferService {
       const terms =
         action === "ACCEPT"
           ? termsOf(current)
-          : await repos.offers.findLastTerms(offerId, "INVESTOR");
-      const offer = await repos.offers.revise(offerId, version, terms!, { status: "ACTIVE" });
+          : (await repos.offers.findLastTerms(offerId, "INVESTOR"))!;
+      // Terms that have already expired cannot come back to life; a revision sets new ones.
+      if (terms.expiresAt <= this.deps.clock.now()) {
+        throw new BusinessRuleError(
+          "Those terms have expired; revise your offer with a new expiry instead",
+          "TERMS_EXPIRED",
+        );
+      }
+      const offer = await repos.offers.revise(offerId, version, terms, { status: "ACTIVE" });
       await scheduleOfferExpiry(repos, offer);
       await audit(
         repos,

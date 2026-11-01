@@ -4,7 +4,7 @@
 // host renders every page per request, so the settings are read at runtime, never in `next build`.
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { activeBrand } from "@/brand/active-brand";
+import { activeBrand, listBrands } from "@/brand/active-brand";
 import { BrandProvider } from "@/brand/BrandProvider";
 import { brandFont } from "@/brand/fonts";
 import { toCssRule } from "@clever/contracts/brand";
@@ -20,7 +20,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const brand = await activeBrand();
+  const [brand, brands] = await Promise.all([activeBrand(), listBrands()]);
   const font = brandFont(brand.fontFamily);
   const variables = font.stack
     ? { ...brand.cssVariables, "--brand-font-family-base": font.stack }
@@ -33,7 +33,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <style id="brand-tokens" dangerouslySetInnerHTML={{ __html: toCssRule(variables) }} />
       </head>
       <body className="bg-page font-body text-body text-default antialiased">
-        <BrandProvider content={brand.content}>
+        <BrandProvider content={brand.content} brands={brands}>
           <Providers>{children}</Providers>
         </BrandProvider>
       </body>

@@ -3,7 +3,7 @@
 // legacy CSV, which is uploaded and imported in the background; the page follows the batch and
 // shows how many rows were imported, updated, and rejected, the columns it ignored, and every
 // row's result with its reason. Progress is announced politely, not on every refresh.
-import type { ImportBatchView } from "@clever/contracts/investor";
+import { MAX_IMPORT_BYTES, type ImportBatchView } from "@clever/contracts/investor";
 import { PhotoPicker } from "@clever/ui";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { useInvestorImport } from "@/features/imports/useInvestorImport";
@@ -15,6 +15,7 @@ const STATUS_TEXT: Record<ImportBatchView["status"], string> = {
   COMPLETED: "Finished",
   FAILED: "Failed",
 };
+const LIMIT_MB = MAX_IMPORT_BYTES / (1024 * 1024);
 const OUTCOME_TEXT = { IMPORTED: "Imported", UPDATED: "Updated", REJECTED: "Rejected" } as const;
 
 function Summary({ batch }: { batch: ImportBatchView }) {
@@ -25,15 +26,16 @@ function Summary({ batch }: { batch: ImportBatchView }) {
       className="flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card"
     >
       <h2 className="font-heading text-heading-sm">{batch.fileName}</h2>
+      {/* Only the status is announced; the running row count changes on every refresh. */}
       <p role="status" aria-live="polite">
         {STATUS_TEXT[batch.status]}
-        {!done && batch.totalRows === null && batch.processedRows > 0
-          ? ` (${batch.processedRows} rows so far)`
-          : ""}
         {done && batch.error === null
           ? `: ${batch.imported} imported, ${batch.updated} updated, ${batch.rejected} rejected.`
           : "."}
       </p>
+      {!done && batch.processedRows > 0 && (
+        <p className="text-label text-muted">{batch.processedRows} rows done so far</p>
+      )}
       {batch.error && <ErrorNotice error={{ message: batch.error }} />}
       {batch.ignoredColumns.length > 0 && (
         <p className="text-label text-muted">Columns ignored: {batch.ignoredColumns.join(", ")}</p>
@@ -76,10 +78,10 @@ export default function ImportInvestorsPage() {
     <div className="flex max-w-4xl flex-col gap-stack-lg">
       <h1 className="font-heading text-heading-lg">Import investors</h1>
       <p>
-        Upload the investor list exported from the spreadsheet as CSV, up to 5 MB. Each valid row
-        creates or updates the investor and their one default buy box, named Legacy Import; each
-        invalid row is listed with its reason. Importing the same file again updates the same
-        investors and creates no duplicates.
+        Upload the investor list exported from the spreadsheet as CSV, up to {LIMIT_MB} MB. Each
+        valid row creates or updates the investor and their one default buy box, named Legacy
+        Import; each invalid row is listed with its reason. Importing the same file again updates
+        the same investors and creates no duplicates.
       </p>
       <div>
         <PhotoPicker

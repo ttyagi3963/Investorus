@@ -12,7 +12,9 @@ const POLL_MS = 1_000;
 
 function problemWith(file: File): string | null {
   if (!file.name.toLowerCase().endsWith(".csv")) return `${file.name}: choose a CSV file.`;
-  if (file.size > MAX_IMPORT_BYTES) return `${file.name}: the limit is 5 MB.`;
+  if (file.size > MAX_IMPORT_BYTES) {
+    return `${file.name}: the limit is ${MAX_IMPORT_BYTES / (1024 * 1024)} MB.`;
+  }
   return null;
 }
 

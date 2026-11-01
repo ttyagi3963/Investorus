@@ -39,6 +39,10 @@ beforeAll(async () => {
       addressHash: "hash-1",
       priceExpectationMin: 300_000,
       priceExpectationMax: 350_000,
+      closingWindowStart: null,
+      closingWindowEnd: null,
+      currentlyListed: null,
+      eligiblePrograms: [],
     }),
   );
   packageId = created.id;

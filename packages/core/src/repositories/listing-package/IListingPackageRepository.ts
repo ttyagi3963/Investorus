@@ -1,6 +1,6 @@
 // The listing-package port (T247). Every read takes the agent, so a query can only return that
 // agent's packages (FR-080), and an update names the version it read, so a stale edit is refused.
-import type { ListingPackage } from "@clever/contracts/listing-package";
+import type { ListingPackage, OfferProgram } from "@clever/contracts/listing-package";
 
 export type NewListingPackage = {
   agentId: string;
@@ -9,16 +9,33 @@ export type NewListingPackage = {
   addressHash: string;
   priceExpectationMin: number;
   priceExpectationMax: number;
+  /** `YYYY-MM-DD`. */
+  closingWindowStart: string | null;
+  closingWindowEnd: string | null;
+  currentlyListed: boolean | null;
+  eligiblePrograms: OfferProgram[];
 };
 export type ListingPackagePatch = Partial<
-  Pick<NewListingPackage, "addressHash" | "priceExpectationMin" | "priceExpectationMax">
+  Pick<
+    NewListingPackage,
+    | "addressHash"
+    | "priceExpectationMin"
+    | "priceExpectationMax"
+    | "closingWindowStart"
+    | "closingWindowEnd"
+    | "currentlyListed"
+    | "eligiblePrograms"
+  >
 >;
 
 export interface IListingPackageRepository {
   create(pkg: NewListingPackage): Promise<ListingPackage>;
   findForAgent(agentId: string, id: string): Promise<ListingPackage | null>;
   listByAgent(agentId: string): Promise<ListingPackage[]>;
-  /** The package that already has this address, whichever agent owns it (the FR-013 block). */
+  /**
+   * The active package that already has this address, whichever agent owns it (the FR-013
+   * block). A withdrawn package does not count.
+   */
   findByAddressHash(addressHash: string): Promise<Pick<ListingPackage, "id" | "agentId"> | null>;
   /**
    * Applies the patch and moves to the next version, only if the stored version is `version`;

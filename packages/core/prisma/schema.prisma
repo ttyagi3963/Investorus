@@ -24,18 +24,19 @@ enum Role {
 // A login account, signed in to by email (stored lowercase). CHECK User_role_link_check
 // (migration): an AGENT has agentId only, an INVESTOR has investorId only, OPS has neither.
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  role         Role
-  displayName  String
-  agentId      String?   @unique
-  agent        Agent?    @relation(fields: [agentId], references: [id])
-  investorId   String?   @unique
-  investor     Investor? @relation(fields: [investorId], references: [id])
-  active       Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  role          Role
+  displayName   String
+  agentId       String?        @unique
+  agent         Agent?         @relation(fields: [agentId], references: [id])
+  investorId    String?        @unique
+  investor      Investor?      @relation(fields: [investorId], references: [id])
+  active        Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  notifications Notification[]
 }
 
 // The person behind an AGENT login; owns listing packages. Email is how the seed and ops find them.
@@ -76,6 +77,8 @@ model Investor {
   updatedAt             DateTime       @updatedAt
   user                  User?
   buyBoxes              BuyBox[]
+  matches               Match[]
+  offers                Offer[]
 }
 
 // The homeowner's contact details for one listing package. fullName, email, and phone hold
@@ -136,33 +139,67 @@ model Property {
   package        ListingPackage?
 }
 
-// Sprint 1 packages are drafts only; the other statuses arrive with publishing.
+// The package lifecycle (data-model.md, PackageStatus). Sprint 2 adds publishing and withdrawal;
+// the deal statuses arrive with accepting offers.
 enum PackageStatus {
   DRAFT
+  ACCEPTING_OFFERS
+  WITHDRAWN
 }
 
 // A listing package: one agent, one seller, one property (both unique). addressHash copies the
-// property's, so one address can have only one package (FR-013; it becomes a partial unique on
-// active statuses when packages can close). CHECK ListingPackage_price_check: 0 < min <= max.
+// property's, so one address has only one active package (FR-013): a partial unique index in the
+// migration, which a withdrawn package does not count against. CHECKs: 0 < min price <= max, and
+// the closing window starts no later than it ends. listingVersion is 0 while a draft, 1 at
+// publish, and +1 on each material edit; each value has a ListingVersion snapshot.
 model ListingPackage {
-  id                  String        @id @default(cuid())
+  id                  String           @id @default(cuid())
   agentId             String
-  agent               Agent         @relation(fields: [agentId], references: [id])
-  sellerId            String        @unique
-  seller              Seller        @relation(fields: [sellerId], references: [id])
-  propertyId          String        @unique
-  property            Property      @relation(fields: [propertyId], references: [id])
-  addressHash         String        @unique
-  status              PackageStatus @default(DRAFT)
+  agent               Agent            @relation(fields: [agentId], references: [id])
+  sellerId            String           @unique
+  seller              Seller           @relation(fields: [sellerId], references: [id])
+  propertyId          String           @unique
+  property            Property         @relation(fields: [propertyId], references: [id])
+  addressHash         String
+  status              PackageStatus    @default(DRAFT)
+  round               Int              @default(1)
   priceExpectationMin Int
   priceExpectationMax Int
+  closingWindowStart  DateTime?        @db.Date
+  closingWindowEnd    DateTime?        @db.Date
+  currentlyListed     Boolean?
+  eligiblePrograms    OfferProgram[]
+  offerDeadline       DateTime?
+  publishedAt         DateTime?
+  listingVersion      Int              @default(0)
   // Optimistic concurrency: an edit names the version it read, and a stale one is refused.
-  version             Int           @default(1)
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  version             Int              @default(1)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
   photos              Photo[]
+  versions            ListingVersion[]
+  matches             Match[]
+  offers              Offer[]
+  notifications       Notification[]
 
   @@index([agentId, status])
+  @@index([addressHash])
+}
+
+// What a package said at each listing version (append-only; a trigger refuses UPDATE and DELETE):
+// the listing facts every criterion reads, with no seller PII. Matching runs against a version,
+// so an investor's match always names what they were shown.
+model ListingVersion {
+  id               String         @id @default(cuid())
+  packageId        String
+  package          ListingPackage @relation(fields: [packageId], references: [id])
+  listingVersion   Int
+  round            Int
+  snapshot         Json
+  evaluatorVersion Int
+  createdAt        DateTime       @default(now())
+
+  @@unique([packageId, listingVersion])
 }
 
 // One uploaded photo of a package; the image itself is in the storage provider under
@@ -266,4 +303,147 @@ model BuyBoxGeography {
 
   @@unique([buyBoxId, kind, value])
   @@index([kind, value])
+}
+
+// What first shared a package with an investor.
+enum MatchTrigger {
+  PUBLISH
+  PACKAGE_EDIT
+}
+
+// An investor's access to a package in one offer round (T281; FR-022, FR-040): created when at
+// least one of their buy boxes matches, and never deleted by a later edit, so a shared package
+// stays visible. One row per investor per package per round, so a re-run cannot notify twice.
+model Match {
+  id                         String         @id @default(cuid())
+  packageId                  String
+  package                    ListingPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  investorId                 String
+  investor                   Investor       @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  round                      Int
+  matchedBuyBoxIds           String[]
+  trigger                    MatchTrigger
+  firstMatchedAt             DateTime       @default(now())
+  // The listing version the investor was last told about, so an edit notifies them once.
+  lastNotifiedListingVersion Int?
+
+  @@unique([packageId, investorId, round])
+  @@index([investorId])
+}
+
+enum JobType {
+  MATCH_PACKAGE
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// A durable unit of background work (T281; constitution VIII): the worker claims QUEUED jobs
+// whose runAt has come, with FOR UPDATE SKIP LOCKED, so a crash or restart loses nothing. A
+// partial unique index (migration) allows one live job per (type, dedupeKey). correlationId is
+// the request that enqueued it, logged with every line of its run. error is redacted.
+model Job {
+  id            String    @id @default(cuid())
+  type          JobType
+  status        JobStatus @default(QUEUED)
+  dedupeKey     String
+  payload       Json
+  runAt         DateTime  @default(now())
+  retryCount    Int       @default(0)
+  maxRetries    Int       @default(3)
+  error         String?
+  lockedAt      DateTime?
+  lockedBy      String?
+  correlationId String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status, runAt])
+}
+
+enum NotificationType {
+  PACKAGE_MATCHED
+  PACKAGE_CHANGED
+  PACKAGE_WITHDRAWN
+}
+
+// One in-app message for one user (T281), written in the same transaction as the change it
+// reports. Title and body never carry seller details.
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  packageId String?
+  package   ListingPackage?  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, createdAt])
+}
+
+// Sprint 2 offers are active or declined (when the package is withdrawn); countering,
+// accepting, and expiring arrive with Sprint 3.
+enum OfferStatus {
+  ACTIVE
+  DECLINED
+}
+
+enum PaymentType {
+  CASH
+  FINANCED
+}
+
+enum Contingency {
+  INSPECTION
+  FINANCING
+  APPRAISAL
+  TITLE
+  SALE_OF_HOME
+}
+
+// An investor's offer on a package in one round (T281; FR-042), at its latest revision. A partial
+// unique index (migration) allows one ACTIVE offer per investor per package per round. CHECKs:
+// price > 0, earnest money and fees >= 0, and a FINANCED offer lists the FINANCING contingency.
+model Offer {
+  id                 String          @id @default(cuid())
+  packageId          String
+  package            ListingPackage  @relation(fields: [packageId], references: [id])
+  investorId         String
+  investor           Investor        @relation(fields: [investorId], references: [id])
+  round              Int
+  status             OfferStatus     @default(ACTIVE)
+  currentRevision    Int             @default(1)
+  price              Int
+  paymentType        PaymentType
+  closingDate        DateTime        @db.Date
+  earnestMoney       Int
+  contingencies      Contingency[]
+  feesAndConcessions Int
+  expiresAt          DateTime
+  version            Int             @default(1)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  revisions          OfferRevision[]
+
+  @@index([packageId, round])
+}
+
+// Each set of terms an offer has had (append-only; a trigger refuses UPDATE and DELETE), so the
+// agent can see how an offer changed.
+model OfferRevision {
+  id        String   @id @default(cuid())
+  offerId   String
+  offer     Offer    @relation(fields: [offerId], references: [id])
+  revision  Int
+  terms     Json
+  createdAt DateTime @default(now())
+
+  @@unique([offerId, revision])
 }

@@ -21,6 +21,10 @@ async function setup() {
     addressHash: "hash-1",
     priceExpectationMin: 300_000,
     priceExpectationMax: 350_000,
+    closingWindowStart: null,
+    closingWindowEnd: null,
+    currentlyListed: null,
+    eligiblePrograms: [],
   });
   return { photos: new PhotoService(uow, storage), storage, packageId: pkg.id };
 }

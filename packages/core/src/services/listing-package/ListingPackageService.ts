@@ -1,7 +1,8 @@
 // The draft package rules (T259): an agent creates, reads, lists, and edits their own drafts. The
 // service validates input, derives city and state from the ZIP, blocks a second package for an
-// address (FR-013), keeps agents to their own packages (FR-080), and checks an edit on the merged
-// result, because some rules span the stored row and the change.
+// address (FR-013), keeps agents to their own packages (FR-080), checks an edit on the merged
+// result, because some rules span the stored row and the change, and audits each change (XII).
+import type { AuditAction } from "@clever/contracts/audit";
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -14,6 +15,7 @@ import {
   createListingPackageInputSchema,
   updateListingPackageInputSchema,
   type ListingPackage,
+  type UpdateListingPackageInput,
 } from "@clever/contracts/listing-package";
 import type { Photo } from "@clever/contracts/photo";
 import type { Property } from "@clever/contracts/property";
@@ -21,6 +23,7 @@ import type { Seller } from "@clever/contracts/seller";
 import type { IClock } from "../../providers/clock/IClock.js";
 import type { IGeoProvider, ZipInfo } from "../../providers/geo/IGeoProvider.js";
 import type { AddressHasher } from "../../providers/pii-cipher/IPiiCipher.js";
+import type { NewAuditEntry } from "../../repositories/audit/IAuditRepository.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 
 /** A package with everything its agent sees: the seller, the property, and the photos. */
@@ -42,6 +45,20 @@ type Deps = { geo: IGeoProvider; addressHash: AddressHasher; clock: IClock };
 
 const invalid = (fields: FieldError[]) => new ValidationError("Some fields are invalid", fields);
 const NOT_FOUND = "Package not found";
+
+/** The names of the fields an edit changes, never their values, for the audit entry. */
+const changedFields = ({ version: _version, ...data }: UpdateListingPackageInput): string[] =>
+  Object.entries(data)
+    .flatMap(([field, value]) => {
+      if (value === undefined) return [];
+      if (field === "seller" || field === "property") {
+        return Object.entries(value as Record<string, unknown>)
+          .filter(([, v]) => v !== undefined)
+          .map(([key]) => `${field}.${key}`);
+      }
+      return [field];
+    })
+    .sort();
 
 export class ListingPackageService implements IListingPackageService {
   constructor(
@@ -95,6 +112,7 @@ export class ListingPackageService implements IListingPackageService {
         currentlyListed: data.currentlyListed ?? null,
         eligiblePrograms: data.eligiblePrograms ?? [],
       });
+      await repos.audit.append(this.auditEntry(actor, pkg.id, "PACKAGE_CREATED"));
       return { package: pkg, seller: savedSeller, property: savedProperty, photos: [] };
     });
   }
@@ -194,8 +212,23 @@ export class ListingPackageService implements IListingPackageService {
           })
         : property;
       const photos = await repos.photos.listByPackage(id);
+      await repos.audit.append({
+        ...this.auditEntry(actor, id, "PACKAGE_UPDATED"),
+        details: { fields: changedFields(data) },
+      });
       return { package: pkg, seller: savedSeller, property: savedProperty, photos };
     });
+  }
+
+  private auditEntry(actor: Actor, packageId: string, action: AuditAction): NewAuditEntry {
+    return {
+      actorType: "USER",
+      actorId: actor.userId,
+      action,
+      entityType: "ListingPackage",
+      entityId: packageId,
+      outcome: "SUCCESS",
+    };
   }
 
   private agentOf(actor: Actor): string {

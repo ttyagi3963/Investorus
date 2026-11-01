@@ -3,6 +3,7 @@
 export { InfrastructureError } from "./errors/InfrastructureError.js";
 export { redactPii } from "./errors/redact-pii.js";
 export { translateError, type ErrorBody } from "./errors/http-error-translator.js";
+export { currentTraceId, runWithTrace } from "./infra/trace-context.js";
 export type { IErrorReporter } from "./providers/error-reporter/IErrorReporter.js";
 export type { AddressHasher, IPiiCipher } from "./providers/pii-cipher/IPiiCipher.js";
 export type { IClock } from "./providers/clock/IClock.js";
@@ -11,6 +12,7 @@ export type { IStorageProvider, StoredObject } from "./providers/storage/IStorag
 export type { IDatabase } from "./unit-of-work/IDatabase.js";
 export type { IUnitOfWork, UnitOfWorkRepositories } from "./unit-of-work/IUnitOfWork.js";
 export type { IUserRepository } from "./repositories/user/IUserRepository.js";
+export type { IAuditRepository, NewAuditEntry } from "./repositories/audit/IAuditRepository.js";
 export type {
   ISellerRepository,
   NewSeller,

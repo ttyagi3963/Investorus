@@ -465,7 +465,8 @@ delivery handler.
 | actorType / actorId | `USER` \| `SYSTEM` / string | |
 | action | e.g., `PACKAGE_PUBLISHED`, `MATCH_EVALUATED`, `OFFER_SUBMITTED`, `OFFER_REVISED`, `DECISION_RECORDED`, `DEAL_MILESTONE`, `DEAL_FELL_THROUGH`, `BACKUP_PROMOTED`, `PII_ACCESSED`, `CONFIG_CHANGED`, `IMPORT_COMPLETED` | |
 | entityType / entityId | string / cuid | |
-| outcome | `SUCCESS` \| `REJECTED` | rejections are audited too (VII) |
+| outcome | `SUCCESS` \| `REJECTED` | rejections are audited too (VII); Sprint 2 writes only SUCCESS, so REJECTED arrives with the first audited rejection |
+| correlationId | string? | the trace ID of the request or job that wrote the entry (added 2026-11-01, T282) |
 | details | JSONB | PII-redacted |
 
 A DB trigger rejects UPDATE and DELETE on this table. Index: `(entityType, entityId,

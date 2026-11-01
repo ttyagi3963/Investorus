@@ -1,7 +1,8 @@
 // @vitest-environment node
 // Guards the BFF's rules (T262, research R12): a state-changing request from another origin is
 // refused before it reaches the api (CSRF); the session token travels only in an HTTP-only cookie
-// and is forwarded as a bearer token; and the api's answer comes back unchanged.
+// and is forwarded as a bearer token; the api's answer comes back unchanged; and every call to the
+// api carries one trace ID, the caller's when its `traceparent` is valid (T283).
 import { describe, expect, it, vi } from "vitest";
 import { forwardToApi } from "./proxy";
 import { signIn, signOut } from "./session";
@@ -60,6 +61,36 @@ describe("forwardToApi", () => {
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer tok123");
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Package not found", code: "NOT_FOUND" });
+  });
+});
+
+describe("tracing", () => {
+  it("forwards the caller's trace ID as a fresh traceparent, and creates one when it is missing or malformed", async () => {
+    const traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+    const fetch = vi
+      .fn()
+      .mockImplementation(async () => json({ error: "Package not found", code: "NOT_FOUND" }, 404));
+    const send = (traceparent?: string) =>
+      forwardToApi(
+        new Request(`${SITE}/bff/listing-packages`, {
+          headers: traceparent ? { traceparent } : {},
+        }),
+        ["listing-packages"],
+        { apiUrl: API, fetch },
+      );
+    const sent = () =>
+      new Headers((fetch.mock.lastCall as [string, RequestInit])[1].headers).get("traceparent");
+
+    await send(`00-${traceId}-00f067aa0ba902b7-01`);
+    expect(sent()).toMatch(new RegExp(`^00-${traceId}-[0-9a-f]{16}-01$`));
+    for (const missingOrBad of [
+      undefined,
+      "00-00000000000000000000000000000000-00f067aa0ba902b7-01",
+    ]) {
+      await send(missingOrBad);
+      expect(sent()).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+      expect(sent()).not.toContain("00000000000000000000000000000000");
+    }
   });
 });
 

@@ -447,3 +447,33 @@ model OfferRevision {
 
   @@unique([offerId, revision])
 }
+
+// Who caused an audited change: a signed-in user, or the system (a job such as matching).
+enum AuditActorType {
+  USER
+  SYSTEM
+}
+
+// Sprint 2 audits only changes that happened; REJECTED arrives with the first audited rejection.
+enum AuditOutcome {
+  SUCCESS
+}
+
+// The domain audit log (T282; constitution XII): one row per audit-sensitive change, written in
+// the same transaction as the change, append-only (a trigger refuses UPDATE and DELETE). `action`
+// and `entityType` are text checked against AUDIT_ACTIONS in code, so a new action needs no
+// migration. `details` never carries PII; `correlationId` is the trace ID of the request or job.
+model AuditLog {
+  id            String         @id @default(cuid())
+  occurredAt    DateTime       @default(now())
+  actorType     AuditActorType
+  actorId       String?
+  action        String
+  entityType    String
+  entityId      String
+  outcome       AuditOutcome
+  correlationId String?
+  details       Json           @default("{}")
+
+  @@index([entityType, entityId, occurredAt])
+}

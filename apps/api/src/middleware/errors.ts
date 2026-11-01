@@ -2,6 +2,7 @@
 // middleware goes through core's translateError, which names invalid fields, keeps domain statuses,
 // and gives anything unexpected a generic message (constitution VII). Routes never catch errors.
 // The JSON body parser's own errors are the caller's mistakes, so they become domain errors first.
+// Every error body names the request's trace ID as `requestId`, so a user can quote it (T283).
 import { DomainError, ValidationError } from "@clever/contracts/common";
 import { translateError, type IErrorReporter } from "@clever/core";
 import type { ErrorRequestHandler, RequestHandler } from "express";
@@ -22,12 +23,12 @@ function fromBodyParser(err: unknown): unknown {
 }
 
 export const notFound: RequestHandler = (_req, res) => {
-  res.status(404).json({ error: "Not found", code: "NOT_FOUND" });
+  res.status(404).json({ error: "Not found", code: "NOT_FOUND", requestId: res.locals.traceId });
 };
 
 export function errorTranslator(reporter: IErrorReporter): ErrorRequestHandler {
   return (err, _req, res, _next) => {
     const { status, body } = translateError(fromBodyParser(err), { reporter });
-    res.status(status).json(body);
+    res.status(status).json({ ...body, requestId: res.locals.traceId });
   };
 }

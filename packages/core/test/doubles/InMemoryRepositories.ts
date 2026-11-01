@@ -8,6 +8,10 @@ import type { Property } from "@clever/contracts/property";
 import type { Seller } from "@clever/contracts/seller";
 import type { User, UserCredentials } from "@clever/contracts/user";
 import type {
+  IAuditRepository,
+  NewAuditEntry,
+} from "../../src/repositories/audit/IAuditRepository.js";
+import type {
   IListingPackageRepository,
   ListingPackagePatch,
   NewListingPackage,
@@ -144,12 +148,20 @@ export class InMemoryPhotoRepository implements IPhotoRepository {
   }
 }
 
+export class InMemoryAuditRepository implements IAuditRepository {
+  readonly entries: NewAuditEntry[] = [];
+  async append(entry: NewAuditEntry) {
+    this.entries.push(entry);
+  }
+}
+
 export class InMemoryUnitOfWork implements IUnitOfWork {
   readonly repos: UnitOfWorkRepositories & {
     sellers: InMemorySellerRepository;
     properties: InMemoryPropertyRepository;
     packages: InMemoryListingPackageRepository;
     photos: InMemoryPhotoRepository;
+    audit: InMemoryAuditRepository;
   };
   constructor(users: UserCredentials[] = []) {
     this.repos = {
@@ -158,6 +170,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       properties: new InMemoryPropertyRepository(),
       packages: new InMemoryListingPackageRepository(),
       photos: new InMemoryPhotoRepository(),
+      audit: new InMemoryAuditRepository(),
     };
   }
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {

@@ -2,6 +2,7 @@
 // repository bound to that transaction, so all of a change's writes commit or roll back together.
 import type { PrismaClient } from "../generated/prisma/client.js";
 import type { IPiiCipher } from "../providers/pii-cipher/IPiiCipher.js";
+import { PrismaAuditRepositoryImpl } from "../repositories/audit/PrismaAuditRepositoryImpl.js";
 import { PrismaListingPackageRepositoryImpl } from "../repositories/listing-package/PrismaListingPackageRepositoryImpl.js";
 import { PrismaPhotoRepositoryImpl } from "../repositories/photo/PrismaPhotoRepositoryImpl.js";
 import { PrismaPropertyRepositoryImpl } from "../repositories/property/PrismaPropertyRepositoryImpl.js";
@@ -23,6 +24,7 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
         properties: new PrismaPropertyRepositoryImpl(tx, this.cipher),
         packages: new PrismaListingPackageRepositoryImpl(tx),
         photos: new PrismaPhotoRepositoryImpl(tx),
+        audit: new PrismaAuditRepositoryImpl(tx),
       }),
     );
   }

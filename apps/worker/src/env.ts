@@ -6,7 +6,7 @@ import { z } from "zod";
 
 const common = z.object({
   DATABASE_URL: z.string().min(1),
-  PII_ENCRYPTION_KEY: z.string().regex(/^vd+:/, "Must be <version>:<base64 key>"),
+  PII_ENCRYPTION_KEY: z.string().regex(/^v\d+:/, "Must be <version>:<base64 key>"),
   SANDBOX_URL: z.url(),
   PUBLIC_SANDBOX_URL: z.url(),
   SANDBOX_INTERNAL_TOKEN: z.string().min(16),
@@ -30,8 +30,7 @@ export function parseEnv(env: NodeJS.ProcessEnv): WorkerEnv {
   const parsed = workerEnvSchema.safeParse(env);
   if (!parsed.success) {
     const names = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
-    process.stderr.write(`worker: missing or invalid settings: ${names}
-`);
+    process.stderr.write(`worker: missing or invalid settings: ${names}\n`);
     process.exit(1);
   }
   return parsed.data;

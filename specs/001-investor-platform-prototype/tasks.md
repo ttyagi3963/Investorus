@@ -178,7 +178,8 @@ releasable: every merge must leave the zip starting with one command (T233 check
     is edited on later pushes. Advisory: the human review stays the gate (XVII.3);
   - .github/workflows/claude.yml: `@claude` in issues, PR comments, and reviews, only when the
     actor and the comment's author are the repository owner; `--max-turns 30`;
-  - .github/workflows/review-threads.yml: the `review-threads` check fails while any review
+  - .github/workflows/review-threads.yml (removed 2026-10-31 by the owner: a one-person project
+    needs no check on open review comments): the `review-threads` check fails while any review
     thread is unresolved (a visible check: the free private plan has no rulesets, so merging on
     green is a convention);
     re-run it after resolving threads, because resolving one does not trigger a workflow;
@@ -244,7 +245,7 @@ releasable: every merge must leave the zip starting with one command (T233 check
   - short-lived branch naming `t###-short-summary`, rebased on `main`; one task or small group
     of tasks per PR, merged within about a day (trunk-based development, above)
 
-**Checkpoint**: every pull request runs CI, the Claude review, and the review-threads check, and
+**Checkpoint**: every pull request runs CI and the Claude review, and
 merges only when all are green and it is approved (by convention: the free private plan has no
 rulesets); every merge to `main` produces a tested zip that starts with one command within
 the time limits.
@@ -381,7 +382,7 @@ the sandbox, and app skeletons that every story needs.
 
 **Phase rule**: Phase 2 starts only after Sprint 0 is complete, and no work starts outside its
 phase. A task that belongs to a later phase moves there instead of being pulled forward. Every
-task merges through the Sprint 0 pipeline (CI, Claude review, review threads, and the submission
+task merges through the Sprint 0 pipeline (CI, Claude review, and the submission
 rehearsal on `main`).
 
 ### Contracts (packages/contracts)

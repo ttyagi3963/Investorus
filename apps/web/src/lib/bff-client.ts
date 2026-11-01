@@ -1,9 +1,11 @@
 // The browser's api client (T093's Sprint 1 part): every call goes to the BFF at /bff, which adds
 // the session cookie's token, so browser code never sees the token.
 import {
+  buyBoxesClient,
   createApiClient,
   dealsClient,
   investorClient,
+  investorImportsClient,
   listingPackagesClient,
   notificationsClient,
   photosClient,
@@ -18,3 +20,5 @@ export const photos = photosClient(bff);
 export const investor = investorClient(bff);
 export const notifications = notificationsClient(bff);
 export const deals = dealsClient(bff);
+export const buyBoxes = buyBoxesClient(bff);
+export const investorImports = investorImportsClient(bff);

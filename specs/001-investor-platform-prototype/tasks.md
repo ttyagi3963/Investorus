@@ -733,8 +733,8 @@ data-model.md, contracts/api.md, and contracts/investor-import.md; for the owner
 
 ### PR: screens (apps/web)
 
-- [ ] T324 Investor buy boxes: the list at `/investor/buy-boxes` (name, status, strategy, default badge; add a box; pause and resume) and the editor at `/investor/buy-boxes/[id]` and `/investor/buy-boxes/new`, its fields generated from the registry's form metadata, each criterion blank for "any", field-level errors, and a note that changes apply to new packages and to packages still taking offers; a link in the investor header (from T188)
-- [ ] T325 The ops area and its import page: OPS signs in to `/ops`; the page at `/ops/imports` uploads the CSV with the returned instruction, polls the batch, and shows the counts, the ignored columns, and a table of row results with reasons (from T189)
+- [X] T324 Investor buy boxes: the list at `/investor/buy-boxes` (name, status, strategy, default badge; add a box; pause and resume) and the editor at `/investor/buy-boxes/[id]` and `/investor/buy-boxes/new`, its fields generated from the registry's form metadata, each criterion blank for "any", field-level errors, and a note that changes apply to new packages and to packages still taking offers; a link in the investor header (from T188)
+- [X] T325 The ops area and its import page: OPS signs in to `/ops`; the page at `/ops/imports` uploads the CSV with the returned instruction, polls the batch, and shows the counts, the ignored columns, and a table of row results with reasons (from T189)
 
 Every screen in T324–T325 keeps XI: each field has a label, errors are tied to their field and
 announced, and the upload's progress is announced politely.

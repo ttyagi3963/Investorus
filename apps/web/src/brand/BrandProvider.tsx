@@ -2,7 +2,7 @@
 // Hands the active brand's content (name, logo, sign-in copy) to client components (T327;
 // constitution X: the brand is resolved once in the root layout and passed down through context).
 import { createContext, use, type ReactNode } from "react";
-import type { BrandContent } from "./brands";
+import type { BrandContent } from "@clever/contracts/brand";
 
 const BrandContext = createContext<BrandContent | null>(null);
 

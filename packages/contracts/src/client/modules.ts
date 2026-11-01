@@ -2,6 +2,7 @@
 // uses them against the BFF: `session` signs in and out through the BFF's cookie route, and the
 // others go through the BFF's proxy to the api with the cookie's token.
 import type { TimelineEntryView } from "../audit/audit.js";
+import type { BrandSummary, BrandThemeView } from "../brand/brand.js";
 import type { BuyBoxInput } from "../buy-box/inputs.js";
 import type { BuyBoxView } from "../buy-box/views.js";
 import type {
@@ -161,6 +162,17 @@ export const photosClient = (api: ApiClient) => ({
 });
 
 /** Operations' console (T341): packages and their trace, deliveries, the CRM, and outage modes. */
+/** The brands (T348): the list and a theme are public; changing a theme is operations only. */
+export const brandsClient = (api: ApiClient) => ({
+  list: () => api.request<BrandSummary[]>("GET", "/brands"),
+  theme: (brandId: string) =>
+    api.request<BrandThemeView>("GET", `/brands/${encodeURIComponent(brandId)}/theme`),
+  updateTheme: (brandId: string, tokens: unknown) =>
+    api.request<BrandThemeView>("PUT", `/ops/brands/${encodeURIComponent(brandId)}/theme`, {
+      tokens,
+    }),
+});
+
 export const opsClient = (api: ApiClient) => ({
   packages: () => api.request<OpsPackageRow[]>("GET", "/ops/listing-packages"),
   trace: (id: string) =>

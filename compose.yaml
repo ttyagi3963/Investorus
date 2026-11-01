@@ -1,10 +1,10 @@
 # One-command start (T232; T101 extends it): `docker compose up --build`, nothing else.
 #
 # Start order: postgres and redis (both healthchecked) → migrate (migrations and seed, then exits)
-# → api and worker → web. The sandbox waits only for postgres (its records live in the `sandbox`
-# schema). Every server listens on 0.0.0.0 inside its container. migrate must not run before the
-# database accepts connections, and the worker needs Redis for its delivery queue; the other app
-# services are ordered by start only.
+# → api and worker → web, once the api answers its health check (every page reads its brand from
+# the api, T349). The sandbox waits only for postgres (its records live in the `sandbox` schema).
+# Every server listens on 0.0.0.0 inside its container. migrate must not run before the database
+# accepts connections, and the worker needs Redis for its delivery queue.
 #
 # Redis carries the outbox deliveries for the worker (T339; constitution XVIII). It keeps no data
 # (no snapshots, no append-only file) and never evicts: the deliveries' state is in PostgreSQL, and
@@ -88,6 +88,16 @@ services:
         condition: service_completed_successfully
     ports:
       - "4000:4000"
+    # The image has no curl; Node's fetch asks the api's own health route.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"
+      interval: 3s
+      timeout: 3s
+      retries: 20
     restart: unless-stopped
 
   worker:
@@ -120,7 +130,7 @@ services:
       migrate:
         condition: service_completed_successfully
       api:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "3000:3000"
     restart: unless-stopped

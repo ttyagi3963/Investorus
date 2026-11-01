@@ -373,6 +373,135 @@ address is refused; another agent cannot open it; the submission rehearsal passe
 
 ---
 
+## Sprint 2: An Agent Publishes, Matched Investors See It and Make Offers
+
+**Goal** (owner, 2026-10-31): the demo agent publishes a draft from the listings page or the
+package page. Publishing names every field that blocks it. A published package is matched against
+every active buy box in the worker, and only matched investors can see it: each gets one in-app
+notification, sees the package on their dashboard with the time left, sees no seller details,
+and can make an offer and revise it. An investor whose buy box does not match gets "not found".
+The agent sees how many investors matched, the offers that came in, and a timeline of what
+happened to the package; can edit a published package (matching runs again); and can withdraw
+it. Every request and job can be traced end to end.
+
+**Decisions** (owner, 2026-10-31):
+- **Publish from two places.** Each DRAFT row on `/agent` and the package page have a Publish
+  button. It stays enabled; pressing it either publishes or lists every failing field, with a
+  link to the field.
+- **The publish fields join the form:** offer deadline (default now + 72 h), closing window,
+  "currently listed?", and eligible programs (FR-012). Publishing also needs at least one photo
+  and the fields the property type requires.
+- **Matching runs when a package is published or materially edited, as a durable job.** Publish
+  sets ACCEPTING_OFFERS and writes a `MATCH_PACKAGE` job in the same transaction; the worker polls
+  the `Job` table (`FOR UPDATE SKIP LOCKED`) and runs it, so a crash or restart never loses a
+  match run (constitution VIII). Matching on the event, not in a nightly batch, because offer
+  windows are 72 hours; batch runs suit buy box changes (the daily digest, US5) and a periodic
+  reconciliation sweep. The study note records this choice. No Redis or BullMQ: the Postgres
+  job table is enough at this size.
+- **All 13 criteria are in the registry and the evaluator** (XIX), failing closed on a missing
+  listing value. Stage 1 narrows by the hard cuts (investor active, proof of funds unexpired,
+  box active) and geography only, so it can never drop a box stage 2 would match; the
+  per-criterion SQL fragments and their fast-check property test wait.
+- **A published package can be edited.** A change to a material field (one a criterion reads)
+  writes a new `listingVersion` with its ListingVersion snapshot and runs matching again:
+  existing matches stay, new matches are notified, and already-matched investors get one
+  "this listing changed" notification.
+- **Withdraw** moves a DRAFT or ACCEPTING_OFFERS package to WITHDRAWN, declines its open offers,
+  notifies the matched investors, and frees the address for a new package (the address unique
+  index becomes partial, FR-013). Reopen waits for Sprint 3 with the deadline job.
+- **Notifications are in-app only**, written in the same transaction as the change: one per
+  investor per event, a match naming every matching box. Email and SMS through the outbox wait.
+- **Tracing and audit come first, so every later PR uses them.** A correlation ID is created at
+  the BFF (or taken from the caller), logged by the api on every line, stored on each job and
+  logged by the worker, and returned in every error response, so support can find a whole
+  request from one ID. An append-only AuditLog (actor, action, entity, outcome, correlation ID;
+  no PII) is written in the same transaction as each change, and the agent's package page shows
+  it as a timeline.
+- **Idempotency keys, stored in Postgres** (XX.2, without Redis): every POST and PATCH carries an
+  `Idempotency-Key` (the client creates one per action); a replay returns the stored response,
+  a concurrent duplicate gets 409 with `Retry-After`, and the same key with a different body
+  gets 422.
+- **Investors and buy boxes are seeded**, not edited (buy box editing is US5):
+  `summit@example.com` (two boxes, both match the sample listing), `harbor@example.com` (one
+  broad box), `ridge@example.com` (one narrow box that does not match). Password `demo1234`, as
+  for every demo account. The login page lists the demo accounts so the reviewer can switch.
+- **Offers:** one per investor per package and round (a partial unique index), with every term
+  in data-model.md; the investor can revise it until the deadline. Withdrawing an offer,
+  counters, and comparing and accepting offers are Sprint 3.
+- **Not in Sprint 2** (recorded in plan.md Complexity Tracking): the outbox and email/SMS
+  deliveries (T059–T064), Redis (T082), MatchEvaluation and "why not matched?", reopen and
+  extend deadline, the CLOSE_OFFER_ROUND and EXPIRE_OFFER jobs, OpenTelemetry (correlation IDs
+  in structured logs stand in for it), and buy box editing.
+- Tasks are listed in merge order, one PR per group. A task split out of a larger one names its
+  source; the source keeps the rest.
+
+### PR: plan (this section)
+
+- [X] T277 Record the Sprint 2 goal, decisions, and tasks in this section; update plan.md Complexity Tracking (idempotency now stored in Postgres; the cuts above); mirror the section to the board (`node scripts/board/sync-sprint.mjs --sprint 2 --apply`)
+
+### PR: investor and buy box tables
+
+- [ ] T278 Add Investor to packages/core/prisma/schema.prisma (`companyName`, `contactName`, `email` unique, `phone?`, `investorType`, `status`, `proofOfFundsExpiresAt?`), the `INVESTOR` role and `User.investorId` (unique), and a migration that extends `User_role_link_check` (an INVESTOR has `investorId` and no `agentId`), with its integration test; then the Investor contracts shaped from the table and `INVESTOR` in `ROLES` (from T031, T051)
+- [ ] T279 Add BuyBox and BuyBoxGeography to the schema exactly as in data-model.md (every criterion a typed nullable column; enum arrays for `propertyTypes`, `conditionsAccepted`, `programsAccepted`), with the migration's hand-written CHECKs (every min ≤ max, `cardinality > 0` on each non-null array, `closeWithinDays` 7–120, `repairMax` ≥ 0) and the partial unique default box, plus their integration test; then the Criterion Registry definitions in packages/contracts/src/buy-box/criteria.ts (`CRITERION_KEYS`, `CRITERIA` with `label` and `listingFields`, `satisfies Record<CriterionKey, …>`, and `MATERIAL_FIELDS` derived from them) and the `BuyBox` type (from T031, T022; the buy box input schemas wait for US5)
+
+### PR: the publish fields, listing versions, and the offer and job tables
+
+- [ ] T280 Add the publish fields to ListingPackage (`round` default 1, `listingVersion` default 0, `closingWindowStart/End`, `currentlyListed?`, `eligiblePrograms` (`OFFER_PROGRAMS`), `offerDeadline?`, `publishedAt?`; status adds `ACCEPTING_OFFERS` and `WITHDRAWN`) with the CHECK `closingWindowStart ≤ closingWindowEnd`, the append-only ListingVersion table (unique `(packageId, listingVersion)`, snapshot JSONB with no PII), and the address index made partial (`WHERE status NOT IN ('CLOSED', 'WITHDRAWN')`); integration tests for the partial index and the CHECK; extend the package contracts (`OFFER_PROGRAMS`, the draft inputs accept the new fields) and add `publishInputSchema` (`{ version, offerDeadline? }`) and `withdrawInputSchema` (`{ version }`) (from T031, T032, T116)
+- [ ] T281 Add Match (unique `(packageId, investorId, round)`, `matchedBuyBoxIds`, `trigger`, `firstMatchedAt`, `lastNotifiedListingVersion?`), Job (the VIII envelope plus `correlationId`; partial unique `(type, dedupeKey)` while QUEUED or PROCESSING; index `(status, runAt)`), Notification, Offer (partial unique `(packageId, investorId, round)` while ACTIVE; status ACTIVE or DECLINED for now), and OfferRevision (unique `(offerId, revision)`) with their CHECKs (offer price > 0, earnest money and fees ≥ 0) and integration tests; then the contracts shaped from them: `JOB_TYPES` and the MATCH_PACKAGE payload, `NotificationView`, and `createOfferInputSchema` / `reviseOfferInputSchema` (FINANCING required when FINANCED) with `OfferView` (from T031, T026, T144)
+
+### PR: tracing and audit
+
+- [ ] T282 Add the AuditLog table (`occurredAt`, `actorType` USER or SYSTEM, `actorId?`, `action`, `entityType`, `entityId`, `outcome`, `correlationId?`, `details` JSONB with no PII; index `(entityType, entityId, occurredAt)`) with a trigger that raises on UPDATE or DELETE, and its integration test (an update and a delete are refused); `AUDIT_ACTIONS` as const in contracts; the audit repository in the unit of work (`append`, `listForEntity`) and its InMemory double; `ListingPackageService.create` and `update` append their entry in the same unit of work (from T031, T032, T044)
+- [ ] T283 Write the correlation tests first, then carry one ID end to end: the BFF sets `X-Request-Id` (keeping a valid incoming one) and forwards it; the api's pino-http uses it as the request ID on every log line, puts it in `res.locals` for services and audit entries, and returns it as `requestId` in every error body and as the `X-Request-Id` response header; a job enqueued in a request stores it, and the worker logs it with every line of that job's run (tests: an api error body carries the incoming ID; the BFF forwards it; a job keeps the ID it was enqueued with)
+
+### PR: idempotency (Postgres)
+
+- [ ] T284 Write the idempotency integration test in apps/api/test/idempotency.int.test.ts (Testcontainers PostgreSQL 17): a POST or PATCH without `Idempotency-Key` → 400; a replay with the same key and body → the stored status and body plus `Idempotent-Replay: true`; a concurrent duplicate → 409 with `Retry-After: 1`; the same key with a different body → 422; a 5xx response is not stored; keys are per user (from T076)
+- [ ] T285 Implement the IdempotencyKey table (`userId`, `key`, `method`, `path`, `bodyHash`, `status` IN_PROGRESS or DONE, `responseStatus?`, `responseBody?`, `createdAt`; unique `(userId, key)`; rows older than 24 h are ignored and replaced) and the `idempotency` middleware for POST and PATCH in apps/api/src/middleware/idempotency.ts (claim with an insert, store the response on `finish`, skip 5xx); `createApiClient` sends a fresh `Idempotency-Key` for each POST and PATCH unless one is passed, and the BFF forwards it (depends on T284) (from T077, T030, T091)
+
+### PR: matching (packages/core)
+
+- [ ] T286 Write the evaluator tests in packages/core/src/registry/evaluators.test.ts: for each criterion one passing and one failing listing; a null criterion passes; a null listing value a non-null criterion needs fails with `actual: null` (fail closed, FR-025); `price` passes only when `priceMin ≤ priceExpectationMax ≤ priceMax`; `closingSpeed` passes only if `closeWithinDays` covers the closing window; `listedStatus` fails only for a listed home when `acceptsListed` is false; `programs` needs one shared program; NATIONWIDE passes any ZIP; a box matches only if every criterion passes (from T054; the fast-check property waits with the SQL fragments)
+- [ ] T287 Implement the evaluator layer in packages/core/src/registry/: `evaluators.ts` (`EVALUATORS` `satisfies Record<CriterionKey, …>`, pure; `EVALUATOR_VERSION = 1`), `evaluate-buy-box.ts`, and `listing-facts.ts` (`toListingFacts(pkg, property, today)`, the flat fact object with no PII, which is also the ListingVersion snapshot) (depends on T286) (from T055)
+- [ ] T288 Create the repositories and their InMemory doubles: investor (`findById`), buy box (`listCandidates(zip, state, now)`: ACTIVE boxes of ACTIVE investors with unexpired proof of funds, whose geography is NATIONWIDE or contains the ZIP or state), listing version (`append`, `findLatest`), match (`upsert` that returns whether the row is new, `countByPackage`, `findOne`, `listForInvestor`, `listByPackage`), notification (`create`, `listForUser`, `markRead`), and job (`enqueue` with `ON CONFLICT DO NOTHING`, `claimNext(workerId, now)` with `FOR UPDATE SKIP LOCKED`, `reclaimStale`, `complete`, `fail` with retry up to `maxRetries` then FAILED); add them to the unit of work (from T051, T052, T057, T121)
+- [ ] T289 Write the job integration test in packages/core/test/jobs.int.test.ts: the same `(type, dedupeKey)` while QUEUED returns the existing job; two concurrent `claimNext` calls never claim the same job; a failure re-queues until `maxRetries`, then FAILED with a redacted error; a PROCESSING job locked over 60 s ago is reclaimed (from T056)
+- [ ] T290 Write the PublicationWorkflow tests in packages/core/src/workflows/publication/PublicationWorkflow.test.ts: a publish with missing or invalid fields → one ValidationError listing every failing field (at least 1 photo; `offerDeadline` > now and ≤ now + 30 days; closing window start ≥ today; `currentlyListed` set; at least one program; the fields the type requires: LAND needs `lotSqft`, MULTI_FAMILY needs `units`, every other type needs beds, baths, sqft, year built, and condition); only the owning agent can publish or withdraw; only a DRAFT can be published; a valid publish sets ACCEPTING_OFFERS, `publishedAt`, `listingVersion` 1 with its snapshot, and the default deadline, and enqueues MATCH_PACKAGE (dedupe `MATCH_PACKAGE:{id}:{round}:{listingVersion}`) and appends PACKAGE_PUBLISHED in the same unit of work; a material edit after publish writes `listingVersion` + 1 with a new snapshot and a new MATCH_PACKAGE, and a non-material edit does neither; withdraw sets WITHDRAWN, declines open offers, notifies matched investors, and frees the address (from T110, T123)
+- [ ] T291 Implement `PublicationWorkflow` (`publish`, `withdraw`) in packages/core/src/workflows/publication/PublicationWorkflow.ts and the material-edit path in `ListingPackageService.update` (depends on T290) (from T125, T123)
+- [ ] T292 Write the MatchingWorkflow tests in packages/core/src/workflows/matching/MatchingWorkflow.test.ts: inactive investors, expired proof of funds, and PAUSED boxes never match (FR-024); one Match per investor with every matching box in `matchedBuyBoxIds`; exactly one Notification per newly matched investor, naming both of `summit@example.com`'s boxes (FR-022), with no seller detail; after a material edit, already-matched investors get one "listing changed" notification and new matches get a match notification; a re-run creates no new Match or Notification; the run appends MATCHING_COMPLETED with the matched count (from T111)
+- [ ] T293 Implement `MatchingWorkflow.evaluatePackage(packageId, round, listingVersion)` and the MATCH_PACKAGE handler with its payload schema check, in packages/core/src/workflows/matching/ and packages/core/src/jobs/; write the study note on when matching runs (on the event, not a nightly batch, and where batch runs fit) (depends on T292) (from T126, T058)
+- [ ] T294 Give the worker its env, its container (the database, the job handlers), and the job loop in apps/worker/src/: every second reclaim stale jobs, then claim and run one, logging the job's correlation ID; stop claiming on SIGTERM and let the running job finish (from T082, T083; no Redis)
+
+### PR: investor reads and offers (packages/core)
+
+- [ ] T295 Write the investor view tests, then implement them: `InvestorPackageView` and `InvestorPackageSummary` carry no `fullName`, `email`, `phone`, or `streetLine` key (SC-006); `InvestorPackageQueryService.listMatched` returns the investor's matched packages newest first with the deadline, the status, and their offer status, and `getForInvestor` → 404 unless a Match row exists for that investor, package, and round (from T108, T127)
+- [ ] T296 Write the OfferService tests: an investor without a Match → 404; after `offerDeadline` or on a withdrawn package → BusinessRuleError naming why; a second offer while one is active → BusinessRuleError pointing to revise; revise writes revision n+1 and needs the current `version`; only the package's agent can list its offers; create and revise append OFFER_SUBMITTED and OFFER_REVISED; then the duplicate-offer integration test (two concurrent creates → one row); then implement `OfferService` (create, revise, listForPackage, getMine) (from T140, T142, T145, T146)
+- [ ] T297 Implement `NotificationService` (`listMine`, `markRead`, only the user's own) and the package timeline query (`listForPackage`: the package's audit entries, newest first, for its agent only) in packages/core/src/services/ (from T128, T044)
+
+### PR: api
+
+- [ ] T298 Add the routes in contracts/api.md: `POST /listing-packages/:id/publication`, `POST /listing-packages/:id/withdrawal`, `GET /listing-packages/:id/timeline`; the agent view gains `matchedCount`; `GET /investor/packages`, `GET /investor/packages/:id`; `POST /listing-packages/:id/offers`, `PATCH /offers/:offerId`, `GET /listing-packages/:id/offers` (agent); `GET /notifications`, `POST /notifications/:id/read`; each route checks the caller's role through the service; wire them in container.ts and app.ts; add the typed client calls (from T129, T132, T150, T151)
+
+### PR: seed
+
+- [ ] T299 Seed the demo investors and their buy boxes in the migrate step (upsert by email, as for the agent): `summit@example.com` (two boxes that both match the sample listing: Austin 78704, single family, Fair condition, $250k–$300k), `harbor@example.com` (one NATIONWIDE box), `ridge@example.com` (a narrow box that does not match), each with a User (INVESTOR, `demo1234`) and proof of funds a year out; record the expected matches in seed/expected-matches.json; the rehearsal signs in with every seeded account (from T138, T139)
+
+### PR: screens (apps/web)
+
+- [ ] T300 Send each role home after sign-in (AGENT → `/agent`, INVESTOR → `/investor`); list the demo accounts on the login page so one press fills each; protect `/investor/*` in proxy.ts and add the investor layout with the notification inbox (badge count, list, mark read); show the `requestId` with every error message, so a user can quote it to support (from T105, T137)
+- [ ] T301 Agent side: the publish fields on the package form; a Publish button on each DRAFT row of `/agent` and on the package page, with every blocking field listed and linked; the status on each row; the matched-investor count; Withdraw with a confirmation; the offers on the package page; and the timeline (published, matched N, edited, offers, withdrawn) (from T133, T135, T154)
+- [ ] T302 Investor side: the dashboard (matched packages newest first, time left to the deadline, "Offer made" badge, withdrawn packages marked), the privacy-safe package page (city, ZIP, facts, photos, price range, deadline; "not found" for a package not shared with them), and the offer form (every term; create, then revise until the deadline; the deadline-passed and withdrawn notices); write the offer form hook test first: double submit sends one request with one `Idempotency-Key`, field errors land on their fields (from T136, T143, T152, T153)
+
+**Checkpoint**: `docker compose up --build` on a clean machine; avery publishes the sample
+package (a publish with a field missing names it); within seconds summit and harbor each have
+one notification and see the package with no seller details, and ridge gets "not found"; summit
+makes and revises an offer, and a retried submit returns the same offer; avery edits the price,
+and summit gets one "listing changed" notification; avery sees 2 matched investors, summit's
+offer at its latest revision, and the timeline; any error shows a request ID that finds the
+whole request in the api and worker logs; avery withdraws, and summit sees it withdrawn; the
+submission rehearsal passes.
+
+---
+
 ## Phase 2: Foundational (Blocking Prerequisites)
 
 **Purpose**: Contracts, database, core infrastructure, the outbox and job engine, providers,

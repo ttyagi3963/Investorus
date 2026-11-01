@@ -428,10 +428,19 @@ it. Every request and job can be traced end to end.
 - **Offers:** one per investor per package and round (a partial unique index), with every term
   in data-model.md; the investor can revise it until the deadline. Withdrawing an offer,
   counters, and comparing and accepting offers are Sprint 3.
-- **Not in Sprint 2** (recorded in plan.md Complexity Tracking): the outbox and email/SMS
-  deliveries (T059–T064), Redis (T082), MatchEvaluation and "why not matched?", reopen and
-  extend deadline, the CLOSE_OFFER_ROUND and EXPIRE_OFFER jobs, OpenTelemetry (correlation IDs
-  in structured logs stand in for it), and buy box editing.
+- **Every match decision is audited** (XII lists buy box match decisions as audit-sensitive):
+  the matching job appends one MATCH_DECISION entry per matched investor, with the matched box
+  IDs and versions, the listing version, `EVALUATOR_VERSION`, and each criterion's result, and
+  no PII. It stands in for the MatchEvaluation table until "why not matched?" needs replay.
+- **Deviations recorded in plan.md Complexity Tracking** (approved by the owner, as VP of
+  Engineering): idempotency keys stored in Postgres (XX.2); stage 1 narrowing by the hard cuts
+  and geography only (XIX.3–XIX.4); in-app notifications only, with no email through the outbox
+  (FR-022's email, XVIII); match decisions in the audit log instead of MatchEvaluation (XII,
+  FR-074).
+- **Later scope, not deviations:** reopen and extend deadline, the CLOSE_OFFER_ROUND and
+  EXPIRE_OFFER jobs, offer withdrawal, counters, comparing and accepting offers (Sprint 3), buy
+  box editing (US5), Redis (T082), and OpenTelemetry (correlation IDs in structured logs stand in
+  for tracing; XII asks for structured logging, which this meets).
 - Tasks are listed in merge order, one PR per group. A task split out of a larger one names its
   source; the source keeps the rest.
 
@@ -456,8 +465,8 @@ it. Every request and job can be traced end to end.
 
 ### PR: idempotency (Postgres)
 
-- [ ] T284 Write the idempotency integration test in apps/api/test/idempotency.int.test.ts (Testcontainers PostgreSQL 17): a POST or PATCH without `Idempotency-Key` → 400; a replay with the same key and body → the stored status and body plus `Idempotent-Replay: true`; a concurrent duplicate → 409 with `Retry-After: 1`; the same key with a different body → 422; a 5xx response is not stored; keys are per user (from T076)
-- [ ] T285 Implement the IdempotencyKey table (`userId`, `key`, `method`, `path`, `bodyHash`, `status` IN_PROGRESS or DONE, `responseStatus?`, `responseBody?`, `createdAt`; unique `(userId, key)`; rows older than 24 h are ignored and replaced) and the `idempotency` middleware for POST and PATCH in apps/api/src/middleware/idempotency.ts (claim with an insert, store the response on `finish`, skip 5xx); `createApiClient` sends a fresh `Idempotency-Key` for each POST and PATCH unless one is passed, and the BFF forwards it (depends on T284) (from T077, T030, T091)
+- [ ] T284 Write the idempotency integration test in apps/api/test/idempotency.int.test.ts (Testcontainers PostgreSQL 17): a POST or PATCH without `Idempotency-Key` → 400; the key store unreachable → 503 with `Retry-After: 5`; a replay with the same key and body → the stored status and body plus `Idempotent-Replay: true`; a concurrent duplicate → 409 with `Retry-After: 1`; the same key with a different body → 422; a 5xx response is not stored; keys are per user (from T076)
+- [ ] T285 Implement the IdempotencyKey table (`userId`, `key`, `method`, `path`, `bodyHash`, `status` IN_PROGRESS or DONE, `responseStatus?`, `responseBody?`, `createdAt`; unique `(userId, key)`; rows older than 24 h are ignored and replaced) and the `idempotency` middleware for POST and PATCH in apps/api/src/middleware/idempotency.ts (claim with an insert, store the response on `finish`, skip 5xx; a database error fails closed with 503 and `Retry-After: 5`; the api has no PUT routes, so POST and PATCH are every mutating method); `createApiClient` sends a fresh `Idempotency-Key` for each POST and PATCH unless one is passed, and the BFF forwards it (depends on T284) (from T077, T030, T091)
 
 ### PR: matching (packages/core)
 
@@ -467,7 +476,7 @@ it. Every request and job can be traced end to end.
 - [ ] T289 Write the job integration test in packages/core/test/jobs.int.test.ts: the same `(type, dedupeKey)` while QUEUED returns the existing job; two concurrent `claimNext` calls never claim the same job; a failure re-queues until `maxRetries`, then FAILED with a redacted error; a PROCESSING job locked over 60 s ago is reclaimed (from T056)
 - [ ] T290 Write the PublicationWorkflow tests in packages/core/src/workflows/publication/PublicationWorkflow.test.ts: a publish with missing or invalid fields → one ValidationError listing every failing field (at least 1 photo; `offerDeadline` > now and ≤ now + 30 days; closing window start ≥ today; `currentlyListed` set; at least one program; the fields the type requires: LAND needs `lotSqft`, MULTI_FAMILY needs `units`, every other type needs beds, baths, sqft, year built, and condition); only the owning agent can publish or withdraw; only a DRAFT can be published; a valid publish sets ACCEPTING_OFFERS, `publishedAt`, `listingVersion` 1 with its snapshot, and the default deadline, and enqueues MATCH_PACKAGE (dedupe `MATCH_PACKAGE:{id}:{round}:{listingVersion}`) and appends PACKAGE_PUBLISHED in the same unit of work; a material edit after publish writes `listingVersion` + 1 with a new snapshot and a new MATCH_PACKAGE, and a non-material edit does neither; withdraw sets WITHDRAWN, declines open offers, notifies matched investors, and frees the address (from T110, T123)
 - [ ] T291 Implement `PublicationWorkflow` (`publish`, `withdraw`) in packages/core/src/workflows/publication/PublicationWorkflow.ts and the material-edit path in `ListingPackageService.update` (depends on T290) (from T125, T123)
-- [ ] T292 Write the MatchingWorkflow tests in packages/core/src/workflows/matching/MatchingWorkflow.test.ts: inactive investors, expired proof of funds, and PAUSED boxes never match (FR-024); one Match per investor with every matching box in `matchedBuyBoxIds`; exactly one Notification per newly matched investor, naming both of `summit@example.com`'s boxes (FR-022), with no seller detail; after a material edit, already-matched investors get one "listing changed" notification and new matches get a match notification; a re-run creates no new Match or Notification; the run appends MATCHING_COMPLETED with the matched count (from T111)
+- [ ] T292 Write the MatchingWorkflow tests in packages/core/src/workflows/matching/MatchingWorkflow.test.ts: inactive investors, expired proof of funds, and PAUSED boxes never match (FR-024); one Match per investor with every matching box in `matchedBuyBoxIds`; exactly one Notification per newly matched investor, naming both of `summit@example.com`'s boxes (FR-022), with no seller detail; after a material edit, already-matched investors get one "listing changed" notification and new matches get a match notification; a re-run creates no new Match or Notification; the run appends one MATCH_DECISION audit entry per matched investor (matched box IDs and versions, listing version, `EVALUATOR_VERSION`, each criterion's result, no PII) and one MATCHING_COMPLETED entry with the matched count (from T111, T044)
 - [ ] T293 Implement `MatchingWorkflow.evaluatePackage(packageId, round, listingVersion)` and the MATCH_PACKAGE handler with its payload schema check, in packages/core/src/workflows/matching/ and packages/core/src/jobs/; write the study note on when matching runs (on the event, not a nightly batch, and where batch runs fit) (depends on T292) (from T126, T058)
 - [ ] T294 Give the worker its env, its container (the database, the job handlers), and the job loop in apps/worker/src/: every second reclaim stale jobs, then claim and run one, logging the job's correlation ID; stop claiming on SIGTERM and let the running job finish (from T082, T083; no Redis)
 

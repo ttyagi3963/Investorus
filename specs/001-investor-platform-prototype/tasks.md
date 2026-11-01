@@ -773,6 +773,19 @@ and the automated brand checks. The foundation (tokens, primitives, templates) i
 
 ---
 
+## After Sprint 1: Production Storage Adapter (owner-scheduled)
+
+**Purpose**: show that storage is swappable by adding the production adapter that
+[contracts/providers.md](./contracts/providers.md) already names, behind the same port. The owner
+(Tarun) scheduled it on 2026-11-01 to run after Sprint 1. It stays switched off in the demo: the
+reviewer's `docker compose up` uses the sandbox, and nothing needs an AWS account. Recorded as a
+deviation in plan.md Complexity Tracking.
+
+- [ ] T274 Write the S3 adapter tests first in packages/core/src/providers/storage/S3StorageProviderImpl.test.ts (a mocked S3 client; no AWS in CI): an upload link signs the `Content-Type` and the exact `Content-Length` (the declared size the port receives, see T275), so the browser cannot change either; `stat` returns `{ contentType, sizeBytes }` from `HeadObject`, and `null` on a 404; an S3 failure becomes `InfrastructureError`
+- [ ] T275 Make the storage port's size exact, then implement `S3StorageProviderImpl`. A presigned S3 `PUT` can pin one exact `Content-Length` but not a maximum, so `createUpload(key, contentType, maxBytes)` becomes `createUpload(key, contentType, sizeBytes)`: the exact size the browser declared (`PhotoService` already passes it; the browser sends `file.size`). The sandbox then refuses a body whose length differs (413 over, 400 under), and its test and contracts/providers.md change to match; `stat` after upload stays the real size guard. Then in packages/core/src/providers/storage/: `createUpload` → a presigned `PUT`, `getReadUrl` → a presigned `GET`, `stat` → `HeadObject`), select it in apps/api/src/container.ts with `STORAGE_PROVIDER=s3` (`S3_BUCKET` and `S3_REGION` required only then; credentials from the environment, never in the committed `.env`), and add a README note on switching (depends on T274)
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase dependencies

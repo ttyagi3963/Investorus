@@ -13,6 +13,13 @@ export const PROGRAM_LABELS: Record<OfferProgram, string> = {
 export const STATUS_LABELS: Record<PackageStatus, string> = {
   DRAFT: "Draft",
   ACCEPTING_OFFERS: "Accepting offers",
+  NO_OFFERS_RECEIVED: "No offers received",
+  OFFER_ACCEPTED: "Offer accepted",
+  UNDER_CONTRACT: "Under contract",
+  INSPECTION: "Inspection",
+  CLOSING: "Closing",
+  CLOSED: "Closed",
+  FELL_THROUGH: "Fell through",
   WITHDRAWN: "Withdrawn",
 };
 
@@ -53,6 +60,33 @@ const ACTION_TEXT: Record<AuditAction, (details: Record<string, unknown>) => str
   },
   OFFER_SUBMITTED: (d) => `Offer received: ${usd.format(Number(d.price))}`,
   OFFER_REVISED: (d) => `Offer revised to ${usd.format(Number(d.price))}`,
+  OFFER_WITHDRAWN: () => "An investor withdrew their offer",
+  OFFER_EXPIRED: () => "An offer expired",
+  OFFER_ROUND_CLOSED: (d) => {
+    const count = Number(d.openOffers ?? 0);
+    return `Offer deadline passed with ${count} open offer${count === 1 ? "" : "s"}`;
+  },
+  OFFER_DEADLINE_EXTENDED: () => "Offer deadline extended",
+  PACKAGE_REOPENED: (d) => `Reopened for offer round ${String(d.round)}`,
+  DECISION_RECORDED: (d) =>
+    d.type === "ACCEPT"
+      ? "Offer accepted"
+      : d.type === "COUNTER"
+        ? "Counter-offer sent"
+        : "All open offers declined",
+  COUNTER_ACCEPTED: () => "The investor accepted the counter-offer",
+  COUNTER_DECLINED: () => "The investor declined the counter-offer",
+  BACKUP_EXTENDED: () => "A backup offer's expiry was extended",
+  DEAL_MILESTONE: (d) =>
+    `Deal moved to ${STATUS_LABELS[d.milestone as PackageStatus] ?? String(d.milestone)}`,
+  DEAL_FELL_THROUGH: () => "The deal fell through",
+  BACKUP_PROMOTED: () => "A backup offer was promoted; waiting for the investor to reconfirm",
+  BACKUP_RECONFIRMED: () => "The backup investor reconfirmed; the offer is accepted",
+  RECONFIRMATION_DECLINED: (d) =>
+    d.timedOut
+      ? "The backup investor did not reconfirm in time"
+      : "The backup investor declined to reconfirm",
+  PII_ACCESSED: () => "The buyer viewed the seller's contact details",
 };
 
 export const timelineText = (entry: TimelineEntryView) => ACTION_TEXT[entry.action](entry.details);

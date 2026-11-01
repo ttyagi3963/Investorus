@@ -1,8 +1,22 @@
 // The Offer the app passes around, shaped from the Prisma `Offer` model (T281), with the closing
 // date as `YYYY-MM-DD`, and the view both the investor and the package's agent see.
 
-export const OFFER_STATUSES = ["ACTIVE", "DECLINED"] as const;
+/** data-model.md, OfferStatus. */
+export const OFFER_STATUSES = [
+  "ACTIVE",
+  "COUNTERED",
+  "BACKUP",
+  "ACCEPTED",
+  "DECLINED",
+  "WITHDRAWN",
+  "EXPIRED",
+  "FELL_THROUGH",
+  "DECLINED_TO_RECONFIRM",
+] as const;
 export type OfferStatus = (typeof OFFER_STATUSES)[number];
+
+/** Who wrote a revision: the investor, or the agent with a counter (FR-052). */
+export type RevisionAuthor = "INVESTOR" | "AGENT";
 
 export const PAYMENT_TYPES = ["CASH", "FINANCED"] as const;
 export type PaymentType = (typeof PAYMENT_TYPES)[number];

@@ -472,6 +472,21 @@ delivery handler.
 A DB trigger rejects UPDATE and DELETE on this table. Index: `(entityType, entityId,
 occurredAt)` for the operations timeline (FR-073).
 
+### IdempotencyKey (added 2026-11-01, T285; Constitution XX.2)
+One `Idempotency-Key` a user sent with a POST or PATCH, stored in Postgres instead of Redis
+(plan.md Complexity Tracking).
+
+| Field | Type | Rules |
+| --- | --- | --- |
+| id | string | |
+| userId | cuid | → User (cascade delete) |
+| key | string | unique with `userId`; up to 255 chars |
+| method / path | string | a retry must match them |
+| bodyHash | string | SHA-256 of the JSON body; a retry must match it |
+| status | `IN_PROGRESS` \| `DONE` | |
+| responseStatus / responseBody | int? / text? | set when DONE; a 5xx is never stored (the row is deleted). The body can hold seller details (a package view), so it is the JSON encrypted with the PII cipher (XII). A replay returns it as first sent, so its signed photo links may have expired; the screens re-read the package after a save |
+| createdAt | timestamp | a key older than 24 hours is ignored and claimed again |
+
 ### ImportBatch / ImportRowResult
 - `ImportBatch`: `id, jobId, fileName, totalRows, imported, updated, rejected, createdBy`.
 - `ImportRowResult`: `id, batchId, rowNumber, outcome (IMPORTED | UPDATED | REJECTED),

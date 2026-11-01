@@ -8,12 +8,17 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 
 - **Auth**: `Authorization: Bearer <session JWT>` on every route except `POST /sessions` and
   `GET /health`. The role is checked in the service (III), not the route.
-- **Idempotency (XX.2)**: every POST, PUT, and PATCH requires an `Idempotency-Key` header.
+- **Idempotency (XX.2)**: every POST and PATCH from a signed-in user requires an
+  `Idempotency-Key` header (up to 255 characters); the api has no PUT routes. Keys are per user,
+  stored in Postgres (plan.md Complexity Tracking), and expire after 24 hours. Sign-in
+  (`POST /sessions`) has no user yet and is exempt, so a session token is never stored. The
+  typed client sends a fresh key with each call unless it is given one, and the BFF forwards it.
   - Missing key → `400`.
   - Same key and same body → the stored response, with the header `Idempotent-Replay: true`.
   - Same key while the first request is still running → `409` with `Retry-After: 1`.
-  - Same key with a different body → `422`.
-  - Redis unavailable → `503` with `Retry-After: 5`.
+  - Same key with a different body → `422` (`IDEMPOTENCY_KEY_REUSED`).
+  - A `5xx` answer is not stored, so a retry runs the change again.
+  - Key store unavailable → `503` with `Retry-After: 5`.
 - **Status codes (II)**: GET 200, create POST 201, async POST 202 with
   `{ jobId, statusUrl }`, PATCH and PUT 200, DELETE 204.
 - **Tracing (XII)**: a caller may send a W3C `traceparent` header; the api keeps its trace ID,
@@ -25,7 +30,8 @@ Entity fields are defined in [../data-model.md](../data-model.md).
   - 401: missing, invalid, or expired session token.
   - 403: forbidden. 404: not found (also returned for investors asking about packages they are
     not matched to, so existence is not leaked).
-  - 409: business rule or concurrency conflict. 503: idempotency store down.
+  - 409: business rule or concurrency conflict. 422: an Idempotency-Key reused for another
+    request. 503: idempotency store down.
   - 500: unexpected, with a generic message.
 - **Pagination**: `?cursor=&limit=` (default 25, max 100) on list routes. Responses use
   `{ items, nextCursor }`.

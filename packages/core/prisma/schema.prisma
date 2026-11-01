@@ -140,17 +140,24 @@ model Property {
   package        ListingPackage?
 }
 
-// The package lifecycle (data-model.md, PackageStatus). Sprint 2 adds publishing and withdrawal;
-// the deal statuses arrive with accepting offers.
+// The package lifecycle (data-model.md, PackageStatus). From OFFER_ACCEPTED on, the status mirrors
+// the active deal's; CLOSED and WITHDRAWN are final and free the address.
 enum PackageStatus {
   DRAFT
   ACCEPTING_OFFERS
+  NO_OFFERS_RECEIVED
+  OFFER_ACCEPTED
+  UNDER_CONTRACT
+  INSPECTION
+  CLOSING
+  CLOSED
+  FELL_THROUGH
   WITHDRAWN
 }
 
 // A listing package: one agent, one seller, one property (both unique). addressHash copies the
 // property's, so one address has only one active package (FR-013): a partial unique index in the
-// migration, which a withdrawn package does not count against. CHECKs: 0 < min price <= max, and
+// migration, which a closed or withdrawn package does not count against. CHECKs: 0 < min price <= max, and
 // the closing window starts no later than it ends. listingVersion is 0 while a draft, 1 at
 // publish, and +1 on each material edit; each value has a ListingVersion snapshot.
 model ListingPackage {
@@ -182,6 +189,8 @@ model ListingPackage {
   matches             Match[]
   offers              Offer[]
   notifications       Notification[]
+  decisions           Decision[]
+  deals               Deal[]
 
   @@index([agentId, status])
   @@index([addressHash])
@@ -306,10 +315,11 @@ model BuyBoxGeography {
   @@index([kind, value])
 }
 
-// What first shared a package with an investor.
+// What first shared a package with an investor in a round.
 enum MatchTrigger {
   PUBLISH
   PACKAGE_EDIT
+  REOPEN
 }
 
 // An investor's access to a package in one offer round (T281; FR-022, FR-040): created when at
@@ -370,6 +380,20 @@ enum NotificationType {
   PACKAGE_MATCHED
   PACKAGE_CHANGED
   PACKAGE_WITHDRAWN
+  OFFER_ROUND_CLOSED
+  OFFER_DEADLINE_EXTENDED
+  OFFER_EXPIRED
+  OFFER_COUNTERED
+  COUNTER_ANSWERED
+  OFFER_ACCEPTED
+  OFFER_BACKUP
+  OFFER_DECLINED
+  PACKAGE_CLOSED_TO_OFFERS
+  DEAL_MILESTONE
+  DEAL_FELL_THROUGH
+  BACKUP_PROMOTED
+  BACKUP_RECONFIRMED
+  RECONFIRMATION_DECLINED
 }
 
 // One in-app message for one user (T281), written in the same transaction as the change it
@@ -389,11 +413,18 @@ model Notification {
   @@index([userId, createdAt])
 }
 
-// Sprint 2 offers are active or declined (when the package is withdrawn); countering,
-// accepting, and expiring arrive with Sprint 3.
+// The offer lifecycle (data-model.md, OfferStatus). ACTIVE, COUNTERED, BACKUP, and ACCEPTED are
+// "live": an investor has at most one live offer per package and round.
 enum OfferStatus {
   ACTIVE
+  COUNTERED
+  BACKUP
+  ACCEPTED
   DECLINED
+  WITHDRAWN
+  EXPIRED
+  FELL_THROUGH
+  DECLINED_TO_RECONFIRM
 }
 
 enum PaymentType {
@@ -410,7 +441,7 @@ enum Contingency {
 }
 
 // An investor's offer on a package in one round (T281; FR-042), at its latest revision. A partial
-// unique index (migration) allows one ACTIVE offer per investor per package per round. CHECKs:
+// unique index (migration) allows one live offer per investor per package per round. CHECKs:
 // price > 0, earnest money and fees >= 0, and a FINANCED offer lists the FINANCING contingency.
 model Offer {
   id                 String          @id @default(cuid())
@@ -432,21 +463,94 @@ model Offer {
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   revisions          OfferRevision[]
+  deal               Deal?
 
   @@index([packageId, round])
 }
 
+// Who wrote an offer revision: the investor, or the agent with a counter (FR-052).
+enum RevisionAuthor {
+  INVESTOR
+  AGENT
+}
+
 // Each set of terms an offer has had (append-only; a trigger refuses UPDATE and DELETE), so the
-// agent can see how an offer changed.
+// agent can see how an offer changed. A counter is an AGENT revision.
 model OfferRevision {
-  id        String   @id @default(cuid())
+  id        String         @id @default(cuid())
   offerId   String
-  offer     Offer    @relation(fields: [offerId], references: [id])
+  offer     Offer          @relation(fields: [offerId], references: [id])
   revision  Int
+  author    RevisionAuthor @default(INVESTOR)
   terms     Json
-  createdAt DateTime @default(now())
+  createdAt DateTime       @default(now())
 
   @@unique([offerId, revision])
+}
+
+enum DecisionType {
+  ACCEPT
+  COUNTER
+  DECLINE_ALL
+}
+
+// The seller's decision as the agent recorded it (T304; FR-052), append-only (a trigger refuses
+// UPDATE and DELETE). CHECK (migration): ACCEPT and COUNTER name the offer. `note` is free text the
+// agent writes, so it holds AES-256-GCM ciphertext like the seller columns (XII).
+model Decision {
+  id          String         @id @default(cuid())
+  packageId   String
+  package     ListingPackage @relation(fields: [packageId], references: [id])
+  round       Int
+  type        DecisionType
+  offerId     String?
+  actorUserId String
+  note        String?
+  createdAt   DateTime       @default(now())
+
+  @@index([packageId])
+}
+
+// The deal lifecycle (data-model.md, DealStatus). CLOSED, FELL_THROUGH, and RECONFIRM_DECLINED are
+// final; PENDING_RECONFIRMATION is a promoted backup who has not yet reconfirmed.
+enum DealStatus {
+  PENDING_RECONFIRMATION
+  OFFER_ACCEPTED
+  UNDER_CONTRACT
+  INSPECTION
+  CLOSING
+  CLOSED
+  FELL_THROUGH
+  RECONFIRM_DECLINED
+}
+
+// An accepted offer tracked to closing (T304; FR-053 to FR-057). A partial unique index
+// (migration) allows one active deal per package, so two concurrent accepts cannot both win.
+// CHECKs: a fallen-through deal has its reason, and a pending one its reconfirmBy. The reason is
+// free text, so it holds ciphertext like the seller columns (XII).
+model Deal {
+  id                 String         @id @default(cuid())
+  packageId          String
+  package            ListingPackage @relation(fields: [packageId], references: [id])
+  offerId            String         @unique
+  offer              Offer          @relation(fields: [offerId], references: [id])
+  status             DealStatus
+  fellThroughReason  String?
+  promotedFromBackup Boolean        @default(false)
+  reconfirmBy        DateTime?
+  version            Int            @default(1)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([packageId])
+}
+
+// A setting the marketplace reads at run time instead of from code (T304; constitution IX), such
+// as the net-proceeds fee assumptions. The value is checked with the key's Zod schema on read.
+model ConfigEntry {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
 }
 
 // Who caused an audited change: a signed-in user, or the system (a job such as matching).

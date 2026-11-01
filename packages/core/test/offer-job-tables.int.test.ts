@@ -1,5 +1,5 @@
 // Checks the Job, Offer, and OfferRevision rules against a real Postgres (T281): one live job per
-// (type, dedupeKey), so a match run is never queued twice; one ACTIVE offer per investor, package,
+// (type, dedupeKey), so a match run is never queued twice; one live offer per investor, package,
 // and round (FR-042), with sane terms and FINANCING listed on a financed offer; and offer
 // revisions that can be added but never changed.
 import type pg from "pg";
@@ -61,9 +61,9 @@ describe("Job table", () => {
 });
 
 describe("Offer table", () => {
-  it("allows one active offer per investor per package per round, and a new one after a decline", async () => {
-    const first = await insertOffer();
-    await expect(insertOffer()).rejects.toThrow("Offer_one_active_per_investor");
+  it("allows one live offer per investor per package per round, and a new one after a decline", async () => {
+    const first = await insertOffer({ status: "BACKUP" });
+    await expect(insertOffer()).rejects.toThrow("Offer_one_live_per_investor");
     await db.query(`UPDATE "Offer" SET status = 'DECLINED' WHERE id = $1`, [first.rows[0].id]);
     await expect(insertOffer()).resolves.toBeDefined();
   });

@@ -11,6 +11,7 @@ export {
   type OfferTerms,
   type OfferView,
   type PaymentType,
+  type RevisionAuthor,
 } from "./offer.js";
 export {
   createOfferInputSchema,

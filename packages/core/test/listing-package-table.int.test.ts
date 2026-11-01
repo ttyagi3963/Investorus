@@ -56,12 +56,14 @@ async function insertPackage(
 }
 
 describe("ListingPackage table", () => {
-  it("allows one active package per address, and a withdrawn one frees the address", async () => {
+  it("allows one active package per address, and a closed or withdrawn one frees it", async () => {
     const first = await insertPackage("hash-elm-st", 300_000, 350_000);
     await expect(insertPackage("hash-elm-st", 300_000, 350_000)).rejects.toThrow(
       "ListingPackage_one_active_per_address",
     );
     await db.query(`UPDATE "ListingPackage" SET status = 'WITHDRAWN' WHERE id = $1`, [first]);
+    const second = await insertPackage("hash-elm-st", 300_000, 350_000);
+    await db.query(`UPDATE "ListingPackage" SET status = 'CLOSED' WHERE id = $1`, [second]);
     await expect(insertPackage("hash-elm-st", 300_000, 350_000)).resolves.toBeDefined();
   });
 

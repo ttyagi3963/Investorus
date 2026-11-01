@@ -336,7 +336,7 @@ personal details are encrypted in the database, and nothing goes out to investor
 
 ### PR: seed
 
-- [ ] T260 Seed the demo agent: seed/fixtures/agents.json (Avery Agent, `avery@example.com`, a brokerage), packages/core/prisma/seed/index.ts and baseline.ts (upsert the Agent and its AGENT user by email, password `demo1234` hashed with bcryptjs), registered as `migrations.seed` in packages/core/prisma.config.ts, and the seed step back in packages/core/scripts/migrate-and-seed.mjs; plus an integration test that runs the seed twice and finds one agent and one user that can sign in (from T096, T098, and T099; the other fixtures stay there)
+- [X] T260 Seed the demo agent: `seedDemoAccounts` in packages/core/src/infra/seed/seed.ts upserts the Agent and its AGENT user by email (Avery Agent, `avery@example.com`, Demo Realty; password `demo1234`, stored as a bcrypt hash), and packages/core/src/infra/seed/run.ts runs it against `DATABASE_URL`. It is compiled with core (the migrate image has no TypeScript runner), so packages/core/scripts/migrate-and-seed.mjs runs `node dist/infra/seed/run.js` after the migrations, and `pnpm db:seed` runs it locally. Plus an integration test that seeds twice, finds one agent and one user, and signs in through AuthService (from T096, T098, and T099; the other fixtures, `seed/fixtures/`, and the modular seed stay there)
 
 ### PR: api (apps/api)
 

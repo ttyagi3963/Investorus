@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// The compose `migrate` service: apply new database migrations, then exit. The app services
-// start only after it succeeds, and repeating it is safe (`migrate deploy` skips applied ones).
-// The seed step is added with the seed task (T099).
+// The compose `migrate` service: apply new database migrations, then seed the demo data, then
+// exit. The app services start only after it succeeds, and repeating it is safe: `migrate deploy`
+// skips applied migrations, and the seed upserts by email.
 
 import { execFileSync } from "node:child_process";
 
@@ -11,4 +11,6 @@ execFileSync("prisma", ["migrate", "deploy"], {
   stdio: "inherit",
   shell: process.platform === "win32",
 });
+console.log("migrate: seeding demo data");
+execFileSync(process.execPath, ["dist/infra/seed/run.js"], { stdio: "inherit" });
 console.log("migrate: done");

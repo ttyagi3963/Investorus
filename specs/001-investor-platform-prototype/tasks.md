@@ -291,8 +291,8 @@ personal details are encrypted in the database, and nothing goes out to investor
 
 ### PR: the sign-in and editing decisions in the schema
 
-- [ ] T242 Sign in by email: a migration renames `User.username` to `User.email` (unique; the service stores it lowercased); the User contracts use `email` (trimmed, lowercased, a valid email) in place of `username`
-- [ ] T243 Editable drafts: a migration adds `ListingPackage.version Int @default(1)` (optimistic concurrency); `ListingPackage` gets `version`; `updateListingPackageInputSchema` in packages/contracts/src/listing-package/inputs.ts (separate from create, constitution V): `version` required; `seller`, `property`, `priceExpectationMin`, and `priceExpectationMax` optional; inside them every field optional, `undefined` means unchanged and `null` clears an optional fact; min ≤ max when both are sent (from T116)
+- [X] T242 Sign in by email: a migration renames `User.username` to `User.email` (unique; the service stores it lowercased); the User contracts use `email` (trimmed, lowercased, a valid email) in place of `username`
+- [X] T243 Editable drafts: a migration adds `ListingPackage.version Int @default(1)` (optimistic concurrency); `ListingPackage` gets `version`; `updateListingPackageInputSchema` in packages/contracts/src/listing-package/inputs.ts (separate from create, constitution V): `version` required; `seller`, `property`, `priceExpectationMin`, and `priceExpectationMax` optional; inside them every field optional, `undefined` means unchanged and `null` clears an optional fact; min ≤ max when both are sent (from T116)
 
 ### PR: errors, logging, and encryption (packages/core)
 

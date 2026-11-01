@@ -1,10 +1,10 @@
 // The User the app passes around, shaped from the Prisma `User` model minus `passwordHash`, so
 // the hash cannot leak into tokens, logs, or responses. A plain type: users come from our own
-// database, which enforces the rules (unique username, the role CHECK).
+// database, which enforces the rules (unique email, the role CHECK).
 
 type UserBase = {
   id: string;
-  username: string;
+  email: string;
   displayName: string;
   active: boolean;
   createdAt: Date;

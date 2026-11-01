@@ -7,4 +7,9 @@ export {
   type PropertyType,
 } from "./enums.js";
 export type { Property } from "./property.js";
-export { createPropertyInputSchema, type CreatePropertyInput } from "./inputs.js";
+export {
+  createPropertyInputSchema,
+  updatePropertyInputSchema,
+  type CreatePropertyInput,
+  type UpdatePropertyInput,
+} from "./inputs.js";

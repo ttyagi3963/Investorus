@@ -3,7 +3,7 @@
 import { z } from "zod";
 
 const createUserBaseSchema = z.object({
-  username: z.string().trim().toLowerCase().min(3).max(40),
+  email: z.string().trim().toLowerCase().pipe(z.email()),
   password: z.string().min(1),
   displayName: z.string().trim().min(1).max(80),
 });

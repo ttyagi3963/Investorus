@@ -1372,7 +1372,7 @@ the shortcuts, and a script measures the build and start limits.
 - [X] T357 One-click demo sign-in on the sign-in page: each demo account signs in with one press through the real session flow (design gap)
 - [X] T358 Role pages: a signed-in user who opens another role's pages goes to their role's home (proxy.ts), and the header shows the user's name from `GET /me` (from T105, T106)
 - [X] T359 Status tabs with counts on the agent's packages (All, Draft, Open for offers, Offers in, Under contract) and the investor's matched listings (Open, Offered, All) (design gap)
-- [ ] T360 The end-to-end integration test: publish → match → offer → accept → milestones → CLOSED, with the CRM deliveries SENT and the sandbox CRM record closed (from T208; R18, SC-010)
+- [X] T360 The end-to-end integration test: publish → match → offer → accept → milestones → CLOSED, with the CRM deliveries SENT and the sandbox CRM record closed (from T208; R18, SC-010)
 - [ ] T361 The log redaction integration test: every log line of the end-to-end run, with a failed delivery, has no seeded seller name, email, phone, or street (from T209; FR-032, SC-006)
 - [X] T362 Review the security settings: helmet defaults, no `x-powered-by`, the JSON size limit, no CORS on the api; the BFF's cookie flags and Origin check on every state-changing route; fix what falls short (from T210)
 - [X] T363 README: curl recipes (sign in, an idempotent POST replayed with `Idempotent-Replay: true`, the 409 while in progress, health) and the Prototype Shortcuts table copied from plan.md (from T211)

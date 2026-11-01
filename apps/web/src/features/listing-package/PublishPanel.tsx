@@ -1,10 +1,10 @@
 "use client";
 // The top of the package page (T301): the status and, by status, what the agent can do. A draft has
 // Publish, which either publishes or lists every blocking field; an open package shows the deadline
-// and how many investors matched, and Withdraw, which asks for confirmation first.
+// and how many investors matched, and Withdraw, which asks in a dialog first (focus moves into it
+// and back to the button).
 import type { AgentPackageView } from "@clever/contracts/listing-package";
-import { Button } from "@clever/ui";
-import { useState } from "react";
+import { Button, ConfirmDialog } from "@clever/ui";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { STATUS_LABELS } from "./labels";
 import { PublishBlockers } from "./PublishBlockers";
@@ -15,7 +15,6 @@ const when = (iso: string) =>
 
 export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
   const { publish, withdraw, isBusy, blockers, error } = usePublication();
-  const [confirming, setConfirming] = useState(false);
   const target = { id: pkg.id, version: pkg.version };
 
   return (
@@ -36,32 +35,17 @@ export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
           </Button>
         </div>
       )}
-      {pkg.status !== "WITHDRAWN" && !confirming && (
+      {pkg.status !== "WITHDRAWN" && (
         <div>
-          <Button variant="secondary" onPress={() => setConfirming(true)} isDisabled={isBusy}>
-            Withdraw
-          </Button>
-        </div>
-      )}
-      {confirming && (
-        <div role="group" aria-label="Confirm withdrawal" className="flex flex-col gap-stack-sm">
-          <p>
-            Withdraw this package? Open offers are declined and matched investors are told. This
-            cannot be undone.
-          </p>
-          <div className="flex gap-inline-md">
-            <Button
-              onPress={() => {
-                setConfirming(false);
-                withdraw(target);
-              }}
-            >
-              Yes, withdraw
-            </Button>
-            <Button variant="secondary" onPress={() => setConfirming(false)}>
-              Keep it
-            </Button>
-          </div>
+          <ConfirmDialog
+            triggerLabel="Withdraw"
+            title="Withdraw this package?"
+            message="Open offers are declined and matched investors are told. This cannot be undone."
+            confirmLabel="Yes, withdraw"
+            cancelLabel="Keep it"
+            onConfirm={() => withdraw(target)}
+            isDisabled={isBusy}
+          />
         </div>
       )}
       {blockers && <PublishBlockers blockers={blockers} onPage />}

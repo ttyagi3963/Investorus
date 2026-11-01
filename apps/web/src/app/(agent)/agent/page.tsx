@@ -9,25 +9,20 @@ import Link from "next/link";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { STATUS_LABELS, formatUsd } from "@/features/listing-package/labels";
 import { PublishBlockers } from "@/features/listing-package/PublishBlockers";
-import { usePackage, usePackages } from "@/features/listing-package/queries";
+import { usePackages } from "@/features/listing-package/queries";
 import { usePublication } from "@/features/listing-package/usePublication";
 import { describeError } from "@/lib/errors";
 
 const LINK_BUTTON =
   "rounded-control bg-action-primary px-inset-md py-inset-sm text-label text-on-primary outline-none hover:bg-action-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus";
 
-/** A draft's Publish button. The summary has no version, so it reads the package first. */
-function PublishDraft({ id }: { id: string }) {
-  const { data: pkg } = usePackage(id);
+/** A draft's Publish button, from the version the list read. */
+function PublishDraft({ pkg }: { pkg: AgentPackageSummary }) {
   const { publish, isBusy, blockers, error } = usePublication();
   return (
     <div className="flex flex-col gap-stack-sm">
       <div>
-        <Button
-          onPress={() => pkg && publish({ id, version: pkg.version })}
-          isDisabled={!pkg}
-          isPending={isBusy}
-        >
+        <Button onPress={() => publish({ id: pkg.id, version: pkg.version })} isPending={isBusy}>
           Publish
         </Button>
       </div>
@@ -58,7 +53,7 @@ function PackageRow({ pkg }: { pkg: AgentPackageSummary }) {
           {matched}
         </span>
       </Link>
-      {pkg.status === "DRAFT" && <PublishDraft id={pkg.id} />}
+      {pkg.status === "DRAFT" && <PublishDraft pkg={pkg} />}
     </li>
   );
 }

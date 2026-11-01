@@ -9,3 +9,5 @@ export { NumberField, type NumberFieldProps } from "./primitives/NumberField.js"
 export { PhotoPicker, type PhotoPickerProps } from "./primitives/PhotoPicker.js";
 export { Select, type SelectOption, type SelectProps } from "./primitives/Select.js";
 export { TextField, type TextFieldProps } from "./primitives/TextField.js";
+export { ConfirmDialog, type ConfirmDialogProps } from "./primitives/ConfirmDialog.js";
+export { PopoverPanel, type PopoverPanelProps } from "./primitives/PopoverPanel.js";

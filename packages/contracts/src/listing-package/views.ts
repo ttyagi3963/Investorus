@@ -47,6 +47,8 @@ export type AgentPackageView = {
 export type AgentPackageSummary = {
   id: string;
   status: PackageStatus;
+  /** What a publish or withdraw from the list names (optimistic concurrency). */
+  version: number;
   streetLine: string;
   city: string;
   state: string;
@@ -112,6 +114,7 @@ export function toAgentPackageSummary(parts: AgentPackageParts): AgentPackageSum
   return {
     id: pkg.id,
     status: pkg.status,
+    version: pkg.version,
     streetLine: property.streetLine,
     city: property.city,
     state: property.state,

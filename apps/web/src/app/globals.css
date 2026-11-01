@@ -1,0 +1,5 @@
+/* Global styles (T267): Tailwind, the semantic token bridge from @clever/ui, and the design
+   system's source folder, so the utilities used inside the primitives are generated too. */
+@import "tailwindcss";
+@import "@clever/ui/styles/theme.css";
+@source "../../../../packages/ui/src";

@@ -6,6 +6,7 @@ export {
   DomainError,
   ForbiddenError,
   NotFoundError,
+  UnauthenticatedError,
   ValidationError,
   type FieldError,
 } from "./errors.js";

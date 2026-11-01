@@ -24,6 +24,12 @@ export class ValidationError extends DomainError {
   }
 }
 
+/** 401: no session, or one that is expired, tampered, or for a user who is no longer active. */
+export class UnauthenticatedError extends DomainError {
+  readonly status = 401;
+  readonly code = "UNAUTHENTICATED";
+}
+
 /** 403: the caller is signed in but may not do this. */
 export class ForbiddenError extends DomainError {
   readonly status = 403;

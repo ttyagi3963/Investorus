@@ -20,3 +20,26 @@ export const createDecisionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("DECLINE_ALL"), version, note }),
 ]);
 export type CreateDecisionInput = z.input<typeof createDecisionSchema>;
+
+/** The milestones a deal moves through after acceptance, in order (FR-055). */
+export const DEAL_MILESTONES = ["UNDER_CONTRACT", "INSPECTION", "CLOSING", "CLOSED"] as const;
+export type DealMilestone = (typeof DEAL_MILESTONES)[number];
+
+/** POST /deals/:dealId/milestones (T311). */
+export const milestoneInputSchema = z.object({ milestone: z.enum(DEAL_MILESTONES), version });
+export type MilestoneInput = z.input<typeof milestoneInputSchema>;
+
+/** POST /deals/:dealId/fall-through (T311): a reason is required (FR-056). */
+export const fallThroughInputSchema = z.object({
+  reason: z.string().trim().min(1).max(500),
+  version,
+});
+export type FallThroughInput = z.input<typeof fallThroughInputSchema>;
+
+/** POST /listing-packages/:id/backup-promotions (T311): the backup and the package's version. */
+export const promoteBackupSchema = z.object({ offerId: z.string(), version });
+export type PromoteBackupInput = z.input<typeof promoteBackupSchema>;
+
+/** POST /offers/:offerId/reconfirmation (T311): the promoted backup's answer (FR-057). */
+export const reconfirmationSchema = z.object({ action: z.enum(["CONFIRM", "DECLINE"]) });
+export type ReconfirmationInput = z.input<typeof reconfirmationSchema>;

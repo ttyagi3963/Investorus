@@ -4,7 +4,12 @@
 import { z } from "zod";
 import { MATCH_TRIGGERS } from "../match/match.js";
 
-export const JOB_TYPES = ["MATCH_PACKAGE", "CLOSE_OFFER_ROUND", "EXPIRE_OFFER"] as const;
+export const JOB_TYPES = [
+  "MATCH_PACKAGE",
+  "CLOSE_OFFER_ROUND",
+  "EXPIRE_OFFER",
+  "EXPIRE_RECONFIRMATION",
+] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
 export const JOB_STATUSES = ["QUEUED", "PROCESSING", "COMPLETED", "FAILED"] as const;
@@ -49,3 +54,7 @@ export const expireOfferPayloadSchema = z.object({
   revision: z.number().int().positive(),
 });
 export type ExpireOfferPayload = z.infer<typeof expireOfferPayloadSchema>;
+
+/** EXPIRE_RECONFIRMATION: end a promoted backup's time to reconfirm (FR-057). */
+export const expireReconfirmationPayloadSchema = z.object({ dealId: z.string().min(1) });
+export type ExpireReconfirmationPayload = z.infer<typeof expireReconfirmationPayloadSchema>;

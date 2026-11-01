@@ -1,6 +1,7 @@
 // The worker's composition root (T294, constitution I): the one place its adapters are built and
 // wired, from validated settings. `dispose` closes the database pool on shutdown.
 import {
+  DealLifecycleWorkflow,
   MatchingWorkflow,
   OfferRoundWorkflow,
   createJobHandlers,
@@ -41,6 +42,7 @@ export function createContainer(env: WorkerEnv): WorkerContainer {
     handlers: createJobHandlers({
       matching: new MatchingWorkflow(db.uow, { clock }),
       offerRound: new OfferRoundWorkflow(db.uow),
+      deals: new DealLifecycleWorkflow(db.uow, { clock }),
     }),
     logger,
     reporter: new LogErrorReporterImpl(logger),

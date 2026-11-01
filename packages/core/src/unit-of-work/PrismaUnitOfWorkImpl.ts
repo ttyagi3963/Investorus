@@ -44,7 +44,7 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
         config: new PrismaConfigRepositoryImpl(tx),
         investors: new PrismaInvestorRepositoryImpl(tx),
         decisions: new PrismaDecisionRepositoryImpl(tx, this.cipher),
-        deals: new PrismaDealRepositoryImpl(tx),
+        deals: new PrismaDealRepositoryImpl(tx, this.cipher),
       }),
     );
   }

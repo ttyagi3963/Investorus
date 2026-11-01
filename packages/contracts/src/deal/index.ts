@@ -8,5 +8,14 @@ export {
   type Decision,
   type DecisionType,
 } from "./deal.js";
-export { createDecisionSchema, type CreateDecisionInput } from "./inputs.js";
-export { toDecisionView, type DecisionView } from "./views.js";
+export {
+  DEAL_MILESTONES,
+  createDecisionSchema,
+  fallThroughInputSchema,
+  milestoneInputSchema,
+  promoteBackupSchema,
+  reconfirmationSchema,
+  type CreateDecisionInput,
+  type DealMilestone,
+} from "./inputs.js";
+export { toDecisionView, type DealParts, type DecisionView } from "./views.js";

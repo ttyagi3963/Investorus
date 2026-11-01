@@ -1,6 +1,9 @@
 // What a matched investor sees of a package (T295; SC-006, XX.1, contracts/api.md): the place by
 // city, state, and ZIP, the facts, the photos, the price range, the deadline, and their own offer.
 // Each view names its fields, so the seller and the street can never reach an investor by accident.
+// Only the winning investor gets the seller's contact and the street, through a separate view
+// (T312; FR-031), so the everyday view's type can never carry them.
+import type { Deal, DealStatus } from "../deal/deal.js";
 import { toOfferView, type Offer, type OfferStatus, type OfferView } from "../offer/offer.js";
 import type { Photo } from "../photo/photo.js";
 import type { Property } from "../property/property.js";
@@ -13,6 +16,8 @@ export type InvestorPackageParts = {
   photos: (Photo & { url: string })[];
   /** The investor's offer in the package's current round, if any. */
   myOffer: Offer | null;
+  /** The deal on the investor's own offer, if their offer was accepted or promoted. */
+  myDeal: Pick<Deal, "status" | "reconfirmBy"> | null;
   matchedAt: Date;
 };
 
@@ -43,6 +48,14 @@ export type InvestorPackageView = {
   offerDeadline: string | null;
   photos: { id: string; position: number; url: string }[];
   myOffer: OfferView | null;
+  /** The buyer's milestone, or a promoted backup's time to reconfirm (FR-055, FR-057). */
+  myDeal: { status: DealStatus; reconfirmBy: string | null } | null;
+};
+
+/** What only the winning investor sees on top: the seller's contact and the street (FR-031). */
+export type WinningInvestorPackageView = InvestorPackageView & {
+  sellerContact: { fullName: string; email: string | null; phone: string | null };
+  streetLine: string;
 };
 
 export type InvestorPackageSummary = {
@@ -91,6 +104,27 @@ export function toInvestorPackageView(parts: InvestorPackageParts): InvestorPack
       .sort((a, b) => a.position - b.position)
       .map((photo) => ({ id: photo.id, position: photo.position, url: photo.url })),
     myOffer: parts.myOffer ? toOfferView(parts.myOffer) : null,
+    myDeal: parts.myDeal && {
+      status: parts.myDeal.status,
+      reconfirmBy: parts.myDeal.reconfirmBy?.toISOString() ?? null,
+    },
+  };
+}
+
+/**
+ * GET /investor/packages/:id: the everyday view, plus the seller's contact and the street only when
+ * the service set `seller` (the winning investor's read, already audited).
+ */
+export function toInvestorPackageResponse(
+  parts: InvestorPackageParts & { seller?: WinningInvestorPackageView["sellerContact"] },
+): InvestorPackageView | WinningInvestorPackageView {
+  const view = toInvestorPackageView(parts);
+  if (!parts.seller) return view;
+  const { fullName, email, phone } = parts.seller;
+  return {
+    ...view,
+    sellerContact: { fullName, email, phone },
+    streetLine: parts.property.streetLine,
   };
 }
 

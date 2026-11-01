@@ -24,6 +24,7 @@ import type { IBuyBoxRepository } from "../../src/repositories/buy-box/IBuyBoxRe
 import type { IConfigRepository } from "../../src/repositories/config/IConfigRepository.js";
 import {
   ALREADY_ACCEPTED,
+  type DealPatch,
   type IDealRepository,
   type NewDeal,
 } from "../../src/repositories/deal/IDealRepository.js";
@@ -491,11 +492,30 @@ export class InMemoryDealRepository implements IDealRepository {
       fellThroughReason: null,
       promotedFromBackup: false,
       reconfirmBy: null,
+      ...deal,
       version: 1,
       createdAt: NOW,
       updatedAt: NOW,
     };
     this.rows.push(row);
+    return { ...row };
+  }
+  async findById(id: string) {
+    const row = this.rows.find((r) => r.id === id);
+    return row ? { ...row } : null;
+  }
+  async findByOffer(offerId: string) {
+    const row = this.rows.find((r) => r.offerId === offerId);
+    return row ? { ...row } : null;
+  }
+  async findLatestByPackage(packageId: string) {
+    const row = this.rows.filter((r) => r.packageId === packageId).at(-1);
+    return row ? { ...row } : null;
+  }
+  async update(id: string, version: number, patch: DealPatch) {
+    const row = this.rows.find((r) => r.id === id);
+    if (!row || row.version !== version) throw new ConflictError("This deal changed.");
+    Object.assign(row, patch, { version: row.version + 1 });
     return { ...row };
   }
   async findActiveByPackage(packageId: string) {

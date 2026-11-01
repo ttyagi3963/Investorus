@@ -1185,9 +1185,35 @@ designs that need features not yet built are listed at the end of this section, 
 - [X] T330 The agent screens (designs 02, 04, 05): the package list as a table with thumbnail, status chip, matched count, and deadline; the package page with the PageHeader, status, photos, form, offers, and timeline in cards; the new package page; the offer comparison; the deal page in the same system
 - [X] T331 The investor screens (designs 06, 07, 08): opportunities as photo cards with location, time left, facts, and the seller's range; the package page with photos and the offer form; the buy box list and editor with chip choices
 - [X] T332 The operations import screen (design 10): the new-import card beside the batch's results, with stat tiles and outcome chips
-- [ ] T333 Documentation: contracts/design-tokens.md (the brand file is the bundle's DTCG file; the Sprint 1 seeded values are replaced), plan.md, README, and this section's list of what the designs show that is not built
+- [X] T333 Documentation: contracts/design-tokens.md (the brand file is the bundle's DTCG file; the Sprint 1 seeded values are replaced), plan.md, README, and this section's list of what the designs show that is not built
 
-**Not built from the designs** (each needs a feature that does not exist yet; filled in by T333):
+**Not built from the designs** (each needs a feature or data that does not exist yet):
+- **Every signed-in header**: the signed-in user's name, role, and avatar (the web app does not
+  read `GET /me` yet); the agent's "Offers" page, the investor's "My offers" page, and the
+  operations "Packages" (package trace, design 09) and "Failed jobs" pages.
+- **01 Sign-in**: a demo account signs in at once ("Continue"); here it fills in the form ("Use").
+- **02 Package list**: the status filter chips with counts; the seller and offer-count columns;
+  beds, baths, and square feet in each row.
+- **03 Package wizard**: the four-step wizard with its stepper, Back and Continue, "Save and exit",
+  and automatic draft saving; the seller and "What investors see" side cards; the sample-address
+  tip; condition as single-choice chips; the plausibility warning (square feet against bedrooms).
+- **04 Package page**: the status stepper with a date per step; "of N active buy boxes matched"
+  and the top reasons a buy box did not match (near-miss, T222/T223); a read-only "Home details"
+  view with an "Edit package" button (the page shows the form); the agent's notes for investors;
+  photo captions (Front, Kitchen).
+- **05 Offer comparison**: inspection period, repairs, program, and proof-of-funds rows; "close in
+  N days"; a confirmation banner after a decision.
+- **06 Opportunities**: the Open, Offered, and All filter; New and Viewed badges; beds, baths,
+  square feet, and condition on each card; the name of the buy box that matched.
+- **07 Investor package**: "Why this matched", criterion by criterion; proof-of-funds status; the
+  agent's notes; the design's offer fields that the offer model does not have (inspection days,
+  program, as-is).
+- **08 Buy box editor**: the Nationwide / States / ZIP codes switch and the ZIP code tag input
+  (a select and a text field stand in); status as a field (it changes through Pause and Resume);
+  Save disabled until something changes.
+- **09 Package trace**: the whole operations package trace (US6).
+- **10 Investor imports**: recent imports; the template and rejected-rows downloads; the investor's
+  name per row and who uploaded the file; rejected and updated rows sorted first.
 
 ---
 

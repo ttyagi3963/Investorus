@@ -45,13 +45,14 @@ Every demo account uses the password **`demo1234`**. The seed creates them autom
 | Investor | `dune@example.com` | An offer on Blake's seeded listing |
 | Operations | `morgan@example.com` | Importing the legacy investor list (`seed/legacy-investors.csv`) |
 
-> **Status:** Sprints 1–4 are in. Open <http://localhost:3000/login> and pick an account. Avery
+> **Status:** Sprints 1–5 are in, and every screen uses the Clever design system (Sprint 5). Open
+> <http://localhost:3000/login> and pick an account. Avery
 > builds and publishes a package, which is matched to investors who then make offers. Blake's
 > seeded listing already has four offers: compare them, accept one, and track the deal to closing.
 > If it falls through, promote a backup, then sign in as that investor to reconfirm. Investors
-> manage their own buy boxes under **Your buy boxes**, and a new or edited box is matched at once
+> manage their own buy boxes under **Buy boxes**, and a new or edited box is matched at once
 > against listings still taking offers. The operations account imports
-> [seed/legacy-investors.csv](seed/legacy-investors.csv) under **Import investors**: 26 rows are
+> [seed/legacy-investors.csv](seed/legacy-investors.csv) under **Investor imports**: 26 rows are
 > imported and 4 rejected with their reasons, and importing it again duplicates nothing. The other
 > operations screens arrive with their features (see
 > [tasks.md](specs/001-investor-platform-prototype/tasks.md)).

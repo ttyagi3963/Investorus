@@ -74,4 +74,8 @@ export class PrismaListingPackageRepositoryImpl implements IListingPackageReposi
     }
     return toListingPackage(await this.db.listingPackage.findUniqueOrThrow({ where: { id } }));
   }
+
+  async lock(id: string): Promise<void> {
+    await this.db.$queryRaw`SELECT id FROM "ListingPackage" WHERE id = ${id} FOR UPDATE`;
+  }
 }

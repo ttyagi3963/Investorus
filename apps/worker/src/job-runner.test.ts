@@ -54,6 +54,7 @@ function setup(handler: () => Promise<void>, failedStatus: Job["status"]) {
         CLOSE_OFFER_ROUND: handler,
         EXPIRE_OFFER: handler,
         EXPIRE_RECONFIRMATION: handler,
+        SEND_MATCH_DIGESTS: handler,
       },
       logger,
       reporter: { report },

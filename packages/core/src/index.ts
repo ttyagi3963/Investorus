@@ -76,3 +76,24 @@ export {
   type IOfferRoundWorkflow,
 } from "./workflows/offer-round/OfferRoundWorkflow.js";
 export { createJobHandlers, type JobHandler } from "./jobs/handlers.js";
+export {
+  DeliveryDispatcher,
+  type DeliveryDispatcherDeps,
+  type DispatchResult,
+} from "./outbox/DeliveryDispatcher.js";
+export { OutboxRelay, type RelayResult } from "./outbox/OutboxRelay.js";
+export { readConfig } from "./repositories/config/read-config.js";
+export type {
+  IDeliveryConsumer,
+  IDeliveryQueue,
+} from "./providers/delivery-queue/IDeliveryQueue.js";
+export {
+  MatchDigestWorkflow,
+  type IMatchDigestWorkflow,
+} from "./workflows/match-digest/MatchDigestWorkflow.js";
+export { OpsQueryService, type IOpsQueryService } from "./services/ops/OpsQueryService.js";
+export { DeliveryOpsService, type IDeliveryOpsService } from "./services/ops/DeliveryOpsService.js";
+export {
+  OutsideServicesService,
+  type IOutsideServicesService,
+} from "./services/ops/OutsideServicesService.js";

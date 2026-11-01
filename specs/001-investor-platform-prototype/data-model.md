@@ -432,32 +432,35 @@ Index: `(status, runAt)`.
 | Field | Type | Rules |
 | --- | --- | --- |
 | id | cuid | also used as the event ID downstream |
-| type | see [contracts/events.md](./contracts/events.md) | |
-| aggregateType / aggregateId | string / cuid | e.g., `ListingPackage` / id |
-| payload | JSONB | PII-free except `crm` fields as allowed by FR-032 |
-| createdAt | timestamptz | |
-| relayedAt | timestamptz? | set by the relay after Delivery rows exist |
+| type | text, checked against the event union in code ([contracts/events.md](./contracts/events.md)) | |
+| aggregateType / aggregateId | string / cuid | `ListingPackage` / its id, or `Investor` / its id for the daily digest |
+| payload | JSONB | PII-free (FR-032); the CRM target adds the seller's contact at send time |
+| occurredAt | timestamptz | the CRM keeps the newest update by this time |
+| relayedAt | timestamptz? | set once by the relay after the Delivery rows exist; a trigger refuses any other change and any delete |
+| correlationId | string? | the trace ID of the request or job that wrote it |
 
-Index: `(relayedAt)` partial where null.
+Index: `(occurredAt)` partial where `relayedAt` is null; `(aggregateType, aggregateId, occurredAt)`
+for the operations trace.
 
 ### Delivery
 | Field | Type | Rules |
 | --- | --- | --- |
 | id | cuid | the idempotency key sent to the provider |
 | outboxEventId | cuid → OutboxEvent | |
-| target | `CRM` \| `EMAIL` \| `SMS` \| `IN_APP` | |
-| recipientRef | string? | investor or user ID (never raw contact data) |
-| status | `PENDING` \| `SENDING` \| `SENT` \| `RETRYING` \| `NEEDS_ATTENTION` | |
-| attempts | int | |
-| lastError | string? | redacted |
+| target | `CRM` \| `EMAIL` \| `SMS` | in-app notices stay in the change itself (Sprint 6) |
+| recipientRef | string | the investor's ID (EMAIL, SMS) or the package's ID (CRM); never contact data |
+| status | `PENDING` \| `SENDING` \| `SENT` \| `RETRYING` \| `NEEDS_ATTENTION` | CHECK: `SENT` exactly when `sentAt` is set |
+| attempts | int | CHECK ≥ 0; counted by the dispatcher |
+| lastError | string? | redacted, at most 500 characters |
 | nextAttemptAt / sentAt | timestamptz? | |
+| queuedAt | timestamptz? | set when the relay puts it on the BullMQ queue; reset by an operations retry |
 
-Unique `(outboxEventId, target, recipientRef)` — the relay cannot create duplicates.
-Index: `(status)`.
+Unique `(outboxEventId, target, recipientRef)`: the relay cannot create duplicates.
+Indexes: `(status)`; `(createdAt)` partial where `PENDING` and not queued.
 
 ### Notification (in-app inbox)
-`id, userId, type, packageId?, title, body, readAt?, createdAt`. Written by the `IN_APP`
-delivery handler.
+`id, userId, type, packageId?, title, body, readAt?, createdAt`. Written in the same transaction
+as the change it reports (Sprint 6 kept in-app notices out of the outbox).
 
 ### AuditLog (append-only, immutable; Constitution XII)
 | Field | Type | Rules |

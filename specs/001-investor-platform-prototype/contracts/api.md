@@ -104,15 +104,16 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 
 | Method | Path | Role | Body / Response | Spec |
 | --- | --- | --- | --- | --- |
-| GET | `/ops/listing-packages/:id/timeline` | OPS | → `TimelineEntry[]` (audit, matches, deliveries merged by time) | FR-073 |
-| GET | `/ops/listing-packages/:id/matches/:investorId` | OPS | → `MatchExplanationView`: `{ matched, listingVersion, buyBoxes: [{ buyBoxId, name, buyBoxVersion, matched, clauseResults[], source: "STORED" \| "REPLAYED" }], replayedWithNewerRules }` | FR-074; non-matches are replayed against the versions live at the time |
-| GET | `/ops/deliveries` | OPS | `?status=NEEDS_ATTENTION` → `Delivery[]` | FR-071 |
-| POST | `/ops/deliveries/:id/retry` | OPS | → 202 | FR-071 |
+| GET | `/ops/listing-packages` | OPS | → `OpsPackageRow[]`: each package with its round's matched and offer counts and its deliveries pending, retrying, and needing attention | FR-071, FR-073 |
+| GET | `/ops/listing-packages/:id/trace` | OPS | → `PackageTrace`: the package, counts (buy boxes evaluated, matched, delivered, needing attention, offers), each matched investor (boxes with versions, the match notice's delivery, their offer), the active investors not matched, and the timeline (audit entries and deliveries, newest first) | FR-073 |
+| GET | `/ops/listing-packages/:id/matches/:investorId` | OPS | → `MatchExplanation`: `{ matched, listingVersion, source: "STORED" \| "REPLAYED", replayedWithNewerRules, buyBoxes: [{ buyBoxId, name, version, active, matched, criteria: [{ key, label, passed, expected, actual }] }] }` | FR-074; a match returns the stored decision; a non-match is replayed against the listing version and each box as it was then |
+| GET | `/ops/deliveries` | OPS | `?status=` (optional) → `DeliveryView[]`, newest 200 (recipient: the investor's company or "CRM") | FR-071 |
+| POST | `/ops/deliveries/:id/retry` | OPS | → 202; 409 unless the delivery needs attention; audited | FR-071 |
 | POST | `/ops/deliveries/retry-all` | OPS | `{ target? }` → 202 `{ count }` (every NEEDS_ATTENTION delivery back to PENDING) | FR-071, SC-007 |
 | POST | `/ops/match-digests` | OPS | → 202 `{ jobId }` (enqueues `SEND_MATCH_DIGESTS` now; demo aid, the daily run is unchanged) | FR-023 |
-| GET | `/ops/crm-comparison` | OPS | → `[{ packageId, platformStatus, crmStatus, inSync, pendingDeliveryId? }]` | FR-078 |
+| GET | `/ops/crm-comparison` | OPS | → `[{ packageId, streetLine, platformStatus, crmStatus, inSync, pendingDelivery: { id, status } \| null }]` (published packages) | FR-078 |
 | GET | `/ops/simulations` | OPS | → `{ crm, messaging, storage }` modes | FR-075 |
-| PUT | `/ops/simulations/:service` | OPS | `{ mode: "up"\|"down"\|"slow"\|"garbage" }` → 200 | FR-075 |
+| PUT | `/ops/simulations/:service` | OPS | `{ mode: "up"\|"down"\|"slow"\|"garbage" }` → 200 with every mode; audited | FR-075 |
 | POST | `/ops/investor-imports` | OPS | `{ storageKey, fileName }` (CSV uploaded by the browser with the `UploadInstruction`) → 202 `{ jobId, batchId }` | FR-061 |
 | POST | `/ops/investor-imports/uploads` | OPS | `{ sizeBytes }` → 201 `{ storageKey, upload: UploadInstruction }` | Same instruction shape as photo uploads |
 | GET | `/ops/investor-imports/:batchId` | OPS | → `ImportBatch & { rows: ImportRowResult[] }` | |

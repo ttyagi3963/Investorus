@@ -17,11 +17,11 @@ import type { ListingPackage, PackageStatus } from "@clever/contracts/listing-pa
 import type { Offer } from "@clever/contracts/offer";
 import type { IClock } from "../../providers/clock/IClock.js";
 import { ALREADY_ACCEPTED } from "../../repositories/deal/IDealRepository.js";
-import type { NewNotification } from "../../repositories/notification/INotificationRepository.js";
 import { checkOfferDates } from "../../services/offer/offer-terms.js";
 import type { UnitOfWorkRepositories, IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
 import { placeOf } from "../notice-text.js";
 import { scheduleOfferExpiry } from "../offer-round/schedule.js";
+import { notifyInvestor, type InvestorNotice } from "../../outbox/notify-investor.js";
 
 export interface IDecisionWorkflow {
   record(actor: Actor, packageId: string, input: unknown): Promise<Decision>;
@@ -36,7 +36,7 @@ const DEAL_STATUSES: PackageStatus[] = [
   "CLOSED",
 ];
 
-type Notice = Omit<NewNotification, "userId">;
+type Notice = InvestorNotice;
 
 export class DecisionWorkflow implements IDecisionWorkflow {
   constructor(
@@ -194,8 +194,7 @@ export class DecisionWorkflow implements IDecisionWorkflow {
     return offer;
   }
 
-  private async notify(repos: UnitOfWorkRepositories, investorId: string, notice: Notice) {
-    const userId = await repos.users.findIdByInvestorId(investorId);
-    if (userId) await repos.notifications.create({ userId, ...notice });
+  private notify(repos: UnitOfWorkRepositories, investorId: string, notice: Notice) {
+    return notifyInvestor(repos, investorId, notice);
   }
 }

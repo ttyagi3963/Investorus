@@ -31,6 +31,7 @@ import { investorOf } from "../../services/investor-package/InvestorPackageQuery
 import { computeNetProceeds } from "../../services/offer-comparison/net-proceeds.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { placeOf } from "../notice-text.js";
+import { notifyInvestor, type InvestorNotice } from "../../outbox/notify-investor.js";
 
 export interface IDealLifecycleWorkflow {
   get(actor: Actor, packageId: string): Promise<DealParts>;
@@ -340,9 +341,12 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
     return placeOf(await repos.properties.findById(pkg.propertyId));
   }
 
-  private async notifyInvestor(repos: UnitOfWorkRepositories, investorId: string, notice: Notice) {
-    const userId = await repos.users.findIdByInvestorId(investorId);
-    if (userId) await repos.notifications.create({ userId, ...notice });
+  private notifyInvestor(
+    repos: UnitOfWorkRepositories,
+    investorId: string,
+    notice: InvestorNotice,
+  ) {
+    return notifyInvestor(repos, investorId, notice);
   }
 
   private async notifyAgent(repos: UnitOfWorkRepositories, pkg: ListingPackage, notice: Notice) {

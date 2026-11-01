@@ -16,6 +16,10 @@ export class PrismaInvestorRepositoryImpl implements IInvestorRepository {
     return new Map(rows.map((row) => [row.id, row.companyName]));
   }
 
+  async findContact(id: string): Promise<{ email: string; phone: string | null } | null> {
+    return this.db.investor.findUnique({ where: { id }, select: { email: true, phone: true } });
+  }
+
   async findIdForImport(externalRef: string | null, email: string): Promise<string | null> {
     const byRef =
       externalRef === null

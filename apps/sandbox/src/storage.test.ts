@@ -4,9 +4,10 @@ import { createHmac } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import express from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { createApp } from "./app.js";
+import { storageRoutes } from "./storage.js";
 
 const NOW = new Date("2026-11-01T12:00:00Z");
 const config = {
@@ -16,7 +17,8 @@ const config = {
   webOrigin: "http://localhost:3000",
   now: () => NOW,
 };
-const app = createApp(config);
+// The storage routes alone: the outage gate in front of them needs the database (app.int.test.ts).
+const app = express().use(storageRoutes(config));
 
 /** A signed upload path, as SandboxStorageProviderImpl builds it. */
 function uploadPath(
@@ -70,7 +72,9 @@ describe("sandbox storage", () => {
       .get(`/storage/objects/${encodeURIComponent("packages/p1/f.jpg")}`)
       .expect(200);
     expect(photo.headers["content-type"]).toBe("image/jpeg");
-    await request(app).get(`/storage/objects/${encodeURIComponent("imports/i2.csv")}`).expect(403);
+    await request(app)
+      .get(`/storage/objects/${encodeURIComponent("imports/i2.csv")}`)
+      .expect(403);
   });
 
   it("reports a stored object's type and size on the internal route, only with the token", async () => {

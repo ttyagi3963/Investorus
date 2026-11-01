@@ -37,7 +37,7 @@ const STATUS_OPTIONS = [
 ];
 const CUSTOM_FIELDS = [
   { name: "Task ID", type: "TEXT" },
-  { name: "Sprint", type: "SINGLE_SELECT", options: ["Sprint 0", "Sprint 1", "Sprint 2", "Sprint 3", "Sprint 4", "Sprint 5"] },
+  { name: "Sprint", type: "SINGLE_SELECT", options: ["Sprint 0", "Sprint 1", "Sprint 2", "Sprint 3", "Sprint 4", "Sprint 5", "Sprint 6"] },
   { name: "Phase", type: "TEXT" },
   { name: "User story", type: "TEXT" },
   { name: "Parallel", type: "SINGLE_SELECT", options: ["Yes", "No"] },

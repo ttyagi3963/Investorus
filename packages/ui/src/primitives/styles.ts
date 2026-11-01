@@ -14,5 +14,6 @@ export const FIELD_HINT = "text-helper text-muted";
 export const FIELD_ERROR = "text-helper font-medium text-danger";
 
 /** The modal backdrop and panel every dialog uses. */
-export const MODAL_OVERLAY = "fixed inset-0 z-10 flex items-center justify-center bg-overlay p-inset-lg";
+export const MODAL_OVERLAY =
+  "fixed inset-0 z-10 flex items-center justify-center bg-overlay p-inset-lg";
 export const MODAL_PANEL = "w-full max-w-md rounded-card bg-card p-inset-xl shadow-card";

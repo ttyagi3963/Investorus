@@ -11,6 +11,7 @@ export const JOB_TYPES = [
   "CLOSE_OFFER_ROUND",
   "EXPIRE_OFFER",
   "EXPIRE_RECONFIRMATION",
+  "SEND_MATCH_DIGESTS",
 ] as const;
 export type JobType = (typeof JOB_TYPES)[number];
 
@@ -71,3 +72,7 @@ export type ExpireOfferPayload = z.infer<typeof expireOfferPayloadSchema>;
 /** EXPIRE_RECONFIRMATION: end a promoted backup's time to reconfirm (FR-057). */
 export const expireReconfirmationPayloadSchema = z.object({ dealId: z.string().min(1) });
 export type ExpireReconfirmationPayload = z.infer<typeof expireReconfirmationPayloadSchema>;
+
+/** SEND_MATCH_DIGESTS: email each investor the day's buy-box-change matches (FR-023). */
+export const sendMatchDigestsPayloadSchema = z.object({ digestDate: z.iso.date() });
+export type SendMatchDigestsPayload = z.infer<typeof sendMatchDigestsPayloadSchema>;

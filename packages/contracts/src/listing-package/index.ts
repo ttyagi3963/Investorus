@@ -20,6 +20,7 @@ export {
   type AgentPackageParts,
   type AgentPackageSummary,
   type AgentPackageView,
+  type MatchSummary,
   type AgentPackagePartsWithUrls,
 } from "./views.js";
 export {

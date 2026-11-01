@@ -1,8 +1,15 @@
-// The worker's composition root (T294, T322, constitution I): the one place its adapters are built
-// and wired, from validated settings. STORAGE_PROVIDER picks the sandbox or S3, as in the api, so
-// the investor import reads the file where the browser uploaded it. `dispose` closes the pool.
+// The worker's composition root (T294, T322, T339, constitution I): the one place its adapters are
+// built and wired, from validated settings. STORAGE_PROVIDER picks the sandbox or S3, as in the api,
+// so the investor import reads the file where the browser uploaded it. Deliveries use the BullMQ
+// queue on Redis with the retry policy read from ConfigEntry["deliveryRetry"] at startup, and the
+// sandbox CRM and messaging providers. `dispose` closes the queue and then the pool.
 import {
   DealLifecycleWorkflow,
+  DeliveryDispatcher,
+  MatchDigestWorkflow,
+  OutboxRelay,
+  readConfig,
+  type IDeliveryConsumer,
   InvestorImportWorkflow,
   MatchingWorkflow,
   OfferRoundWorkflow,
@@ -14,6 +21,9 @@ import {
 } from "@clever/core";
 import {
   AesGcmPiiCipherImpl,
+  BullMqDeliveryQueueImpl,
+  SandboxCrmProviderImpl,
+  SandboxMessagingProviderImpl,
   LogErrorReporterImpl,
   PostgresDatabaseImpl,
   S3StorageProviderImpl,
@@ -32,10 +42,14 @@ export type WorkerContainer = Readonly<{
   logger: Logger;
   reporter: IErrorReporter;
   clock: IClock;
+  relay: OutboxRelay;
+  digests: MatchDigestWorkflow;
+  dispatcher: DeliveryDispatcher;
+  deliveries: IDeliveryConsumer;
   dispose: () => Promise<void>;
 }>;
 
-export function createContainer(env: WorkerEnv): WorkerContainer {
+export async function createContainer(env: WorkerEnv): Promise<WorkerContainer> {
   const logger = createLogger("worker", { level: env.LOG_LEVEL });
   const db = new PostgresDatabaseImpl(
     env.DATABASE_URL,
@@ -52,6 +66,10 @@ export function createContainer(env: WorkerEnv): WorkerContainer {
           internalToken: env.SANDBOX_INTERNAL_TOKEN,
           clock,
         });
+  const retry = await db.uow.run((repos) => readConfig(repos.config, "deliveryRetry"));
+  const queue = new BullMqDeliveryQueueImpl({ redisUrl: env.REDIS_URL, retry });
+  const sandbox = { internalUrl: env.SANDBOX_URL, internalToken: env.SANDBOX_INTERNAL_TOKEN };
+  const digests = new MatchDigestWorkflow(db.uow, { clock });
   return Object.freeze({
     uow: db.uow,
     handlers: createJobHandlers({
@@ -63,10 +81,23 @@ export function createContainer(env: WorkerEnv): WorkerContainer {
         geo: new StaticGeoProviderImpl(),
         clock,
       }),
+      digests,
     }),
     logger,
     reporter: new LogErrorReporterImpl(logger),
     clock,
-    dispose: () => db.dispose(),
+    relay: new OutboxRelay(db.uow, { queue, clock }),
+    digests,
+    dispatcher: new DeliveryDispatcher(db.uow, {
+      crm: new SandboxCrmProviderImpl(sandbox),
+      messaging: new SandboxMessagingProviderImpl(sandbox),
+      clock,
+      retry,
+    }),
+    deliveries: queue,
+    dispose: async () => {
+      await queue.close();
+      await db.dispose();
+    },
   });
 }

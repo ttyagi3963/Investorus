@@ -1,5 +1,6 @@
 // The browser's api client (T093's Sprint 1 part): every call goes to the BFF at /bff, which adds
-// the session cookie's token, so browser code never sees the token.
+// the session cookie's token, so browser code never sees the token. `ops` is the operations
+// console's (T342).
 import {
   buyBoxesClient,
   createApiClient,
@@ -8,6 +9,7 @@ import {
   investorImportsClient,
   listingPackagesClient,
   notificationsClient,
+  opsClient,
   photosClient,
   sessionClient,
 } from "@clever/contracts/client";
@@ -22,3 +24,4 @@ export const notifications = notificationsClient(bff);
 export const deals = dealsClient(bff);
 export const buyBoxes = buyBoxesClient(bff);
 export const investorImports = investorImportsClient(bff);
+export const ops = opsClient(bff);

@@ -4,6 +4,7 @@ import type { IAuditRepository } from "../repositories/audit/IAuditRepository.js
 import type { IBuyBoxRepository } from "../repositories/buy-box/IBuyBoxRepository.js";
 import type { IConfigRepository } from "../repositories/config/IConfigRepository.js";
 import type { IDealRepository } from "../repositories/deal/IDealRepository.js";
+import type { IDeliveryRepository } from "../repositories/delivery/IDeliveryRepository.js";
 import type { IDecisionRepository } from "../repositories/decision/IDecisionRepository.js";
 import type { IImportRepository } from "../repositories/import/IImportRepository.js";
 import type { IInvestorRepository } from "../repositories/investor/IInvestorRepository.js";
@@ -13,6 +14,8 @@ import type { IListingVersionRepository } from "../repositories/listing-version/
 import type { IMatchRepository } from "../repositories/match/IMatchRepository.js";
 import type { INotificationRepository } from "../repositories/notification/INotificationRepository.js";
 import type { IOfferRepository } from "../repositories/offer/IOfferRepository.js";
+import type { IOpsQueryRepository } from "../repositories/ops/IOpsQueryRepository.js";
+import type { IOutboxRepository } from "../repositories/outbox/IOutboxRepository.js";
 import type { IPhotoRepository } from "../repositories/photo/IPhotoRepository.js";
 import type { IPropertyRepository } from "../repositories/property/IPropertyRepository.js";
 import type { ISellerRepository } from "../repositories/seller/ISellerRepository.js";
@@ -36,6 +39,9 @@ export interface UnitOfWorkRepositories {
   decisions: IDecisionRepository;
   deals: IDealRepository;
   imports: IImportRepository;
+  outbox: IOutboxRepository;
+  deliveries: IDeliveryRepository;
+  opsQuery: IOpsQueryRepository;
 }
 
 export interface IUnitOfWork {

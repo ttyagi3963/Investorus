@@ -117,6 +117,31 @@ const actions = (uow: InMemoryUnitOfWork, action: string) =>
   uow.repos.audit.entries.filter((e) => e.action === action);
 
 describe("MatchingWorkflow", () => {
+  it("records how many eligible buy boxes it weighed and why the others did not match, as counts", async () => {
+    const { uow, packages, pkg, matching } = await published();
+    uow.repos.buyBoxes.boxes.push(
+      box("Dallas only", "ridge", { geographyMode: "ZIPS", geography: ["75201"] }),
+    );
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
+
+    expect(actions(uow, "MATCHING_COMPLETED")[0]?.details).toMatchObject({
+      evaluated: 5,
+      exclusions: { geography: 1, price: 1 },
+    });
+    expect((await packages.get(avery, pkg.id)).matchSummary).toEqual({
+      evaluated: 5,
+      reasons: [
+        { key: "geography", label: "Location", count: 1 },
+        { key: "price", label: "Price", count: 1 },
+      ],
+    });
+  });
+
   it("matches each investor once with every matching box, notifies each once, and audits each decision", async () => {
     const { uow, pkg, matching } = await published();
     await matching.evaluatePackage({

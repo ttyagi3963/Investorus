@@ -33,6 +33,8 @@ import { placeOf } from "../../workflows/notice-text.js";
 import { scheduleOfferExpiry } from "../../workflows/offer-round/schedule.js";
 import { checkOfferDates, termsOf } from "./offer-terms.js";
 import { investorOf } from "../investor-package/InvestorPackageQueryService.js";
+import { crmSnapshot } from "../../outbox/crm-snapshot.js";
+import { writeEvent } from "../../outbox/write-event.js";
 
 export interface IOfferService {
   create(actor: Actor, packageId: string, input: unknown): Promise<Offer>;
@@ -54,6 +56,8 @@ export class OfferService implements IOfferService {
     const investorId = investorOf(actor);
     const terms = checkOfferDates(createOfferInputSchema.parse(input), this.deps.clock.now());
     return this.uow.run(async (repos) => {
+      // Offers on one package are made one at a time, so each CRM offer count includes the others.
+      await repos.packages.lock(packageId);
       const pkg = await repos.packages.findById(packageId);
       const match = pkg && (await repos.matches.findOne(packageId, investorId, pkg.round));
       if (!pkg || !match) throw new NotFoundError(NOT_FOUND);
@@ -74,6 +78,11 @@ export class OfferService implements IOfferService {
       });
       await scheduleOfferExpiry(repos, offer);
       await audit(repos, actor, offer, "OFFER_SUBMITTED");
+      // The CRM's offer count changes with the offer, in the same change (FR-077).
+      await writeEvent(repos, {
+        type: "offer.submitted",
+        payload: { packageId, offerId: offer.id, investorId, crm: await crmSnapshot(repos, pkg) },
+      });
       return offer;
     });
   }
@@ -112,8 +121,22 @@ export class OfferService implements IOfferService {
       if (!OPEN_OFFER_STATUSES.includes(current.status)) {
         throw new BusinessRuleError("This offer can no longer be withdrawn", "OFFER_NOT_OPEN");
       }
+      await repos.packages.lock(current.packageId);
       const offer = await repos.offers.updateStatus(offerId, version, "WITHDRAWN");
       await audit(repos, actor, offer, "OFFER_WITHDRAWN");
+      // The CRM's offer count goes back down in the same change (FR-077).
+      const pkg = await repos.packages.findById(offer.packageId);
+      if (pkg) {
+        await writeEvent(repos, {
+          type: "offer.withdrawn",
+          payload: {
+            packageId: pkg.id,
+            offerId,
+            investorId,
+            crm: await crmSnapshot(repos, pkg),
+          },
+        });
+      }
       return offer;
     });
   }

@@ -1,11 +1,13 @@
 // The unit of work over Prisma (T043, T249): one interactive transaction per `run`, with every
 // repository bound to that transaction, so all of a change's writes commit or roll back together.
+// withOutboxEvents adds the CRM event to every package status change (T337).
 import type { PrismaClient } from "../generated/prisma/client.js";
 import type { IPiiCipher } from "../providers/pii-cipher/IPiiCipher.js";
 import { PrismaAuditRepositoryImpl } from "../repositories/audit/PrismaAuditRepositoryImpl.js";
 import { PrismaBuyBoxRepositoryImpl } from "../repositories/buy-box/PrismaBuyBoxRepositoryImpl.js";
 import { PrismaConfigRepositoryImpl } from "../repositories/config/PrismaConfigRepositoryImpl.js";
 import { PrismaDealRepositoryImpl } from "../repositories/deal/PrismaDealRepositoryImpl.js";
+import { PrismaDeliveryRepositoryImpl } from "../repositories/delivery/PrismaDeliveryRepositoryImpl.js";
 import { PrismaDecisionRepositoryImpl } from "../repositories/decision/PrismaDecisionRepositoryImpl.js";
 import { PrismaImportRepositoryImpl } from "../repositories/import/PrismaImportRepositoryImpl.js";
 import { PrismaInvestorRepositoryImpl } from "../repositories/investor/PrismaInvestorRepositoryImpl.js";
@@ -14,7 +16,10 @@ import { PrismaListingPackageRepositoryImpl } from "../repositories/listing-pack
 import { PrismaListingVersionRepositoryImpl } from "../repositories/listing-version/PrismaListingVersionRepositoryImpl.js";
 import { PrismaMatchRepositoryImpl } from "../repositories/match/PrismaMatchRepositoryImpl.js";
 import { PrismaNotificationRepositoryImpl } from "../repositories/notification/PrismaNotificationRepositoryImpl.js";
+import { withOutboxEvents } from "../outbox/with-outbox-events.js";
 import { PrismaOfferRepositoryImpl } from "../repositories/offer/PrismaOfferRepositoryImpl.js";
+import { PrismaOpsQueryRepositoryImpl } from "../repositories/ops/PrismaOpsQueryRepositoryImpl.js";
+import { PrismaOutboxRepositoryImpl } from "../repositories/outbox/PrismaOutboxRepositoryImpl.js";
 import { PrismaPhotoRepositoryImpl } from "../repositories/photo/PrismaPhotoRepositoryImpl.js";
 import { PrismaPropertyRepositoryImpl } from "../repositories/property/PrismaPropertyRepositoryImpl.js";
 import { PrismaSellerRepositoryImpl } from "../repositories/seller/PrismaSellerRepositoryImpl.js";
@@ -29,25 +34,30 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
 
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {
     return this.prisma.$transaction((tx) =>
-      work({
-        users: new PrismaUserRepositoryImpl(tx),
-        sellers: new PrismaSellerRepositoryImpl(tx, this.cipher),
-        properties: new PrismaPropertyRepositoryImpl(tx, this.cipher),
-        packages: new PrismaListingPackageRepositoryImpl(tx),
-        photos: new PrismaPhotoRepositoryImpl(tx),
-        audit: new PrismaAuditRepositoryImpl(tx),
-        buyBoxes: new PrismaBuyBoxRepositoryImpl(tx),
-        listingVersions: new PrismaListingVersionRepositoryImpl(tx),
-        matches: new PrismaMatchRepositoryImpl(tx),
-        notifications: new PrismaNotificationRepositoryImpl(tx),
-        offers: new PrismaOfferRepositoryImpl(tx),
-        jobs: new PrismaJobRepositoryImpl(tx),
-        config: new PrismaConfigRepositoryImpl(tx),
-        investors: new PrismaInvestorRepositoryImpl(tx),
-        decisions: new PrismaDecisionRepositoryImpl(tx, this.cipher),
-        deals: new PrismaDealRepositoryImpl(tx, this.cipher),
-        imports: new PrismaImportRepositoryImpl(tx),
-      }),
+      work(
+        withOutboxEvents({
+          users: new PrismaUserRepositoryImpl(tx),
+          sellers: new PrismaSellerRepositoryImpl(tx, this.cipher),
+          properties: new PrismaPropertyRepositoryImpl(tx, this.cipher),
+          packages: new PrismaListingPackageRepositoryImpl(tx),
+          photos: new PrismaPhotoRepositoryImpl(tx),
+          audit: new PrismaAuditRepositoryImpl(tx),
+          buyBoxes: new PrismaBuyBoxRepositoryImpl(tx),
+          listingVersions: new PrismaListingVersionRepositoryImpl(tx),
+          matches: new PrismaMatchRepositoryImpl(tx),
+          notifications: new PrismaNotificationRepositoryImpl(tx),
+          offers: new PrismaOfferRepositoryImpl(tx),
+          jobs: new PrismaJobRepositoryImpl(tx),
+          config: new PrismaConfigRepositoryImpl(tx),
+          investors: new PrismaInvestorRepositoryImpl(tx),
+          decisions: new PrismaDecisionRepositoryImpl(tx, this.cipher),
+          deals: new PrismaDealRepositoryImpl(tx, this.cipher),
+          imports: new PrismaImportRepositoryImpl(tx),
+          outbox: new PrismaOutboxRepositoryImpl(tx),
+          deliveries: new PrismaDeliveryRepositoryImpl(tx),
+          opsQuery: new PrismaOpsQueryRepositoryImpl(tx, this.cipher),
+        }),
+      ),
     );
   }
 }

@@ -67,6 +67,15 @@ export class PrismaBuyBoxRepositoryImpl implements IBuyBoxRepository {
     return rows.map(toBuyBox);
   }
 
+  async countMatchable(now: Date): Promise<number> {
+    return this.db.buyBox.count({
+      where: {
+        status: "ACTIVE",
+        investor: { status: "ACTIVE", proofOfFundsExpiresAt: { gt: now } },
+      },
+    });
+  }
+
   async listForInvestor(investorId: string): Promise<BuyBox[]> {
     const rows = await this.db.buyBox.findMany({
       where: { investorId },

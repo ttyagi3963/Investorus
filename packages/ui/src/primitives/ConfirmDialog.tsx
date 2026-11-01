@@ -35,10 +35,7 @@ export function ConfirmDialog({
       <Button variant={triggerVariant} isDisabled={isDisabled}>
         {triggerLabel}
       </Button>
-      <ModalOverlay
-        isDismissable
-        className={MODAL_OVERLAY}
-      >
+      <ModalOverlay isDismissable className={MODAL_OVERLAY}>
         <Modal className={MODAL_PANEL}>
           <Dialog role="alertdialog" className="flex flex-col gap-stack-md outline-none">
             {({ close }) => (

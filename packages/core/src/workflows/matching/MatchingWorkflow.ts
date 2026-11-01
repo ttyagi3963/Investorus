@@ -6,16 +6,16 @@
 // late job is harmless. A saved buy box is matched the other way round (T321, FR-023): one box
 // against every package still taking offers; a package it newly shares is a match like any other,
 // and an investor already matched gets the box added and no second notice.
-import type { BuyBox } from "@clever/contracts/buy-box";
+import { CRITERION_KEYS, type BuyBox, type CriterionKey } from "@clever/contracts/buy-box";
 import type { MatchBuyBoxPayload, MatchPackagePayload } from "@clever/contracts/jobs";
 import type { ListingPackage } from "@clever/contracts/listing-package";
 import type { Property } from "@clever/contracts/property";
 import type { IClock } from "../../providers/clock/IClock.js";
 import { evaluateBuyBox, type BuyBoxEvaluation } from "../../registry/evaluate-buy-box.js";
 import { EVALUATOR_VERSION } from "../../registry/evaluators.js";
-import type { NewNotification } from "../../repositories/notification/INotificationRepository.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
 import { placeOf } from "../notice-text.js";
+import { notifyInvestor, type InvestorNotice } from "../../outbox/notify-investor.js";
 
 export interface IMatchingWorkflow {
   evaluatePackage(run: MatchPackagePayload): Promise<void>;
@@ -54,10 +54,21 @@ export class MatchingWorkflow implements IMatchingWorkflow {
       const facts = version.snapshot;
 
       const candidates = await repos.buyBoxes.listCandidates(facts.zip, facts.state, now);
+      // Counts for the agent's summary (T343): the eligible boxes outside the area never reach the
+      // evaluator, so they count against geography; every other box counts each criterion it failed.
+      const evaluated = await repos.buyBoxes.countMatchable(now);
+      const exclusions: Partial<Record<CriterionKey, number>> = {};
+      const exclude = (key: CriterionKey, count = 1) => {
+        if (count > 0) exclusions[key] = (exclusions[key] ?? 0) + count;
+      };
+      exclude("geography", evaluated - candidates.length);
       const byInvestor = new Map<string, MatchedBox[]>();
       for (const box of candidates) {
         const evaluation = evaluateBuyBox(box, facts, today);
-        if (!evaluation.matched) continue;
+        if (!evaluation.matched) {
+          for (const key of CRITERION_KEYS) if (!evaluation.results[key].passed) exclude(key);
+          continue;
+        }
         byInvestor.set(box.investorId, [
           ...(byInvestor.get(box.investorId) ?? []),
           { box, evaluation },
@@ -76,14 +87,11 @@ export class MatchingWorkflow implements IMatchingWorkflow {
         // Already told about this version: a re-run adds nothing.
         if (!created && (match.lastNotifiedListingVersion ?? 0) >= listingVersion) continue;
 
-        const userId = await repos.users.findIdByInvestorId(investorId);
-        if (userId) {
-          await repos.notifications.create(
-            created
-              ? matchedNotice(userId, pkg, property, matched)
-              : changedNotice(userId, pkg, property),
-          );
-        }
+        await notifyInvestor(
+          repos,
+          investorId,
+          created ? matchedNotice(pkg, property, matched) : changedNotice(pkg, property),
+        );
         await repos.matches.markNotified(match.id, listingVersion);
         await repos.audit.append({
           ...systemEntry(packageId, "MATCH_DECISION"),
@@ -108,6 +116,8 @@ export class MatchingWorkflow implements IMatchingWorkflow {
           evaluatorVersion: EVALUATOR_VERSION,
           candidates: candidates.length,
           matchedCount: byInvestor.size,
+          evaluated,
+          exclusions,
         },
       });
     });
@@ -121,7 +131,6 @@ export class MatchingWorkflow implements IMatchingWorkflow {
       // Saved again, paused, or its investor can no longer be matched: nothing to do.
       const box = await repos.buyBoxes.findMatchable(buyBoxId, version, now);
       if (!box) return;
-      const userId = await repos.users.findIdByInvestorId(box.investorId);
 
       for (const pkg of await repos.packages.listOpenForOffers(now)) {
         const listing = await repos.listingVersions.find(pkg.id, pkg.listingVersion);
@@ -141,12 +150,14 @@ export class MatchingWorkflow implements IMatchingWorkflow {
           trigger: "BUY_BOX_CHANGE",
         });
         if (created) {
-          if (userId) {
-            const property = await repos.properties.findById(pkg.propertyId);
-            await repos.notifications.create(
-              matchedNotice(userId, pkg, property, [{ box, evaluation }]),
-            );
-          }
+          // In the app now; by email only in the daily digest (FR-023).
+          const property = await repos.properties.findById(pkg.propertyId);
+          await notifyInvestor(
+            repos,
+            box.investorId,
+            matchedNotice(pkg, property, [{ box, evaluation }]),
+            { outside: false },
+          );
           await repos.matches.markNotified(match.id, pkg.listingVersion);
         }
         await repos.audit.append({
@@ -178,14 +189,12 @@ const deadlineOf = (pkg: ListingPackage) =>
   pkg.offerDeadline ? `${pkg.offerDeadline.toISOString().slice(0, 16).replace("T", " ")} UTC` : "";
 
 function matchedNotice(
-  userId: string,
   pkg: ListingPackage,
   property: Property | null,
   matched: MatchedBox[],
-): NewNotification {
+): InvestorNotice {
   const boxes = matched.map(({ box }) => box.name).join(", ");
   return {
-    userId,
     type: "PACKAGE_MATCHED",
     packageId: pkg.id,
     title: "A new listing matches your buy box",
@@ -193,13 +202,8 @@ function matchedNotice(
   };
 }
 
-function changedNotice(
-  userId: string,
-  pkg: ListingPackage,
-  property: Property | null,
-): NewNotification {
+function changedNotice(pkg: ListingPackage, property: Property | null): InvestorNotice {
   return {
-    userId,
     type: "PACKAGE_CHANGED",
     packageId: pkg.id,
     title: "A matched listing changed",

@@ -23,6 +23,17 @@ import type {
 import type { IBuyBoxRepository } from "../../src/repositories/buy-box/IBuyBoxRepository.js";
 import type { IImportRepository } from "../../src/repositories/import/IImportRepository.js";
 import type { IConfigRepository } from "../../src/repositories/config/IConfigRepository.js";
+import type {
+  IOutboxRepository,
+  NewOutboxEvent,
+} from "../../src/repositories/outbox/IOutboxRepository.js";
+import { withOutboxEvents } from "../../src/outbox/with-outbox-events.js";
+import type {
+  Delivery,
+  IDeliveryRepository,
+} from "../../src/repositories/delivery/IDeliveryRepository.js";
+import type { DeliveryPlan } from "@clever/contracts/events";
+import type { IOpsQueryRepository } from "../../src/repositories/ops/IOpsQueryRepository.js";
 import {
   ALREADY_ACCEPTED,
   type DealPatch,
@@ -184,6 +195,8 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
     );
     return row ? { id: row.id, agentId: row.agentId } : null;
   }
+  /** One test runs at a time, so there is nothing to wait for. */
+  async lock() {}
   async update(id: string, version: number, patch: ListingPackagePatch) {
     const row = this.rows.get(id);
     if (!row || row.version !== version)
@@ -233,6 +246,9 @@ export class InMemoryAuditRepository implements IAuditRepository {
 export class InMemoryBuyBoxRepository implements IBuyBoxRepository {
   readonly boxes: BuyBox[] = [];
   readonly investors = new Map<string, Pick<Investor, "status" | "proofOfFundsExpiresAt">>();
+  async countMatchable(now: Date) {
+    return this.boxes.filter((box) => this.canMatch(box, now)).length;
+  }
   async listCandidates(zip: string, state: string, now: Date) {
     return this.boxes.filter((box) => {
       const covers =
@@ -348,6 +364,13 @@ export class InMemoryMatchRepository implements IMatchRepository {
   }
   async countByPackage(packageId: string, round: number) {
     return (await this.listByPackage(packageId, round)).length;
+  }
+  readonly digestedAt = new Map<string, Date>();
+  async listUndigested() {
+    return this.rows.filter((r) => r.trigger === "BUY_BOX_CHANGE" && !this.digestedAt.has(r.id));
+  }
+  async markDigested(ids: string[], at: Date) {
+    for (const id of ids) if (!this.digestedAt.has(id)) this.digestedAt.set(id, at);
   }
 }
 
@@ -515,8 +538,12 @@ export class InMemoryConfigRepository implements IConfigRepository {
 /** Every investor is named after its ID unless a test names it. The import's writes need Postgres. */
 export class InMemoryInvestorRepository implements IInvestorRepository {
   readonly names = new Map<string, string>();
+  readonly contacts = new Map<string, { email: string; phone: string | null }>();
   async findCompanyNames(ids: string[]) {
     return new Map(ids.map((id) => [id, this.names.get(id) ?? id]));
+  }
+  async findContact(id: string) {
+    return this.contacts.get(id) ?? null;
   }
   async findIdForImport(): Promise<string | null> {
     throw new Error("The import is tested against Postgres");
@@ -597,6 +624,116 @@ export class InMemoryDealRepository implements IDealRepository {
   }
 }
 
+/** The events changes appended, in order, with the relay's mark. */
+export class InMemoryOutboxRepository implements IOutboxRepository {
+  readonly rows: (NewOutboxEvent & { id: string; occurredAt: Date; relayedAt: Date | null })[] = [];
+  async append(event: NewOutboxEvent) {
+    this.rows.push({ ...event, id: nextId("event"), occurredAt: NOW, relayedAt: null });
+  }
+  async claimUnrelayed(limit: number) {
+    return this.rows.filter((r) => r.relayedAt === null).slice(0, limit);
+  }
+  async markRelayed(ids: string[], at: Date) {
+    for (const row of this.rows) if (ids.includes(row.id)) row.relayedAt ??= at;
+  }
+}
+
+/** Deliveries with the dispatcher's status rules, reading their events from the outbox double. */
+export class InMemoryDeliveryRepository implements IDeliveryRepository {
+  readonly rows: Delivery[] = [];
+  constructor(private readonly outbox: InMemoryOutboxRepository) {}
+  async createForEvent(outboxEventId: string, plans: DeliveryPlan[]) {
+    for (const plan of plans) {
+      const exists = this.rows.some(
+        (r) =>
+          r.outboxEventId === outboxEventId &&
+          r.target === plan.target &&
+          r.recipientRef === plan.recipientRef,
+      );
+      if (exists) continue;
+      this.rows.push({
+        id: nextId("delivery"),
+        outboxEventId,
+        ...plan,
+        status: "PENDING",
+        attempts: 0,
+        lastError: null,
+        nextAttemptAt: null,
+        queuedAt: null,
+        sentAt: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+    }
+  }
+  async requeueStale(before: Date) {
+    let count = 0;
+    for (const row of this.rows) {
+      const stale =
+        (row.status === "PENDING" && row.queuedAt !== null && row.queuedAt < before) ||
+        (row.status === "RETRYING" && row.nextAttemptAt !== null && row.nextAttemptAt < before) ||
+        (row.status === "SENDING" && row.updatedAt < before);
+      if (!stale) continue;
+      Object.assign(row, { status: "PENDING", queuedAt: null, nextAttemptAt: null });
+      count += 1;
+    }
+    return count;
+  }
+  async claimUnqueued(limit: number) {
+    return this.rows
+      .filter((r) => r.status === "PENDING" && r.queuedAt === null)
+      .slice(0, limit)
+      .map((r) => r.id);
+  }
+  async markQueued(ids: string[], at: Date) {
+    for (const row of this.rows) if (ids.includes(row.id)) row.queuedAt = at;
+  }
+  async findWithEvent(id: string) {
+    const row = this.rows.find((r) => r.id === id);
+    const event = row && this.outbox.rows.find((e) => e.id === row.outboxEventId);
+    return row && event ? { ...row, event } : null;
+  }
+  private move(id: string, from: Delivery["status"][], patch: Partial<Delivery>) {
+    const row = this.rows.find((r) => r.id === id && from.includes(r.status));
+    if (row) Object.assign(row, patch);
+    return Boolean(row);
+  }
+  async markSending(id: string) {
+    const row = this.rows.find((r) => r.id === id);
+    return this.move(id, ["PENDING", "RETRYING"], {
+      status: "SENDING",
+      attempts: (row?.attempts ?? 0) + 1,
+      nextAttemptAt: null,
+    });
+  }
+  async markSent(id: string, at: Date) {
+    this.move(id, ["SENDING"], { status: "SENT", sentAt: at, lastError: null });
+  }
+  async markRetrying(id: string, error: string, nextAttemptAt: Date) {
+    this.move(id, ["SENDING"], { status: "RETRYING", lastError: error, nextAttemptAt });
+  }
+  async markNeedsAttention(id: string, error: string) {
+    this.move(id, ["SENDING"], {
+      status: "NEEDS_ATTENTION",
+      lastError: error,
+      nextAttemptAt: null,
+    });
+  }
+  async resetForRetry(id: string) {
+    return this.move(id, ["NEEDS_ATTENTION"], {
+      status: "PENDING",
+      attempts: 0,
+      queuedAt: null,
+      nextAttemptAt: null,
+    });
+  }
+}
+
+/** The operations read model is SQL joins and counts, tested against Postgres (ops.int.test.ts). */
+const OPS_QUERIES_NEED_POSTGRES = new Proxy({} as IOpsQueryRepository, {
+  get: () => () => Promise.reject(new Error("Operations reads are tested against Postgres")),
+});
+
 export class InMemoryUnitOfWork implements IUnitOfWork {
   readonly repos: UnitOfWorkRepositories & {
     sellers: InMemorySellerRepository;
@@ -615,8 +752,11 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
     decisions: InMemoryDecisionRepository;
     deals: InMemoryDealRepository;
     imports: InMemoryImportRepository;
+    outbox: InMemoryOutboxRepository;
+    deliveries: InMemoryDeliveryRepository;
   };
   constructor(users: UserCredentials[] = []) {
+    const outbox = new InMemoryOutboxRepository();
     this.repos = {
       users: new InMemoryUserRepository(users),
       sellers: new InMemorySellerRepository(),
@@ -635,9 +775,12 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       decisions: new InMemoryDecisionRepository(),
       deals: new InMemoryDealRepository(),
       imports: new InMemoryImportRepository(),
+      outbox,
+      deliveries: new InMemoryDeliveryRepository(outbox),
+      opsQuery: OPS_QUERIES_NEED_POSTGRES,
     };
   }
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {
-    return work(this.repos);
+    return work(withOutboxEvents(this.repos));
   }
 }

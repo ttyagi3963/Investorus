@@ -51,4 +51,18 @@ export class PrismaMatchRepositoryImpl implements IMatchRepository {
       orderBy: { firstMatchedAt: "asc" },
     });
   }
+
+  async listUndigested(): Promise<Match[]> {
+    return this.db.match.findMany({
+      where: { trigger: "BUY_BOX_CHANGE", digestedAt: null },
+      orderBy: { firstMatchedAt: "asc" },
+    });
+  }
+
+  async markDigested(ids: string[], at: Date): Promise<void> {
+    await this.db.match.updateMany({
+      where: { id: { in: ids }, digestedAt: null },
+      data: { digestedAt: at },
+    });
+  }
 }

@@ -4,11 +4,12 @@
 // public, like the S3 bucket's policy; anything else, such as an import file, is not. The api checks
 // an upload, and the worker reads an uploaded file, on the internal routes with the shared token.
 // Objects are files on the SANDBOX_STORAGE_DIR volume, named by a hash of the key so no key can
-// reach outside it.
-import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+// reach outside it. An outage mode for storage is applied in front of these routes (simulation.ts).
+import { createHash, createHmac } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Router, type Request, type Response } from "express";
+import { sameSecret } from "./auth.js";
 
 export type StorageConfig = {
   storageDir: string;
@@ -22,12 +23,6 @@ type Meta = { contentType: string; sizeBytes: number };
 
 /** Listing photos; the only objects anyone may read without the internal token. */
 const PUBLIC_PREFIX = "packages/";
-
-const sameSecret = (given: string, expected: string) => {
-  const a = Buffer.from(given);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-};
 
 export function storageRoutes(config: StorageConfig): Router {
   const router = Router();

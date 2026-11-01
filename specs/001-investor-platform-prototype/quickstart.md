@@ -109,17 +109,18 @@ unchanged (FR-003).
 
 1. As `morgan@example.com` → **Simulations** → set CRM to `down` and Messaging to `garbage`.
 2. As an agent, publish a package and accept an offer on another package. Both actions succeed.
-3. Ops → **Deliveries** shows them as Retrying. Wait until some reach **Needs attention**
-   (about 5 minutes with the default retry budget; shorten `deliveryRetry` in Ops → Config for a
-   faster demo).
+3. Ops → **Failed jobs** shows them as Retrying. Wait until they reach **Needs attention**
+   (about 5 minutes with the default retry budget, `ConfigEntry["deliveryRetry"]`, which the
+   worker reads at startup).
 4. Set both services back to `up`. Press **Retry all** for the needs-attention items; pending
    ones retry on their own.
    Within 5 minutes, **CRM comparison** shows every package in sync, and the sandbox shows no
    duplicate messages (each idempotency key appears once).
 5. Restart test: during step 3, run `docker compose restart worker`. No delivery is lost or
    duplicated afterwards.
-6. Open the package **Timeline**. Every match, delivery attempt, offer, and status change
-   appears with its outcome.
+6. Ops → **Packages** → the package. Its trace shows who matched and whether their notice
+   arrived, why another investor was not matched, and a timeline of every status change, offer,
+   and delivery with its outcome.
 
 ### V7 — Design system and white-label switch (FR-090 to FR-097, SC-013 to SC-015)
 

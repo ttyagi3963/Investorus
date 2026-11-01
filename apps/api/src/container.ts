@@ -8,6 +8,10 @@ import {
   DealLifecycleWorkflow,
   DecisionWorkflow,
   InvestorImportWorkflow,
+  MatchDigestWorkflow,
+  DeliveryOpsService,
+  OpsQueryService,
+  OutsideServicesService,
   InvestorPackageQueryService,
   ListingPackageService,
   NotificationService,
@@ -22,6 +26,10 @@ import {
   type IErrorReporter,
   type IIdempotencyStore,
   type IInvestorImportWorkflow,
+  type IMatchDigestWorkflow,
+  type IDeliveryOpsService,
+  type IOpsQueryService,
+  type IOutsideServicesService,
   type IInvestorPackageQueryService,
   type IListingPackageService,
   type INotificationService,
@@ -35,6 +43,7 @@ import {
   LogErrorReporterImpl,
   PostgresDatabaseImpl,
   S3StorageProviderImpl,
+  SandboxSimulationProviderImpl,
   SandboxStorageProviderImpl,
   StaticGeoProviderImpl,
   SystemClockImpl,
@@ -65,6 +74,12 @@ export type AppContainer = Readonly<{
   notifications: INotificationService;
   buyBoxes: IBuyBoxService;
   investorImports: IInvestorImportWorkflow;
+  digests: Pick<IMatchDigestWorkflow, "sendNow">;
+  ops: {
+    queries: IOpsQueryService;
+    deliveries: IDeliveryOpsService;
+    outside: IOutsideServicesService;
+  };
   /** A package's view, with each photo's public address. */
   presentPackage: (parts: AgentPackageParts) => AgentPackageView;
   /** A package's list row, with its first photo's public address. */
@@ -103,6 +118,11 @@ export function createContainer(env: ApiEnv): AppContainer {
         });
 
   const geo = new StaticGeoProviderImpl();
+  // The sandbox's CRM read-out and outage switches, for the operations console (T341).
+  const sandboxOutside = new SandboxSimulationProviderImpl({
+    internalUrl: env.SANDBOX_URL,
+    internalToken: env.SANDBOX_INTERNAL_TOKEN,
+  });
 
   const addPhotoUrls: AddPhotoUrls = (photos) =>
     photos.map((photo) => ({ ...photo, url: storage.getPublicUrl(photo.storageKey) }));
@@ -124,6 +144,12 @@ export function createContainer(env: ApiEnv): AppContainer {
     notifications: new NotificationService(uow, { clock }),
     buyBoxes: new BuyBoxService(uow, { geo }),
     investorImports: new InvestorImportWorkflow(uow, { storage, geo, clock }),
+    digests: new MatchDigestWorkflow(uow, { clock }),
+    ops: {
+      queries: new OpsQueryService(uow),
+      deliveries: new DeliveryOpsService(uow),
+      outside: new OutsideServicesService(uow, { crm: sandboxOutside, simulation: sandboxOutside }),
+    },
     presentPackage: (parts) => toAgentPackageView({ ...parts, photos: addPhotoUrls(parts.photos) }),
     presentSummary: (parts) =>
       toAgentPackageSummary({ ...parts, photos: addPhotoUrls(parts.photos) }),

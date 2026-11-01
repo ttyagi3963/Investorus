@@ -1,7 +1,9 @@
 // The worker's settings, checked once at startup (T294, T322, constitution XII): a missing or invalid
 // value stops the process with every bad name printed, instead of failing on the first job. The
 // storage settings are the api's, because the investor import reads the file the browser uploaded;
-// S3's credentials come from the AWS environment variables, which the SDK reads itself.
+// S3's credentials come from the AWS environment variables, which the SDK reads itself. Deliveries
+// (T339) need Redis and the CRM and messaging providers; only the sandbox ones exist, so any other
+// provider name stops the worker at startup.
 import { z } from "zod";
 
 const common = z.object({
@@ -13,6 +15,9 @@ const common = z.object({
   STORAGE_SIGNING_KEY: z.string().min(16),
   LOG_LEVEL: z.string().default("info"),
   WORKER_HEARTBEAT_FILE: z.string().default("/tmp/worker-heartbeat"),
+  REDIS_URL: z.url(),
+  CRM_PROVIDER: z.literal("sandbox"),
+  MESSAGING_PROVIDER: z.literal("sandbox"),
 });
 
 /** One branch per storage provider, so S3's bucket and region are required exactly when used. */

@@ -1218,6 +1218,62 @@ designs that need features not yet built are listed at the end of this section, 
 
 ---
 
+## Sprint 6: Operations See What Happened, and Email, SMS, and the CRM Survive Outages
+
+**Goal** (owner, 2026-11-01: "start working on sprint 6 7 and 8"; User Story 6): every change that
+must reach an outside service (an investor's email or text, the CRM's copy of a listing's status)
+is written to the transactional outbox in the same change and delivered by the worker through
+Redis + BullMQ, with automatic retries, a "needs attention" list, and manual retry. Operations see
+each package's whole history in one place (who was matched and why, what was sent and whether it
+arrived, every offer and status change), can simulate an outage of the stand-in CRM or messaging
+service, and can compare the CRM with the platform. The daily match digest and the email and SMS
+notices deferred in Sprints 2–4 arrive with it.
+
+**Decisions** (the owner, 2026-11-01: Redis + BullMQ as the constitution says; merge when green;
+the rest proposed by Claude, following spec.md, the constitution, and contracts/events.md, for the
+owner to confirm):
+- **Redis + BullMQ** (owner): the outbox lives in PostgreSQL; the worker's relay turns each event
+  into one Delivery per target and recipient and queues it on BullMQ (`jobId` = the delivery's
+  ID). Redis runs with 64 MB, no eviction, and no persistence: a lost queue is rebuilt from the
+  deliveries in PostgreSQL.
+- **In-app notices stay in the same transaction** (XVIII.3): they are internal state, already
+  written atomically with each change. Outbox events go to the outside targets only: EMAIL, SMS,
+  and CRM. contracts/events.md is updated.
+- **The api never touches Redis**: an operations retry resets the delivery in PostgreSQL, and the
+  relay queues every pending delivery not yet queued. The same sweep recovers deliveries whose
+  queueing failed while Redis was down.
+- **A CRM update is a status snapshot** taken in the change: the package's status, round, offer
+  count, and accepted price, with the event time for ordering. Deal milestones move the package
+  status, so they reach the CRM through `package.status_changed`. The seller's contact is added
+  only at send time, by the CRM target, and that read is audited (PII_ACCESSED).
+- **Email copy names no brand** until the Brand table arrives in Sprint 7; it then uses the brand's
+  display name.
+- **Why not matched** (FR-074): a matched investor's answer is the stored MATCH_DECISION entry; a
+  non-match is replayed with the current evaluator against the package and buy box versions that
+  were live when matching ran, flagged when the rules changed. The MatchEvaluation table stays
+  deferred (plan.md Complexity Tracking).
+- **Design gaps that fit** (owner): design 09's package trace, the "Failed jobs" page, and design
+  04's "N of M buy boxes matched" with the top reasons a box did not match (counts only).
+- **One PR for the sprint** (owner), merged by Claude when every check is green.
+
+- [X] T335 Record the Sprint 6 goal, decisions, and tasks in this section; update plan.md (the XVIII, FR-022, and FR-023 rows); add "Sprint 6" to the board and mirror the section
+- [X] T336 The outbox and delivery tables with their integration tests: OutboxEvent (append-only; partial index on unrelayed), Delivery (target, recipientRef, status PENDING → SENDING → SENT / RETRYING → NEEDS_ATTENTION, attempts, redacted lastError, nextAttemptAt, queuedAt, sentAt; unique per event, target, and recipient), `Match.digestedAt`, the SEND_MATCH_DIGESTS job type; then the contracts shaped from them: the event envelope and union, each type's targets, delivery statuses and views, the `deliveryRetry` and `matchDigest` config schemas and their seed, and a test that no event schema has a PII key (from T019, T023–T026, T031, T032)
+- [X] T337 Write the events in the same change (tests first): `OutboxWriter` with the outbox repository; every package status change writes `package.status_changed` with the CRM snapshot, and a test covers every transition; offers write `offer.submitted`; matches, edits, counters, decisions, fall-throughs, promotions, and withdrawals write the events contracts/events.md lists for email and SMS (from T045, T190)
+- [X] T338 The sandbox stand-ins (tests first): a store in the `sandbox` schema; the CRM (`PUT /crm/listings/:packageId` deduplicated by Idempotency-Key, an older `occurredAt` refused with 409 STALE; `GET /crm/listings`); email and SMS capture (`POST /messages/email`, `/messages/sms`, `GET /messages`); an outage mode per service (`up`, `down`, `slow`, `garbage`); and the inspection page (from T069–T072)
+- [X] T339 Deliver through Redis and BullMQ (tests first): Redis in compose, CI, and the integration config; the CRM and messaging providers (keyed, 5 s timeout, responses checked); the seller contact reader; the relay; the delivery consumer with the `deliveryRetry` backoff, NEEDS_ATTENTION and the dead-letter queue after the last attempt, and 4xx sent straight to NEEDS_ATTENTION; message templates; a dispatcher unit test and an outage-and-recovery integration test (from T033, T046, T051, T059, T061–T066, T082, T083, T118, T192)
+- [X] T340 The daily match digest (tests first): SEND_MATCH_DIGESTS runs at `matchDigest.hourUtc`, sends one `investor.match_digest` email per investor with undigested buy-box-change matches, sets `digestedAt`, and schedules the next day; `POST /ops/match-digests` runs it now (from T220, T221)
+- [X] T341 The operations api (tests first): packages with their failing deliveries; a package's timeline (audit, matches, offers, deliveries); why an investor was or was not matched; deliveries by status, retry, and retry all (DELIVERY_RETRIED audited); the CRM comparison; outage modes (SIMULATION_CHANGED audited); OPS only (from T191, T193–T195)
+- [X] T342 The operations screens: the console's Packages, Failed jobs, Simulations, and CRM pages; the package trace (design 09: stat tiles, timeline, the investors table with match, notification, and response, and "Why not matched?") (from T196–T198)
+- [X] T343 The match summary on the agent's package page (design 04): "N of M active buy boxes matched" and the top reasons a buy box did not match, counted when matching runs, counts only
+- [X] T344 Documentation: plan.md, contracts/events.md (in-app stays in the transaction), README (the sandbox inspection page, the operations tour, the outage demo), and quickstart
+
+**Checkpoint**: switch the stand-in CRM to `down` and messaging to `garbage`, publish a package and
+make an offer: both succeed, and their deliveries show as retrying, then needing attention.
+Switch both back to `up` and retry: every delivery is sent once, the CRM matches the platform, and
+the package trace shows the retries.
+
+---
+
 ## After Sprint 1: Production Storage Adapter (owner-scheduled)
 
 **Purpose**: show that storage is swappable by adding the production adapter that

@@ -9,6 +9,8 @@ export type InvestorFields = Omit<Investor, "id" | "createdAt" | "updatedAt">;
 export interface IInvestorRepository {
   /** Each investor's company name, by ID. */
   findCompanyNames(ids: string[]): Promise<Map<string, string>>;
+  /** Where to reach an investor, read at send time so a changed address is used (T339). */
+  findContact(id: string): Promise<{ email: string; phone: string | null } | null>;
   /** The investor with this external reference, else with this email, or null. */
   findIdForImport(externalRef: string | null, email: string): Promise<string | null>;
   /**

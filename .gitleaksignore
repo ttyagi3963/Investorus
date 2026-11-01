@@ -24,3 +24,7 @@ f4f30576b4fb367ddf8b0ad4ad3d4679e85cac61:.env:generic-api-key:28
 # A test fixture, never a real secret: the sign-in test's made-up JWT key in the PR 6 branch
 # commit 39b4134 (the test now generates its key at runtime; the squash merge to main has none).
 39b413449b3bd09c7201a0be4dd0c9841c33560d:packages/core/src/services/auth/AuthService.test.ts:generic-api-key:13
+
+# A made-up signing key in a sandbox test fixture (T338), replaced with a plain test value in the
+# Sprint 6 review fix; only this branch commit still holds it.
+b902d8eedde4e1b031974f327a54845ee8ad36fc:apps/sandbox/src/app.int.test.ts:generic-api-key:29

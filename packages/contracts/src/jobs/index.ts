@@ -9,6 +9,7 @@ export {
   importInvestorsPayloadSchema,
   matchBuyBoxPayloadSchema,
   matchPackagePayloadSchema,
+  sendMatchDigestsPayloadSchema,
   type CloseOfferRoundPayload,
   type ExpireOfferPayload,
   type ExpireReconfirmationPayload,
@@ -18,4 +19,5 @@ export {
   type JobType,
   type MatchBuyBoxPayload,
   type MatchPackagePayload,
+  type SendMatchDigestsPayload,
 } from "./jobs.js";

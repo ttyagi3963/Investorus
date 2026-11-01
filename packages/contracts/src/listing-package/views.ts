@@ -7,6 +7,7 @@ import type { Property } from "../property/property.js";
 import type { Seller } from "../seller/seller.js";
 import type { ListingPackage, PackageStatus } from "./listing-package.js";
 import type { OfferProgram } from "./programs.js";
+import type { CriterionKey } from "../buy-box/criteria.js";
 
 export type AgentPackageParts = {
   package: ListingPackage;
@@ -15,6 +16,18 @@ export type AgentPackageParts = {
   photos: Photo[];
   /** How many investors the package matched in its current round. */
   matchedCount: number;
+  /** What the last matching run weighed, as counts; null before the package was matched. */
+  matchSummary: MatchSummary | null;
+};
+
+/**
+ * How a package fared in matching (T343; design 04): how many eligible buy boxes were weighed, and
+ * the criteria the others failed most often, with how many boxes failed each. Counts only: never
+ * which investor or box (XII).
+ */
+export type MatchSummary = {
+  evaluated: number;
+  reasons: { key: CriterionKey; label: string; count: number }[];
 };
 
 /** The parts with each photo's public address, which only storage knows, already added. */
@@ -37,6 +50,7 @@ export type AgentPackageView = {
   offerDeadline: string | null;
   publishedAt: string | null;
   matchedCount: number;
+  matchSummary: MatchSummary | null;
   seller: Pick<Seller, "fullName" | "email" | "phone">;
   property: Omit<Property, "id" | "createdAt" | "updatedAt">;
   photos: { id: string; position: number; contentType: string; sizeBytes: number; url: string }[];
@@ -80,6 +94,7 @@ export function toAgentPackageView(parts: AgentPackagePartsWithUrls): AgentPacka
     offerDeadline: pkg.offerDeadline?.toISOString() ?? null,
     publishedAt: pkg.publishedAt?.toISOString() ?? null,
     matchedCount: parts.matchedCount,
+    matchSummary: parts.matchSummary,
     seller: { fullName: seller.fullName, email: seller.email, phone: seller.phone },
     property: {
       streetLine: p.streetLine,

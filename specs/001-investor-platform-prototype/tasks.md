@@ -593,7 +593,7 @@ data-model.md, and contracts/api.md; for the owner to confirm):
   and promotion; the agent on the round closing, a counter response, and a reconfirmation or its
   timeout. The agent's layout gets the same inbox as the investor's.
 - **Seeded deal data:** a second agent, `blake@example.com`, with a package that has offers from
-  the three demo investors plus one more, so the comparison works at once; the later deal states
+  four investors (summit, harbor, and two new ones; ridge's narrow box does not fit it), so the comparison works at once; the later deal states
   (inspection, fallen through, closed) are reached by clicking through, and T177 keeps seeding
   them.
 - **Later scope, not deviations:** REJECTED audit entries for refused actions (a refusal rolls back
@@ -633,7 +633,7 @@ data-model.md, and contracts/api.md; for the owner to confirm):
 
 ### PR: seed
 
-- [ ] T314 Seed the deal demo in the migrate step: `blake@example.com` (AGENT, `demo1234`), one more investor, and one published package of Blake's in Austin, matched to the four investors, each with an offer that differs in price, payment, contingencies, and closing date, so the comparison and acceptance work at once; the config entries; the rehearsal signs in as Blake (from T177)
+- [X] T314 Seed the deal demo in the migrate step: `blake@example.com` (AGENT, `demo1234`), two more investors (`cobalt@example.com`, `dune@example.com`, whose boxes fit Blake's listing and not the sample listing), and one published package of Blake's in Austin (78745), matched to four investors whose boxes really fit it, each with an offer that differs in price, payment, contingencies, and closing date, so the comparison and acceptance work at once; the config entries; the rehearsal signs in as Blake (from T177)
 
 ### PR: screens (apps/web)
 

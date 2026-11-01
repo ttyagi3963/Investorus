@@ -10,6 +10,7 @@ import { ErrorNotice } from "@/features/errors/ErrorNotice";
 const DEMO_PASSWORD = "demo1234";
 const DEMO_ACCOUNTS = [
   { email: "avery@example.com", role: "Agent", shows: "builds and publishes listing packages" },
+  { email: "blake@example.com", role: "Agent", shows: "compares four offers and tracks the deal" },
   { email: "summit@example.com", role: "Investor", shows: "two buy boxes that match the sample" },
   { email: "harbor@example.com", role: "Investor", shows: "one broad buy box" },
   { email: "ridge@example.com", role: "Investor", shows: "a narrow buy box that does not match" },

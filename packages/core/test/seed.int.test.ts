@@ -1,11 +1,15 @@
-// Guards the seed's promises (T260, T299): running it again (every `docker compose up` does) adds
-// nothing; the demo agent can sign in with the README's credentials through the real service; and
-// the seeded buy boxes match the sample listing exactly as seed/expected-matches.json says.
+// Guards the seed's promises (T260, T299, T314): running it again (every `docker compose up` does)
+// adds nothing; the demo agent can sign in with the README's credentials through the real service;
+// the seeded buy boxes match the sample listing exactly as seed/expected-matches.json says; and
+// Blake's deal demo is seeded once, matched only to investors whose boxes really fit it, with its
+// seller stored encrypted.
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPrismaClient, type PrismaClient } from "../src/infra/prisma-client.js";
+import { seedConfig, seedDealDemo } from "../src/infra/seed/deal-demo.js";
 import { DEMO_PASSWORD, seedDemoAccounts } from "../src/infra/seed/seed.js";
+import { createAddressHasher } from "../src/providers/pii-cipher/address-hasher.js";
 import expected from "../src/infra/seed/expected-matches.json" with { type: "json" };
 import { evaluateBuyBox } from "../src/registry/evaluate-buy-box.js";
 import type { ListingFacts } from "../src/registry/listing-facts.js";
@@ -37,7 +41,7 @@ describe("seed", () => {
       `SELECT (SELECT count(*) FROM "Agent")::int AS agents, (SELECT count(*) FROM "User")::int AS users,
               (SELECT count(*) FROM "Investor")::int AS investors, (SELECT count(*) FROM "BuyBox")::int AS boxes`,
     );
-    expect(counts.rows[0]).toEqual({ agents: 1, users: 4, investors: 3, boxes: 4 });
+    expect(counts.rows[0]).toEqual({ agents: 2, users: 7, investors: 5, boxes: 6 });
 
     const uow = new PrismaUnitOfWorkImpl(
       prisma,
@@ -72,5 +76,36 @@ describe("seed", () => {
     for (const box of matched) (byEmail[emailOf[box.investorId]] ??= []).push(box.name);
     for (const names of Object.values(byEmail)) names.sort();
     expect(byEmail).toEqual(expected.matches);
+  });
+
+  it("seeds Blake's deal demo once, matched only where a buy box fits, with the seller encrypted", async () => {
+    await seedDemoAccounts(prisma);
+    const cipher = new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`);
+    const deps = { cipher, addressHash: createAddressHasher("test-hash-key") };
+    await seedConfig(prisma);
+    await seedDealDemo(prisma, deps);
+    await seedDealDemo(prisma, deps);
+
+    const offers = await db.query(`SELECT count(*)::int AS n FROM "Offer"`);
+    expect(offers.rows[0].n).toBe(4);
+    const seller = await db.query(`SELECT "fullName", phone FROM "Seller"`);
+    expect(JSON.stringify(seller.rows)).not.toMatch(/Jordan|5550142/);
+
+    const uow = new PrismaUnitOfWorkImpl(prisma, cipher);
+    const [pkg] = await prisma.listingPackage.findMany();
+    const version = await uow.run((repos) => repos.listingVersions.find(pkg!.id, 1));
+    const matches = await prisma.match.findMany();
+    expect(matches).toHaveLength(4);
+    const today = new Date().toISOString().slice(0, 10);
+    for (const match of matches) {
+      for (const id of match.matchedBuyBoxIds) {
+        const [box] = await uow.run((repos) =>
+          repos.buyBoxes
+            .listCandidates(version!.snapshot.zip, version!.snapshot.state, new Date())
+            .then((found) => found.filter((b) => b.id === id)),
+        );
+        expect(box && evaluateBuyBox(box, version!.snapshot, today).matched).toBe(true);
+      }
+    }
   });
 });

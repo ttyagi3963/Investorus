@@ -1,0 +1,16 @@
+{
+  "brandId": "larkspur",
+  "displayName": "Larkspur Home Offers",
+  "productName": "Investor Network",
+  "opsProductName": "Operations",
+  "logoPath": "/brands/larkspur/logo.svg",
+  "signIn": {
+    "headline": "Every buyer, one listing.",
+    "intro": "Agents publish a listing once. Larkspur sends it to the investors whose criteria fit, then lines up their offers for the seller to choose.",
+    "steps": [
+      "Add the home's details and photos.",
+      "Investors who fit see it, never the seller's contact details.",
+      "Compare offers side by side and accept the best one."
+    ]
+  }
+}

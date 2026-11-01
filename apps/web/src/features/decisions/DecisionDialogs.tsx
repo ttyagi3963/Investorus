@@ -30,6 +30,7 @@ export function AcceptButton({
   return (
     <ConfirmDialog
       triggerLabel="Accept"
+      triggerVariant="primary"
       title={`Accept ${investorName}'s offer?`}
       message={`${formatUsd(offer.price)}, closing ${offer.closingDate}. The other open offers become backup offers, and every investor is told.`}
       confirmLabel="Yes, accept"

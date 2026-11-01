@@ -34,7 +34,7 @@ export function createApp(c: AppContainer): Express {
   const v1 = Router();
   v1.use(createHealthRouter(c.checkDatabase));
   v1.use(createSessionsRouter(c.auth));
-  v1.use(createListingPackagesRouter(c.packages, c.publication, c.presentPackage));
+  v1.use(createListingPackagesRouter(c.packages, c.publication, c.presentPackage, c.presentSummary));
   v1.use(createPhotosRouter(c.photos));
   v1.use(createInvestorRouter(c.investorPackages, c.addPhotoUrls));
   v1.use(createOffersRouter(c.offers));

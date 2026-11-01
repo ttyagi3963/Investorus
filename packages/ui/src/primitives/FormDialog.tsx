@@ -3,7 +3,7 @@
 // own required fields block an empty submit. Used where a choice needs a few words or terms first.
 import type { FormEvent, ReactNode } from "react";
 import { Dialog, DialogTrigger, Heading, Modal, ModalOverlay } from "react-aria-components";
-import { Button } from "./Button.js";
+import { Button, type ButtonVariant } from "./Button.js";
 import { MODAL_OVERLAY, MODAL_PANEL } from "./styles.js";
 
 export type FormDialogProps = {
@@ -17,7 +17,7 @@ export type FormDialogProps = {
   /** The form's fields, each named so `onSubmit` can read it. */
   children: ReactNode;
   isDisabled?: boolean;
-  triggerVariant?: "primary" | "secondary";
+  triggerVariant?: ButtonVariant;
 };
 
 export function FormDialog({

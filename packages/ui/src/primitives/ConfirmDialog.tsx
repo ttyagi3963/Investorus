@@ -2,7 +2,7 @@
 // and modal alert dialog: focus moves into the dialog, stays there, and returns to the button when
 // it closes; Escape cancels.
 import { Dialog, DialogTrigger, Heading, Modal, ModalOverlay } from "react-aria-components";
-import { Button } from "./Button.js";
+import { Button, type ButtonVariant } from "./Button.js";
 import { MODAL_OVERLAY, MODAL_PANEL } from "./styles.js";
 
 export type ConfirmDialogProps = {
@@ -14,6 +14,8 @@ export type ConfirmDialogProps = {
   cancelLabel: string;
   onConfirm: () => void;
   isDisabled?: boolean;
+  /** How the opening button looks; primary when the action is the screen's main one. */
+  triggerVariant?: ButtonVariant;
 };
 
 export function ConfirmDialog({
@@ -24,10 +26,11 @@ export function ConfirmDialog({
   cancelLabel,
   onConfirm,
   isDisabled,
+  triggerVariant = "secondary",
 }: ConfirmDialogProps) {
   return (
     <DialogTrigger>
-      <Button variant="secondary" isDisabled={isDisabled}>
+      <Button variant={triggerVariant} isDisabled={isDisabled}>
         {triggerLabel}
       </Button>
       <ModalOverlay

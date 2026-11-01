@@ -1,12 +1,21 @@
 "use client";
-// The agent's deal tracker (T316; FR-055 to FR-058): the milestones as a step list with the current
-// one marked, a button only for the allowed next milestone, a fall-through dialog that needs a
-// reason, and after a fall-through the backups ranked by net proceeds with Promote. With no usable
-// backup left, the agent reopens the package for a new round or withdraws it. Nothing changes on
-// screen until the api answers (never optimistic, XIII).
+// The agent's deal tracker (T316, restyled in T330; FR-055 to FR-058): the buyer's terms, the
+// milestones as a stepper with the current one marked, a button only for the allowed next milestone,
+// a fall-through dialog that needs a reason, and after a fall-through the backups ranked by net
+// proceeds with Promote. With no usable backup left, the agent reopens the package for a new round
+// or withdraws it. Nothing changes on screen until the api answers (never optimistic, XIII).
 import type { DealView } from "@clever/contracts/deal";
 import type { AgentPackageView } from "@clever/contracts/listing-package";
-import { Button, ConfirmDialog, FormDialog, TextField } from "@clever/ui";
+import {
+  Button,
+  Card,
+  ConfirmDialog,
+  FormDialog,
+  OFFER_STATUS_TONES,
+  StatTile,
+  StatusChip,
+  TextField,
+} from "@clever/ui";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { DeadlineDialog } from "@/features/listing-package/DeadlineDialog";
 import { DEAL_STATUS_LABELS, formatUsd } from "@/features/listing-package/labels";
@@ -14,11 +23,44 @@ import { packageKeys } from "@/features/listing-package/queries";
 import { deals, listingPackages } from "@/lib/bff-client";
 import { useAction } from "@/lib/use-action";
 
-const SECTION = "flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card";
 const STEPS = ["OFFER_ACCEPTED", "UNDER_CONTRACT", "INSPECTION", "CLOSING", "CLOSED"] as const;
 const OPEN = ["OFFER_ACCEPTED", "UNDER_CONTRACT", "INSPECTION", "CLOSING"];
 const when = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+/** A `YYYY-MM-DD` date, read as that calendar day wherever the browser is. */
+const day = (date: string) =>
+  new Date(date).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "UTC" });
+
+/** The milestones in order: done ones in the accent, the current one in the call-to-action color. */
+function Milestones({ current }: { current: number }) {
+  return (
+    <ol aria-label="Milestones" className="grid grid-cols-1 gap-inline-md sm:grid-cols-5">
+      {STEPS.map((step, index) => {
+        const state = index < current ? "Done" : index === current ? "Now" : "Not yet";
+        const bar =
+          index < current
+            ? "border-t-selected"
+            : index === current
+              ? "border-t-cta"
+              : "border-t-subtle";
+        return (
+          <li
+            key={step}
+            aria-current={index === current ? "step" : undefined}
+            className={`flex flex-col gap-stack-xs border-t-4 pt-inset-sm ${bar}`}
+          >
+            <span
+              className={`text-body ${index === current ? "font-semibold text-heading" : index < current ? "text-default" : "text-muted"}`}
+            >
+              {DEAL_STATUS_LABELS[step]}
+            </span>
+            <span className="text-helper text-muted">{state}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealView }) {
   const { run, isBusy, error } = useAction(
@@ -28,104 +70,104 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
   const current = STEPS.indexOf(deal.status as (typeof STEPS)[number]);
   const usable = deal.backups.filter((b) => !b.expired);
   const decided = pkg.status === "FELL_THROUGH" && deal.status !== "PENDING_RECONFIRMATION";
+  const canFallThrough = OPEN.includes(deal.status);
 
   return (
-    <div className="flex flex-col gap-stack-lg">
+    <>
       {error && <ErrorNotice error={error} />}
-      <section aria-labelledby="deal-heading" className={SECTION}>
-        <h2 id="deal-heading" className="font-heading text-heading-sm">
-          {DEAL_STATUS_LABELS[deal.status]}
-        </h2>
-        <p>
-          Buyer: {deal.investorName}, {formatUsd(deal.offer.price)},{" "}
-          {deal.offer.paymentType === "CASH" ? "cash" : "financed"}, closing{" "}
-          {deal.offer.closingDate}
-          {deal.promotedFromBackup ? " (promoted from backup)" : ""}.
-        </p>
+      <Card
+        title="Buyer and terms"
+        description={deal.promotedFromBackup ? "Promoted from a backup offer." : undefined}
+      >
+        <div className="grid grid-cols-1 gap-inline-md sm:grid-cols-2 lg:grid-cols-4">
+          <StatTile label="Buyer" value={deal.investorName} />
+          <StatTile label="Price" value={formatUsd(deal.offer.price)} />
+          <StatTile label="Payment" value={deal.offer.paymentType === "CASH" ? "Cash" : "Financed"} />
+          <StatTile label="Closing" value={day(deal.offer.closingDate)} />
+        </div>
         {deal.status === "PENDING_RECONFIRMATION" && deal.reconfirmBy && (
-          <p role="status">
+          <p role="status" className="rounded-control bg-status-offers-in p-inset-md text-status-offers-in">
             Waiting for {deal.investorName} to reconfirm by {when(deal.reconfirmBy)}.
           </p>
         )}
-        {deal.fellThroughReason && <p>Reason it fell through: {deal.fellThroughReason}</p>}
-        {current >= 0 && (
-          <ol aria-label="Milestones" className="flex flex-wrap gap-inline-md">
-            {STEPS.map((step, index) => (
-              <li
-                key={step}
-                aria-current={index === current ? "step" : undefined}
-                className={
-                  index === current
-                    ? "rounded-control bg-action-primary px-inset-sm py-inset-sm text-on-primary"
-                    : `rounded-control border border-default px-inset-sm py-inset-sm ${index < current ? "" : "text-muted"}`
+        {deal.fellThroughReason && (
+          <p className="rounded-control bg-status-error p-inset-md text-status-error">
+            Reason it fell through: {deal.fellThroughReason}
+          </p>
+        )}
+      </Card>
+
+      {(current >= 0 || deal.allowedNextMilestones.length > 0 || canFallThrough) && (
+        <Card title="Milestones">
+          {current >= 0 && <Milestones current={current} />}
+          <div className="flex flex-wrap gap-inline-md">
+            {deal.allowedNextMilestones.map((milestone) => (
+              <Button
+                key={milestone}
+                isPending={isBusy}
+                onPress={() =>
+                  run(() => deals.recordMilestone(deal.id, { milestone, version: deal.version }))
                 }
               >
-                {index < current ? "Done: " : ""}
-                {DEAL_STATUS_LABELS[step]}
-              </li>
+                Move to {DEAL_STATUS_LABELS[milestone].toLowerCase()}
+              </Button>
             ))}
-          </ol>
-        )}
-        <div className="flex flex-wrap gap-inline-md">
-          {deal.allowedNextMilestones.map((milestone) => (
-            <Button
-              key={milestone}
-              isPending={isBusy}
-              onPress={() =>
-                run(() => deals.recordMilestone(deal.id, { milestone, version: deal.version }))
-              }
-            >
-              Move to {DEAL_STATUS_LABELS[milestone].toLowerCase()}
-            </Button>
-          ))}
-          {OPEN.includes(deal.status) && (
-            <FormDialog
-              triggerLabel="Mark as fallen through"
-              title="Mark this deal as fallen through?"
-              submitLabel="Mark fallen through"
-              cancelLabel="Keep the deal"
-              isDisabled={isBusy}
-              onSubmit={(values) =>
-                run(() =>
-                  deals.fallThrough(deal.id, {
-                    reason: String(values.get("reason") ?? ""),
-                    version: deal.version,
-                  }),
-                )
-              }
-            >
-              <p>
-                The buyer loses access to the seller&apos;s details. You can then promote a backup.
-              </p>
-              <TextField
-                name="reason"
-                label="Why it fell through"
-                description="Only you see this reason."
-                maxLength={500}
-                isRequired
-              />
-            </FormDialog>
-          )}
-        </div>
-      </section>
+            {canFallThrough && (
+              <FormDialog
+                triggerLabel="Mark as fallen through"
+                title="Mark this deal as fallen through?"
+                submitLabel="Mark fallen through"
+                cancelLabel="Keep the deal"
+                isDisabled={isBusy}
+                onSubmit={(values) =>
+                  run(() =>
+                    deals.fallThrough(deal.id, {
+                      reason: String(values.get("reason") ?? ""),
+                      version: deal.version,
+                    }),
+                  )
+                }
+              >
+                <p>
+                  The buyer loses access to the seller&apos;s details. You can then promote a
+                  backup.
+                </p>
+                <TextField
+                  name="reason"
+                  label="Why it fell through"
+                  description="Only you see this reason."
+                  maxLength={500}
+                  isRequired
+                />
+              </FormDialog>
+            )}
+          </div>
+        </Card>
+      )}
 
       {pkg.status === "FELL_THROUGH" && (
-        <section aria-labelledby="backups-heading" className={SECTION}>
-          <h2 id="backups-heading" className="font-heading text-heading-sm">
-            Backup offers, best net proceeds first
-          </h2>
+        <Card title="Backup offers, best net proceeds first">
           {deal.backups.length === 0 && <p className="text-muted">No backup offers remain.</p>}
           <ul className="flex flex-col gap-stack-sm">
             {deal.backups.map((backup) => (
               <li
                 key={backup.offer.id}
-                className="flex flex-wrap items-center justify-between gap-inline-md rounded-control border border-default p-inset-md"
+                className="flex flex-wrap items-center justify-between gap-inline-md rounded-control border border-subtle p-inset-md"
               >
-                <span>
-                  {backup.investorName}: {formatUsd(backup.offer.price)}, net{" "}
-                  {formatUsd(backup.netProceeds)}, closing {backup.offer.closingDate}
-                  {backup.expired ? " (expired)" : ""}
-                </span>
+                <div className="flex flex-col gap-stack-xs">
+                  <span className="flex flex-wrap items-center gap-inline-sm">
+                    <span className="text-body-lg font-semibold text-heading">
+                      {backup.investorName}
+                    </span>
+                    {backup.expired && (
+                      <StatusChip tone={OFFER_STATUS_TONES.EXPIRED}>Expired</StatusChip>
+                    )}
+                  </span>
+                  <span className="text-body text-muted">
+                    {formatUsd(backup.offer.price)} · net {formatUsd(backup.netProceeds)} · closing{" "}
+                    {day(backup.offer.closingDate)}
+                  </span>
+                </div>
                 {!backup.expired && decided && (
                   <ConfirmDialog
                     triggerLabel="Promote"
@@ -172,8 +214,8 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
               />
             </div>
           )}
-        </section>
+        </Card>
       )}
-    </div>
+    </>
   );
 }

@@ -1,8 +1,9 @@
 // The BFF's session route (T263, research R12): sign-in goes to the api, and the token it returns is
 // set as an HTTP-only, SameSite=Lax cookie (Secure unless COOKIE_SECURE=false), 8 hours, so browser
-// code never sees it; only the user goes back. Sign-out clears the cookie.
+// code never sees it; only the user goes back. Sign-out clears the cookie. The sign-in call carries
+// the request's `traceparent` (T283).
 import type { SessionResponse } from "@clever/contracts/auth";
-import { SESSION_COOKIE, forbidden, sameOrigin } from "./shared";
+import { SESSION_COOKIE, forbidden, passBackHeaders, sameOrigin, traceparentFor } from "./shared";
 
 const EIGHT_HOURS = 8 * 60 * 60;
 
@@ -24,15 +25,14 @@ export async function signIn(
   const send = deps.fetch ?? globalThis.fetch;
   const upstream = await send(`${deps.apiUrl}/api/v1/sessions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", traceparent: traceparentFor(request) },
     body: await request.text(),
   });
   if (upstream.status !== 201) {
     // A refusal or an outage goes back as the api sent it, JSON or not.
-    const type = upstream.headers.get("content-type");
     return new Response(await upstream.arrayBuffer(), {
       status: upstream.status,
-      headers: type ? { "Content-Type": type } : {},
+      headers: passBackHeaders(upstream),
     });
   }
   const body = (await upstream.json()) as SessionResponse;

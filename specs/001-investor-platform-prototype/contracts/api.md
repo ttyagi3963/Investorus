@@ -16,7 +16,11 @@ Entity fields are defined in [../data-model.md](../data-model.md).
   - Redis unavailable → `503` with `Retry-After: 5`.
 - **Status codes (II)**: GET 200, create POST 201, async POST 202 with
   `{ jobId, statusUrl }`, PATCH and PUT 200, DELETE 204.
-- **Errors (VII)**: `{ "error": "message", "code": "BUSINESS_RULE", "details"?: {...} }`.
+- **Tracing (XII)**: a caller may send a W3C `traceparent` header; the api keeps its trace ID,
+  or creates one when the header is missing or malformed. Every response carries the trace ID as
+  `X-Request-Id`, and every error body as `requestId`, so support can find the request in the
+  logs (`trace_id`).
+- **Errors (VII)**: `{ "error": "message", "code": "BUSINESS_RULE", "details"?: {...}, "requestId": "<trace ID>" }`.
   - 400: validation (with `details.fields[]` naming each failing field, FR-012).
   - 401: missing, invalid, or expired session token.
   - 403: forbidden. 404: not found (also returned for investors asking about packages they are

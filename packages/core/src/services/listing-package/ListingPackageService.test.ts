@@ -1,6 +1,7 @@
 // Guards the draft package rules (T258): an unknown ZIP or future year is refused on its field, city and state
 // come from the ZIP, one package per address across all agents (FR-013), an agent only reaches their
-// own packages (FR-080), a stale edit is refused, and an edit is checked on the merged result.
+// own packages (FR-080), a stale edit is refused, an edit is checked on the merged result, and each
+// change is audited without seller PII (T282, XII).
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -23,8 +24,8 @@ const draft: CreateListingPackageInput = {
   priceExpectationMin: 300_000,
   priceExpectationMax: 350_000,
 };
-const service = () =>
-  new ListingPackageService(new InMemoryUnitOfWork(), {
+const service = (uow = new InMemoryUnitOfWork()) =>
+  new ListingPackageService(uow, {
     geo: new StaticGeoProviderImpl(),
     addressHash: createAddressHasher("test-hash-key"),
     clock: { now: () => new Date("2026-11-01T12:00:00Z") },
@@ -130,5 +131,31 @@ describe("ListingPackageService", () => {
     expect(fields(await edit({ property: { units: 4 } }))).toEqual(["property.units"]);
     expect(fields(await edit({ priceExpectationMin: 400_000 }))).toEqual(["priceExpectationMax"]);
     expect(fields(await edit({ seller: { phone: null } }))).toEqual(["seller.email"]);
+  });
+
+  it("audits a create and an edit as the acting user, naming changed fields but never their values", async () => {
+    const uow = new InMemoryUnitOfWork();
+    const s = service(uow);
+    const { package: pkg } = await s.create(avery, draft);
+    await s.update(avery, pkg.id, {
+      version: 1,
+      priceExpectationMax: 360_000,
+      seller: { phone: "+15559876543" },
+    });
+    const entry = {
+      actorType: "USER",
+      actorId: "user-a",
+      entityType: "ListingPackage",
+      entityId: pkg.id,
+    };
+    expect(uow.repos.audit.entries).toEqual([
+      expect.objectContaining({ ...entry, action: "PACKAGE_CREATED", outcome: "SUCCESS" }),
+      expect.objectContaining({
+        ...entry,
+        action: "PACKAGE_UPDATED",
+        details: { fields: ["priceExpectationMax", "seller.phone"] },
+      }),
+    ]);
+    expect(JSON.stringify(uow.repos.audit.entries)).not.toMatch(/Maria|5551234567|5559876543|Elm/);
   });
 });

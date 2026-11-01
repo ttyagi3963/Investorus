@@ -10,3 +10,4 @@ export {
   ValidationError,
   type FieldError,
 } from "./errors.js";
+export { newTraceId, toTraceparent, traceIdFrom } from "./trace.js";

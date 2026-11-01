@@ -463,26 +463,25 @@ Test doubles are named `Fake*` / `InMemory*` (for example `FakeClock`,
 import { apiEnvSchema, type ApiEnv } from "./env";                // Zod; fails fast (XII)
 import { ListingPackageService, PublicationWorkflow, type IListingPackageService } from "@clever/core";
 import {
-  createPrismaClient, createRedisClient, PrismaUnitOfWorkImpl,
-  PrismaListingPackageRepositoryImpl, AesGcmPiiCipherImpl,
+  PostgresDatabaseImpl, createRedisClient, AesGcmPiiCipherImpl,
   SandboxSimulationProviderImpl, SystemClockImpl,
 } from "@clever/core/adapters";                                    // allowed only in container.ts
 
 export function createContainer(env: ApiEnv = apiEnvSchema.parse(process.env)) {
-  const prisma = createPrismaClient(env.DATABASE_URL);
-  const redis = createRedisClient(env.REDIS_URL);
   const cipher = new AesGcmPiiCipherImpl(env.PII_ENCRYPTION_KEY);
+  const db = new PostgresDatabaseImpl(env.DATABASE_URL, cipher);  // IDatabase (T276): the one line a database swap changes
+  const redis = createRedisClient(env.REDIS_URL);
   const clock = new SystemClockImpl();
-  const uow = new PrismaUnitOfWorkImpl(prisma, cipher);           // repos bound to one tx
+  const { uow } = db;                                              // repos bound to one tx
 
   const listingPackageService: IListingPackageService =
-    new ListingPackageService(new PrismaListingPackageRepositoryImpl(prisma, cipher), uow, clock);
+    new ListingPackageService(uow, clock);
   const publicationWorkflow = new PublicationWorkflow(uow, clock); // writes Job + OutboxEvent in one tx
 
   return Object.freeze({
     services: { listingPackageService, publicationWorkflow /* , ... */ },
     infra: { redis, simulation: new SandboxSimulationProviderImpl(env.SANDBOX_URL) },
-    dispose: async () => { await prisma.$disconnect(); await redis.quit(); },
+    dispose: async () => { await db.dispose(); await redis.quit(); },
   });
 }
 export type ApiContainer = ReturnType<typeof createContainer>;

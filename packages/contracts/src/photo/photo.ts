@@ -16,3 +16,15 @@ export type Photo = {
   position: number;
   createdAt: Date;
 };
+
+/**
+ * How the browser uploads a photo (contracts/providers.md, vendor-neutral): it sends the file with
+ * `fetch(url, { method, headers, body })` straight to storage, never through the api or the BFF.
+ */
+export type UploadInstruction = {
+  url: string;
+  method: "PUT" | "POST";
+  headers: Record<string, string>;
+  /** ISO time; after it, ask for a new instruction. */
+  expiresAt: string;
+};

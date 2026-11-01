@@ -16,10 +16,10 @@ Ports are exported from `@clever/core`. Implementations are exported only from
 | --- | --- | --- | --- | --- | --- |
 | `ICrmProvider` | `upsertListingStatus(record, idempotencyKey)` | `SandboxCrmProviderImpl` | worker | `CRM_PROVIDER=sandbox` | `HubspotCrmProviderImpl` (private-app access token) |
 | `IMessagingProvider` | `sendEmail(msg, key)`, `sendSms(msg, key)` | `SandboxMessagingProviderImpl` | worker | `MESSAGING_PROVIDER=sandbox` | SendGrid / Twilio impls |
-| `IStorageProvider` | `createUpload(key, contentType, maxBytes)` → `UploadInstruction`, `getReadUrl(key)`, `exists(key)`, `read(key)` (server-side read, used by the CSV import), `put(key, body, contentType)` (server-side write, used only by the seed) | `SandboxStorageProviderImpl` (HMAC-signed URLs) | api, worker | `STORAGE_PROVIDER=sandbox` | `S3StorageProviderImpl` (presigned PUT) |
+| `IStorageProvider` | `createUpload(key, contentType, maxBytes)` → `UploadInstruction`, `getReadUrl(key)`, `stat(key)` → `{ contentType, sizeBytes }` or `null` (the api records a photo's type and size from storage, not from the client), `read(key)` (server-side read, used by the CSV import), `put(key, body, contentType)` (server-side write, used only by the seed) | `SandboxStorageProviderImpl` (HMAC-signed URLs) | api, worker | `STORAGE_PROVIDER=sandbox` | `S3StorageProviderImpl` (presigned PUT) |
 | `ICrmMirrorReader` | `listListings()` (read-only) | `SandboxCrmMirrorReaderImpl` | api (ops CRM comparison) | `CRM_PROVIDER=sandbox` | `HubspotCrmMirrorReaderImpl` |
 | `ISellerContactReader` | `getForPackage(packageId)` | `PrismaSellerContactReaderImpl` (decrypts; caller audits `PII_ACCESSED`) | worker (CRM delivery only) | — | same |
-| `IGeoProvider` | `isValidZip(zip)`, `lookup(zip)` | `StaticGeoProviderImpl` (bundled ZIP list for the seeded markets) | api, worker | — | USPS / Smarty impl |
+| `IGeoProvider` | `lookup(zip)` → `{ city, state, neighborhood }`, or `null` for a ZIP outside the reference set | `StaticGeoProviderImpl` (bundled ZIP list for the seeded markets) | api, worker | — | USPS / Smarty impl |
 | `ISimulationControlProvider` | `get()`, `set(service, mode)` | `SandboxSimulationProviderImpl` | api | — | none in production |
 | `IErrorReporter` | `report(error, context)` | `LogErrorReporterImpl` | api, worker | `ERROR_REPORTER=log` | `SentryErrorReporterImpl` |
 | `IClock` | `now()` | `SystemClockImpl` (`FakeClock` in tests) | all | — | `SystemClockImpl` |
@@ -45,12 +45,20 @@ type UploadInstruction = {
 
 - The **browser** performs the upload with plain `fetch(url, { method, headers, body: file })`.
   The file bytes never pass through `apps/web` (the BFF) or `apps/api` (XIV: no proxying).
-- The sandbox implementation returns `PUT {PUBLIC_SANDBOX_URL}/storage/objects/:key?sig=&exp=`.
+- The sandbox implementation returns `PUT {PUBLIC_SANDBOX_URL}/storage/objects/:key?max=&exp=&sig=`, where
+  `sig` is the hex HMAC-SHA256, with `STORAGE_SIGNING_KEY`, of
+  `"<METHOD>
+<key>
+<contentType>
+<maxBytes>
+<exp>"` (`exp` in Unix seconds). A read link is the same
+  with `GET`, an empty content type, and `0`. Core signs and the sandbox checks the same string, so a
+  link cannot be reused for another object, type, size limit, or time.
   An S3 implementation would return a presigned `PUT` with its required headers. MinIO or other
   storage containers are deliberately not used, because of the 2 GB memory limit.
 - `/storage/objects/*` sends CORS headers for `WEB_ORIGIN` only (`PUT`, `GET`, `OPTIONS`;
   `Content-Type`), because the browser uploads cross-origin from port 3000 to port 4100.
-- The api never trusts the upload itself. It calls `exists(key)` before recording a photo or
+- The api never trusts the upload itself. It calls `stat(key)` before recording a photo or
   starting an import.
 
 Rules for every provider:
@@ -66,12 +74,13 @@ Rules for every provider:
 | GET | `/crm/listings` | All CRM records (for ops comparison and the inspection page). |
 | POST | `/messages/email`, `/messages/sms` | Captures the message; deduplicated by `Idempotency-Key`. |
 | GET | `/messages` | Captured messages, newest first. |
-| PUT | `/storage/objects/:key?sig=&exp=` | Accepts an upload only with a valid, unexpired HMAC signature and an allowed content type and size. |
-| GET | `/storage/objects/:key?sig=&exp=` | Serves the object. |
-| HEAD | `/storage/objects/:key` | Existence check (internal; shared token). |
+| PUT | `/storage/objects/:key?max=&exp=&sig=` | Accepts an upload only with a valid, unexpired signature for that key, its `Content-Type`, and its size limit (403 otherwise; 413 over the limit). |
+| GET | `/storage/objects/:key?exp=&sig=` | Serves the object, with a valid, unexpired read signature. |
+| HEAD | `/internal/storage/objects/:key` | The stored object's `Content-Type` and `Content-Length`, or 404 (internal; the `x-sandbox-token` header must carry `SANDBOX_INTERNAL_TOKEN`, else 401). |
 | GET / PUT | `/internal/storage/objects/:key` | Server-side `read(key)` / `put(...)` (internal; shared token). |
 | GET / PUT | `/simulation`, `/simulation/:service` | Mode per service: `up`, `down` (503), `slow` (10 s delay), or `garbage` (200 with malformed JSON). Persisted in the `sandbox` schema. |
 | GET | `/` | HTML inspection page: CRM records, messages, current modes. |
 
 Sandbox persistence lives in its own PostgreSQL schema, `sandbox`, which platform code never
-reads directly. The sandbox is the "outside world".
+reads directly. Storage objects are the exception: they are files on the `SANDBOX_STORAGE_DIR`
+volume, named by a hash of the key (T252). The sandbox is the "outside world".

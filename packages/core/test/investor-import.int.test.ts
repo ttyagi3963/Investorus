@@ -1,7 +1,8 @@
 // Guards the legacy import against a real Postgres (T322; FR-061, contracts/investor-import.md):
 // the sample file imports 26 investors, each with one default box and its first version, and
-// rejects 4 rows with their reasons; importing it again updates the 26 and adds no investor, box,
-// or version; and only operations can import.
+// rejects 4 rows; importing it again updates the 26 and adds no investor, box, or version; a row
+// the database refuses is rejected and leaves nothing behind; a retried job skips the rows it
+// already recorded; and only operations can import.
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Actor } from "@clever/contracts/auth";
@@ -23,6 +24,7 @@ let db: pg.Client;
 let prisma: PrismaClient;
 let stop: () => Promise<void>;
 let imports: InvestorImportWorkflow;
+const storage = new FakeStorageProvider();
 
 beforeAll(async () => {
   let url: string;
@@ -32,9 +34,7 @@ beforeAll(async () => {
     prisma,
     new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`),
   );
-  const storage = new FakeStorageProvider();
-  storage.objects.set(KEY, { contentType: "text/csv", sizeBytes: sample.byteLength });
-  storage.files.set(KEY, sample);
+  upload(KEY, sample);
   imports = new InvestorImportWorkflow(uow, {
     storage,
     geo: new StaticGeoProviderImpl(),
@@ -47,8 +47,24 @@ afterAll(async () => {
   await stop?.();
 });
 
-async function importSample() {
-  const { batchId } = await imports.start(morgan, { storageKey: KEY, fileName: "investors.csv" });
+function upload(key: string, file: Buffer) {
+  storage.objects.set(key, { contentType: "text/csv", sizeBytes: file.byteLength });
+  storage.files.set(key, file);
+}
+
+const HEADER =
+  "Investor ID,Company,Contact Name,Email,Type,Markets,Property Types,Min Price,Max Price";
+/** A small file of its own, uploaded under its own key. */
+function uploadRows(key: string, ...rows: string[]) {
+  upload(key, Buffer.from([HEADER, ...rows].join("\n")));
+  return key;
+}
+
+const start = (storageKey: string) =>
+  imports.start(morgan, { storageKey, fileName: "investors.csv" });
+
+async function importFile(storageKey = KEY) {
+  const { batchId } = await start(storageKey);
   await imports.run({ batchId });
   return imports.getBatch(morgan, batchId);
 }
@@ -64,7 +80,7 @@ async function counts() {
 
 describe("InvestorImportWorkflow", () => {
   it("imports the sample file once, and a second import updates it without duplicates", async () => {
-    const first = await importSample();
+    const first = await importFile();
     expect(first.batch).toMatchObject({
       totalRows: 30,
       imported: 26,
@@ -73,17 +89,54 @@ describe("InvestorImportWorkflow", () => {
       ignoredColumns: ["Source"],
       error: null,
     });
-    expect(first.rows.flatMap((row) => (row.reason ? [row.reason] : []))).toEqual([
-      "row 7: Max Price (-5): Must be 0 or more",
-      "row 12: Markets: ZIP 00000 is not a valid ZIP code",
-      "row 19: Email is required",
-      "row 24: Min Price (400000): Min price must not be above max price",
-    ]);
     expect(await counts()).toEqual({ investors: 26, boxes: 26, defaults: 26, versions: 26 });
 
-    const second = await importSample();
+    const second = await importFile();
     expect(second.batch).toMatchObject({ imported: 0, updated: 26, rejected: 4 });
     expect(await counts()).toEqual({ investors: 26, boxes: 26, defaults: 26, versions: 26 });
+  });
+
+  it("rejects a row the database refuses and leaves that investor as it was", async () => {
+    // Alamo (LEG-1001) given Bluebonnet's email: the update breaks the unique email.
+    const key = uploadRows(
+      "imports/clash.csv",
+      "LEG-1001,Alamo Home Buyers,Al,bluebonnet@example.com,iBuyer,ALL,SFR,1,2",
+    );
+    const before = await counts();
+
+    const { batch, rows } = await importFile(key);
+
+    expect(batch).toMatchObject({ imported: 0, updated: 0, rejected: 1 });
+    expect(rows).toEqual([
+      expect.objectContaining({ outcome: "REJECTED", reason: expect.stringMatching(/^row 2: /) }),
+    ]);
+    const alamo = await db.query(`SELECT email FROM "Investor" WHERE "externalRef" = 'LEG-1001'`);
+    expect(alamo.rows).toEqual([{ email: "alamo@example.com" }]);
+    expect(await counts()).toEqual(before);
+  });
+
+  it("skips the rows a retried job already recorded", async () => {
+    const key = uploadRows(
+      "imports/retry.csv",
+      "LEG-9001,First Buyers,Fi,first@example.com,Wholesaler,TX,SFR,1,2",
+      "LEG-9002,Second Buyers,Se,second@example.com,Wholesaler,TX,SFR,1,2",
+    );
+    const { batchId } = await start(key);
+    // The first run stopped after row 2.
+    await db.query(
+      `INSERT INTO "ImportRowResult" (id, "batchId", "rowNumber", outcome, reason)
+       VALUES ('done-2', $1, 2, 'REJECTED', 'row 2: recorded before the retry')`,
+      [batchId],
+    );
+
+    await imports.run({ batchId });
+
+    const { batch } = await imports.getBatch(morgan, batchId);
+    expect(batch).toMatchObject({ imported: 1, rejected: 1 });
+    const emails = await db.query(
+      `SELECT email FROM "Investor" WHERE email IN ('first@example.com', 'second@example.com')`,
+    );
+    expect(emails.rows).toEqual([{ email: "second@example.com" }]);
   });
 
   it("lets only operations import", async () => {

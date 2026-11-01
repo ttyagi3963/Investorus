@@ -45,22 +45,21 @@ export class PrismaIdempotencyStoreImpl implements IIdempotencyStore {
       if (row.status === "IN_PROGRESS" || row.responseStatus === null) {
         return { kind: "in-progress" };
       }
-      const body =
-        row.responseBody === null ? null : JSON.parse(this.cipher.decrypt(row.responseBody));
+      const body = row.responseBody === null ? null : this.cipher.decrypt(row.responseBody);
       return { kind: "replay", status: row.responseStatus, body };
     } catch (cause) {
       throw unavailable(cause);
     }
   }
 
-  async complete(userId: string, key: string, status: number, body: unknown): Promise<void> {
+  async complete(userId: string, key: string, status: number, body: string | null): Promise<void> {
     try {
       await this.prisma.idempotencyKey.updateMany({
         where: { userId, key, status: "IN_PROGRESS" },
         data: {
           status: "DONE",
           responseStatus: status,
-          responseBody: body == null ? null : this.cipher.encrypt(JSON.stringify(body)),
+          responseBody: body === null ? null : this.cipher.encrypt(body),
         },
       });
     } catch (cause) {

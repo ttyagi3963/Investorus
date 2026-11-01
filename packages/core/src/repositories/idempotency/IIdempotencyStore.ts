@@ -13,15 +13,16 @@ export type IdempotencyRequest = {
 
 export type IdempotencyClaim =
   | { kind: "claimed" }
-  | { kind: "replay"; status: number; body: unknown }
+  /** `body` is the JSON text first sent, or null for an empty answer. */
+  | { kind: "replay"; status: number; body: string | null }
   | { kind: "in-progress" }
   | { kind: "mismatch" };
 
 export interface IIdempotencyStore {
   /** Claims the key, or says why not: a stored answer, a request still running, or another body. */
   claim(request: IdempotencyRequest): Promise<IdempotencyClaim>;
-  /** Stores the answer of the request that claimed the key. */
-  complete(userId: string, key: string, status: number, body: unknown): Promise<void>;
+  /** Stores the answer (its JSON text, or null when empty) of the request that claimed the key. */
+  complete(userId: string, key: string, status: number, body: string | null): Promise<void>;
   /** Frees a claimed key after a 5xx, so a retry runs the change again. */
   release(userId: string, key: string): Promise<void>;
 }

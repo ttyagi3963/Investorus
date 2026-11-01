@@ -56,7 +56,7 @@ export function idempotency(store: IIdempotencyStore, reporter: IErrorReporter):
       case "replay":
         res.set("Idempotent-Replay", "true").status(claim.status);
         if (claim.body === null) res.end();
-        else res.json(claim.body);
+        else res.type("application/json").send(claim.body);
         return;
       case "in-progress":
         res.set("Retry-After", "1");
@@ -74,16 +74,21 @@ export function idempotency(store: IIdempotencyStore, reporter: IErrorReporter):
         );
     }
 
-    // The answer is stored before it is sent, so a retry after it arrives is always a replay.
-    const send = res.json.bind(res);
-    res.json = (body: unknown) => {
-      const stored =
+    // Every answer leaves through res.end, so the key is settled there, before the answer is sent:
+    // a retry after the answer arrives is always a replay. If storing fails, the answer is still
+    // sent, because the change already ran, and the failure is reported.
+    const end = res.end.bind(res) as (...args: unknown[]) => typeof res;
+    res.end = ((...args: unknown[]) => {
+      const [chunk] = args;
+      const body =
+        typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) ? chunk.toString("utf8") : null;
+      const settled =
         res.statusCode >= 500
           ? store.release(userId, key)
           : store.complete(userId, key, res.statusCode, body);
-      void stored.catch((err: unknown) => reporter.report(err)).finally(() => send(body));
+      void settled.catch((err: unknown) => reporter.report(err)).finally(() => end(...args));
       return res;
-    };
+    }) as typeof res.end;
     next();
   };
 }

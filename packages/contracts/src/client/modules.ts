@@ -2,6 +2,8 @@
 // uses them against the BFF: `session` signs in and out through the BFF's cookie route, and the
 // others go through the BFF's proxy to the api with the cookie's token.
 import type { TimelineEntryView } from "../audit/audit.js";
+import type { BuyBoxInput } from "../buy-box/inputs.js";
+import type { BuyBoxView } from "../buy-box/views.js";
 import type {
   CreateDecisionInput,
   FallThroughInput,
@@ -36,6 +38,7 @@ import type { AddPhotoInput, CreatePhotoUploadInput } from "../photo/inputs.js";
 import type { Photo, PhotoUpload } from "../photo/photo.js";
 import type { CreateSessionInput } from "../auth/auth.js";
 import type { UserView } from "../user/views.js";
+import type { ImportBatchView, ImportUploadView } from "../investor/import-views.js";
 import type { ApiClient, RequestOptions } from "./http.js";
 
 const pkgPath = (id: string) => `/listing-packages/${encodeURIComponent(id)}`;
@@ -101,6 +104,25 @@ export const investorClient = (api: ApiClient) => ({
     api.request<OfferView>("POST", `${offerPath(offerId)}/counter-response`, input),
   reconfirm: (offerId: string, input: ReconfirmationInput) =>
     api.request<OfferView>("POST", `${offerPath(offerId)}/reconfirmation`, input),
+});
+
+/** The investor's own buy boxes (T323). A save restates the whole box and the version it read. */
+export const buyBoxesClient = (api: ApiClient) => ({
+  list: () => api.request<BuyBoxView[]>("GET", "/investor/buy-boxes"),
+  get: (id: string) => api.request<BuyBoxView>("GET", `/investor/buy-boxes/${id}`),
+  create: (input: BuyBoxInput, options?: RequestOptions) =>
+    api.request<BuyBoxView>("POST", "/investor/buy-boxes", input, options),
+  save: (id: string, input: BuyBoxInput & { version: number }, options?: RequestOptions) =>
+    api.request<BuyBoxView>("PUT", `/investor/buy-boxes/${id}`, input, options),
+});
+
+/** Operations' legacy investor import (T323): get an upload link, start, then follow the batch. */
+export const investorImportsClient = (api: ApiClient) => ({
+  requestUpload: (sizeBytes: number) =>
+    api.request<ImportUploadView>("POST", "/ops/investor-imports/uploads", { sizeBytes }),
+  start: (input: { storageKey: string; fileName: string }) =>
+    api.request<{ jobId: string; batchId: string }>("POST", "/ops/investor-imports", input),
+  get: (batchId: string) => api.request<ImportBatchView>("GET", `/ops/investor-imports/${batchId}`),
 });
 
 /** The signed-in user's in-app inbox (T300). */

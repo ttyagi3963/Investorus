@@ -23,7 +23,7 @@ const json = (body: unknown, status = 200) =>
 describe("forwardToApi", () => {
   it("refuses a state-changing request whose Origin is not this site, without calling the api", async () => {
     const fetch = vi.fn();
-    for (const method of ["POST", "PATCH", "DELETE"]) {
+    for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
       const res = await forwardToApi(
         new Request(`${SITE}/bff/listing-packages`, {
           method,

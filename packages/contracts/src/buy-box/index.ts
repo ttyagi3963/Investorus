@@ -19,3 +19,4 @@ export {
   type ListingField,
 } from "./criteria.js";
 export { buyBoxInputSchema, updateBuyBoxInputSchema, type BuyBoxInput } from "./inputs.js";
+export { toBuyBoxView, type BuyBoxView } from "./views.js";

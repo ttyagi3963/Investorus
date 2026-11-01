@@ -8,8 +8,8 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 
 - **Auth**: `Authorization: Bearer <session JWT>` on every route except `POST /sessions` and
   `GET /health`. The role is checked in the service (III), not the route.
-- **Idempotency (XX.2)**: every POST and PATCH from a signed-in user requires an
-  `Idempotency-Key` header (up to 255 characters); the api has no PUT routes. Keys are per user,
+- **Idempotency (XX.2)**: every POST, PUT, and PATCH from a signed-in user requires an
+  `Idempotency-Key` header (up to 255 characters). Keys are per user,
   stored in Postgres (plan.md Complexity Tracking), and expire after 24 hours. Sign-in
   (`POST /sessions`) has no user yet and is exempt, so a session token is never stored. The
   typed client sends a fresh key with each call unless it is given one, and the BFF forwards it.

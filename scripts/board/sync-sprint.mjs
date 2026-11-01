@@ -426,6 +426,31 @@ async function testWorkflows(repo, project, owner) {
   return Boolean(item && done);
 }
 
+// The board's auto-add workflow may put a new issue on the board before this script does, and
+// then item-add fails with "Content already exists"; in that case use the card it made.
+function boardItem(project, owner, url) {
+  const argv = ["project", "item-add", String(project.number), "--owner", owner, "--url", url];
+  const added = gh([...argv, "--format", "json"], { json: true, allowFail: true });
+  if (added) return added;
+  const items = gh(
+    [
+      "project",
+      "item-list",
+      String(project.number),
+      "--owner",
+      owner,
+      "--format",
+      "json",
+      "--limit",
+      "500",
+    ],
+    { json: true },
+  ).items;
+  const existing = items.find((i) => i.content?.url === url);
+  if (!existing) throw new Error(`Could not add ${url} to the board, and it is not on it`);
+  return existing;
+}
+
 // ---------- main ----------
 
 async function main() {
@@ -467,21 +492,7 @@ async function main() {
   for (const task of tasks) {
     const url = upsertIssue(repo, task);
     if (!APPLY || !url) continue;
-    const item = gh(
-      [
-        "project",
-        "item-add",
-        String(project.number),
-        "--owner",
-        repo.owner,
-        "--url",
-        url,
-        "--format",
-        "json",
-      ],
-      { json: true },
-    );
-    setFields(project, repo.owner, item.id, task);
+    setFields(project, repo.owner, boardItem(project, repo.owner, url).id, task);
   }
 
   console.log(

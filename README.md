@@ -40,16 +40,21 @@ Every demo account uses the password **`demo1234`**. The seed creates them autom
 | Agent | `blake@example.com` | Comparing offers and tracking deals to close |
 | Investor | `summit@example.com` | Two buy boxes that both match the sample listing |
 | Investor | `harbor@example.com` | One broad buy box |
-| Investor | `ridge@example.com` | A deliberately narrow buy box (often not matched) |
+| Investor | `ridge@example.com` | A deliberately narrow buy box (often not matched); add a second one to see it matched |
 | Investor | `cobalt@example.com` | An offer on Blake's seeded listing |
 | Investor | `dune@example.com` | An offer on Blake's seeded listing |
-| Operations | `morgan@example.com` | Timelines, deliveries, and recovery from outages |
+| Operations | `morgan@example.com` | Importing the legacy investor list (`seed/legacy-investors.csv`) |
 
-> **Status:** Sprints 1–3 are in. Open <http://localhost:3000/login> and pick an account. Avery
+> **Status:** Sprints 1–4 are in. Open <http://localhost:3000/login> and pick an account. Avery
 > builds and publishes a package, which is matched to investors who then make offers. Blake's
 > seeded listing already has four offers: compare them, accept one, and track the deal to closing.
-> If it falls through, promote a backup, then sign in as that investor to reconfirm. The operations
-> account arrives with its features (see [tasks.md](specs/001-investor-platform-prototype/tasks.md)).
+> If it falls through, promote a backup, then sign in as that investor to reconfirm. Investors
+> manage their own buy boxes under **Your buy boxes**, and a new or edited box is matched at once
+> against listings still taking offers. The operations account imports
+> [seed/legacy-investors.csv](seed/legacy-investors.csv) under **Import investors**: 26 rows are
+> imported and 4 rejected with their reasons, and importing it again duplicates nothing. The other
+> operations screens arrive with their features (see
+> [tasks.md](specs/001-investor-platform-prototype/tasks.md)).
 
 ## Using S3 (optional)
 

@@ -1,7 +1,8 @@
-// The web fonts a brand can name (T327), loaded with next/font, which downloads them at build time
-// and serves them from this app: no request to a font host at runtime, and no layout shift. A brand
-// whose font is not here falls back to the rest of its font stack.
-import { Poppins } from "next/font/google";
+// The web fonts a brand can name (T327, T350), loaded with next/font, which downloads them at build
+// time and serves them from this app: no request to a font host at runtime, and no layout shift. A
+// brand whose font is not here falls back to the rest of its font stack. Fonts are preloaded only
+// for the default brand's face; a partner brand's face loads when its page asks for it.
+import { Nunito_Sans, Poppins } from "next/font/google";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -10,8 +11,17 @@ const poppins = Poppins({
   variable: "--font-poppins",
 });
 
+const nunitoSans = Nunito_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-nunito-sans",
+  preload: false,
+});
+
 const FONTS: Record<string, { variable: string; cssVariable: string }> = {
   Poppins: { variable: poppins.variable, cssVariable: "--font-poppins" },
+  "Nunito Sans": { variable: nunitoSans.variable, cssVariable: "--font-nunito-sans" },
 };
 
 /** The class that loads the brand's font, and its font stack with the loaded face first. */
@@ -19,5 +29,7 @@ export function brandFont(fontFamily: string[]): { className?: string; stack?: s
   const [first, ...rest] = fontFamily;
   const font = first === undefined ? undefined : FONTS[first];
   if (!font) return {};
-  return { className: font.variable, stack: [`var(${font.cssVariable})`, ...rest].join(", ") };
+  // The validator allows only letters, digits, spaces, and hyphens in a name; one with a space is quoted.
+  const fallbacks = rest.map((name) => (/\s/.test(name) ? `"${name}"` : name));
+  return { className: font.variable, stack: [`var(${font.cssVariable})`, ...fallbacks].join(", ") };
 }

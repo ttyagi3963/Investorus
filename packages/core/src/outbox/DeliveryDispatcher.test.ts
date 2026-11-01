@@ -3,7 +3,8 @@
 // or an investor who cannot be reached is set aside at once; a CRM update carries the seller's
 // contact read at send time, that read is audited, and STALE counts as delivered; a duplicate job
 // sends nothing; the relay makes each delivery once, with no text for an investor with no phone, and
-// puts back a delivery whose job was lost when the worker died mid-send.
+// puts back a delivery whose job was lost when the worker died mid-send. Messages carry the brand's
+// name.
 import type { DeliveryRetryPolicy } from "@clever/contracts/config";
 import type { OutboxEventInput } from "@clever/contracts/events";
 import { describe, expect, it, vi } from "vitest";
@@ -38,6 +39,14 @@ const NOTICE: OutboxEventInput = {
 
 function setup() {
   const uow = new InMemoryUnitOfWork();
+  uow.repos.brands.rows.set("test", {
+    id: "test",
+    name: "Test Homes",
+    hosts: ["localhost"],
+    tokens: {},
+    content: {},
+    tokenVersion: 1,
+  });
   const messaging = { sendEmail: vi.fn(async () => {}), sendSms: vi.fn(async () => {}) };
   const crm = { upsertListing: vi.fn(async (): Promise<"APPLIED" | "STALE"> => "APPLIED") };
   const queue = { enqueue: vi.fn(async () => {}) };
@@ -47,6 +56,7 @@ function setup() {
     messaging: messaging as IMessagingProvider,
     clock,
     retry: RETRY,
+    brandId: "test",
   });
   const relay = new OutboxRelay(uow, { queue, clock });
   return { uow, messaging, crm, queue, dispatcher, relay };
@@ -76,6 +86,10 @@ describe("DeliveryDispatcher", () => {
     expect(last.outcome).toBe("NEEDS_ATTENTION");
     expect(email).toMatchObject({ status: "NEEDS_ATTENTION", attempts: 3 });
     expect(email.lastError).toContain("503");
+    expect(ctx.messaging.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ body: expect.stringContaining("Sign in to Test Homes") }),
+      email.id,
+    );
   });
 
   it("sets a refusal, or an investor it cannot reach, aside without retrying", async () => {

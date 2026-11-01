@@ -1,22 +1,15 @@
-// Root layout (T327; constitution X): resolves the brand once per request, writes its tokens as CSS
-// custom properties that the theme's utilities read, loads its font, and passes its content to
-// client components through BrandProvider. Rendering per request (connection()) reads the settings
-// at runtime, never during `next build`, and leaves room for brand resolution by host (T094).
+// Root layout (T327, T349; constitution X): resolves the request's brand once (cookie, host, or the
+// default), writes its tokens as CSS custom properties that the theme's utilities read, loads its
+// font, and passes its content to client components through BrandProvider. Reading the cookie and
+// host renders every page per request, so the settings are read at runtime, never in `next build`.
 import type { Metadata } from "next";
-import { connection } from "next/server";
 import type { ReactNode } from "react";
+import { activeBrand, listBrands } from "@/brand/active-brand";
 import { BrandProvider } from "@/brand/BrandProvider";
-import { loadBrand } from "@/brand/brands";
 import { brandFont } from "@/brand/fonts";
-import { toCssRule } from "@/brand/tokens";
-import { serverEnv } from "@/env";
+import { toCssRule } from "@clever/contracts/brand";
 import { Providers } from "@/providers";
 import "./globals.css";
-
-async function activeBrand() {
-  await connection();
-  return loadBrand(serverEnv().DEFAULT_BRAND_ID);
-}
 
 export async function generateMetadata(): Promise<Metadata> {
   const { content } = await activeBrand();
@@ -27,20 +20,20 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const brand = await activeBrand();
+  const [brand, brands] = await Promise.all([activeBrand(), listBrands()]);
   const font = brandFont(brand.fontFamily);
   const variables = font.stack
-    ? { ...brand.variables, "--brand-font-family-base": font.stack }
-    : brand.variables;
+    ? { ...brand.cssVariables, "--brand-font-family-base": font.stack }
+    : brand.cssVariables;
 
   return (
-    <html lang="en" data-brand={brand.id} className={font.className}>
+    <html lang="en" data-brand={brand.brandId} className={font.className}>
       <head>
-        {/* Generated from the brand's checked token file (tokens.ts refuses unsafe values). */}
+        {/* The api serves only token sets its validator passed, which refuses unsafe values. */}
         <style id="brand-tokens" dangerouslySetInnerHTML={{ __html: toCssRule(variables) }} />
       </head>
       <body className="bg-page font-body text-body text-default antialiased">
-        <BrandProvider content={brand.content}>
+        <BrandProvider content={brand.content} brands={brands}>
           <Providers>{children}</Providers>
         </BrandProvider>
       </body>

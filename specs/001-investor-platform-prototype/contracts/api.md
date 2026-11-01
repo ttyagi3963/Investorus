@@ -6,8 +6,8 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 
 ## Cross-cutting rules
 
-- **Auth**: `Authorization: Bearer <session JWT>` on every route except `POST /sessions` and
-  `GET /health`. The role is checked in the service (III), not the route.
+- **Auth**: `Authorization: Bearer <session JWT>` on every route except `POST /sessions`,
+  `GET /health`, `GET /brands`, and `GET /brands/:brandId/theme` (the sign-in page renders a brand). The role is checked in the service (III), not the route.
 - **Idempotency (XX.2)**: every POST, PUT, and PATCH from a signed-in user requires an
   `Idempotency-Key` header (up to 255 characters). Keys are per user,
   stored in Postgres (plan.md Complexity Tracking), and expire after 24 hours. Sign-in
@@ -43,8 +43,8 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | POST | `/sessions` | public | `{ email, password }` → 201 `{ token, user }` | The BFF stores the token in an HTTP-only cookie |
 | GET | `/me` | any | → `{ user, role, agentId?, investorId? }` | |
 | GET | `/health` | public | → `{ status, db, redis }` | Used by compose healthchecks |
-| GET | `/brands/:brandId/theme` | public | → `{ brandId, tokenVersion, cssVariables: Record<string,string>, content }` (cacheable, `ETag` = tokenVersion) | FR-092; the web root layout renders the variables |
-| GET | `/brands` | public | → `[{ brandId, displayName }]` | Brand switcher (FR-093) |
+| GET | `/brands/:brandId/theme` | public | → `BrandThemeView { brandId, tokenVersion, cssVariables: Record<string,string>, fontFamily: string[], content }`; `ETag: "<brandId>-v<tokenVersion>"`, `Cache-Control: public, max-age=60`, 304 for a matching `If-None-Match`; 404 for an unknown brand | FR-092; the web root layout renders the variables |
+| GET | `/brands` | public | → `BrandSummary[] { brandId, displayName, hosts }` | Brand switcher and host mapping (FR-092, FR-093) |
 
 ## Listing packages (agent)
 
@@ -118,7 +118,8 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | POST | `/ops/investor-imports/uploads` | OPS | `{ sizeBytes }` → 201 `{ storageKey, upload: UploadInstruction }` | Same instruction shape as photo uploads |
 | GET | `/ops/investor-imports/:batchId` | OPS | → `ImportBatch & { rows: ImportRowResult[] }` | |
 | GET | `/ops/config` / PUT `/ops/config/:key` | OPS | `ConfigEntry` (value validated by the per-key schema) | FR-051, IX |
-| PUT | `/ops/brands/:brandId/theme` | OPS | `BrandTokenSet` → 200, or 400 naming the missing tokens and failing contrast pairs | FR-095 |
+| GET | `/ops/brands/:brandId/tokens` | OPS | → `{ brandId, tokenVersion, tokens }` (the DTCG file the editor shows) | FR-093 |
+| PUT | `/ops/brands/:brandId/theme` | OPS | `{ tokens, tokenVersion }` (the version the editor loaded) → 200 `BrandThemeView` at `tokenVersion + 1`, audited `BRAND_THEME_UPDATED`; 400 with each failure in `details.fields` (`{ field, message }`: the missing variable, `tokens` for an unsafe value or broken alias, or the pair such as `text-muted on background-surface` with its ratio); 409 if the brand changed since that version | FR-093, FR-095 |
 | GET | `/jobs/:jobId` | owner, OPS | → `{ status, progress, error? }` | II.7 handle |
 
 ## Notifications

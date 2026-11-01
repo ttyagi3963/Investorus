@@ -97,3 +97,4 @@ export {
   OutsideServicesService,
   type IOutsideServicesService,
 } from "./services/ops/OutsideServicesService.js";
+export { BrandService, type IBrandService } from "./services/brand/BrandService.js";

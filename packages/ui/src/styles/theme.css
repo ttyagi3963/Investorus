@@ -96,6 +96,7 @@
 
   /* Shape and elevation */
   --radius-control: var(--brand-radius-sm);
+  --radius-button: var(--brand-component-button-primary-radius);
   --radius-card: var(--brand-radius-lg);
   --radius-pill: var(--brand-radius-pill);
   --shadow-card: var(--brand-shadow-card);

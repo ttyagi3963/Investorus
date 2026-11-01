@@ -8,6 +8,7 @@
 import type { DeliveryRetryPolicy } from "@clever/contracts/config";
 import { outboxEventInputSchema, type OutboxEventInput } from "@clever/contracts/events";
 import { DeliveryRejectedError } from "../errors/DeliveryRejectedError.js";
+import { InfrastructureError } from "../errors/InfrastructureError.js";
 import type { IClock } from "../providers/clock/IClock.js";
 import type { ICrmProvider } from "../providers/crm/ICrmProvider.js";
 import type { IMessagingProvider } from "../providers/messaging/IMessagingProvider.js";
@@ -28,6 +29,8 @@ export type DeliveryDispatcherDeps = {
   messaging: IMessagingProvider;
   clock: IClock;
   retry: DeliveryRetryPolicy;
+  /** The brand whose name the emails and texts carry (DEFAULT_BRAND_ID). */
+  brandId: string;
   random?: () => number;
 };
 
@@ -99,19 +102,22 @@ export class DeliveryDispatcher {
       return this.prepareCrm(repos, event, delivery.event.occurredAt, key);
     }
     const contact = await repos.investors.findContact(delivery.recipientRef);
+    const brand = await repos.brands.findById(this.deps.brandId);
+    // A setting error, not this message's fault: thrown (rolled back and retried), never set aside.
+    if (!brand) throw new InfrastructureError(`The ${this.deps.brandId} brand does not exist`);
     if (event.type === "investor.notice") {
       if (delivery.target === "EMAIL") {
         if (!contact) throw new DeliveryRejectedError("The investor has no email address");
-        const message = noticeEmail(contact.email, event.payload);
+        const message = noticeEmail(contact.email, event.payload, brand.name);
         return () => this.deps.messaging.sendEmail(message, key);
       }
       if (!contact?.phone) throw new DeliveryRejectedError("The investor has no phone number");
-      const message = noticeSms(contact.phone, event.payload);
+      const message = noticeSms(contact.phone, event.payload, brand.name);
       return () => this.deps.messaging.sendSms(message, key);
     }
     if (event.type === "investor.match_digest" && delivery.target === "EMAIL") {
       if (!contact) throw new DeliveryRejectedError("The investor has no email address");
-      const message = digestEmail(contact.email, event.payload.matches);
+      const message = digestEmail(contact.email, event.payload.matches, brand.name);
       return () => this.deps.messaging.sendEmail(message, key);
     }
     throw new DeliveryRejectedError(`No ${delivery.target} delivery for ${event.type}`);

@@ -4,7 +4,7 @@
 // after the first save; publishing needs one, and a publish blocker links here (#photos).
 import { PHOTO_CONTENT_TYPES } from "@clever/contracts/photo";
 import type { AgentPackageView } from "@clever/contracts/listing-package";
-import { Button, Card, PhotoPicker, Thumbnail } from "@clever/ui";
+import { Button, Card, FilePicker, Thumbnail } from "@clever/ui";
 import { usePhotoUpload } from "./usePhotoUpload";
 
 export function PhotoSection({ pkg }: { pkg: AgentPackageView }) {
@@ -47,8 +47,9 @@ export function PhotoSection({ pkg }: { pkg: AgentPackageView }) {
           </p>
         )}
         <div className="flex items-center gap-inline-md">
-          <PhotoPicker
+          <FilePicker
             label="Add photos"
+            allowsMultiple
             acceptedTypes={PHOTO_CONTENT_TYPES}
             onSelect={(files) => void upload(files)}
             isDisabled={isBusy}

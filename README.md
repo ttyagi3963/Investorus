@@ -45,7 +45,7 @@ Every demo account uses the password **`demo1234`**. The seed creates them autom
 | Investor | `dune@example.com` | An offer on Blake's seeded listing |
 | Operations | `morgan@example.com` | The operations console: each package's full history, failed deliveries and retries, simulated outages, the CRM comparison, and the legacy investor import |
 
-> **Status:** Sprints 1–6 are in, and every screen uses the Clever design system (Sprint 5). Open
+> **Status:** Sprints 1–7 are in, and every screen uses the brand's design system (Sprints 5 and 7). Open
 > <http://localhost:3000/login> and pick an account. Avery
 > builds and publishes a package, which is matched to investors who then make offers. Blake's
 > seeded listing already has four offers: compare them, accept one, and track the deal to closing.
@@ -71,6 +71,25 @@ outside service being down never fails anyone's action and loses nothing.
 4. Set both services back to **Up** and press **Retry all**. Every delivery is sent once: the
    sandbox page (http://localhost:4100) shows the CRM record and the messages, and **CRM** shows the
    listing in sync.
+
+## Switch brands
+
+The platform is white-label: every color, font, shape, name, and logo comes from the brand, stored
+in the database. Two brands are seeded, Clever Offers and a fictional partner, Larkspur Home Offers.
+
+- Open **http://partner.localhost:3000**: the partner's address opens the partner brand (most
+  browsers send `*.localhost` to your own machine; if yours does not, use the switcher).
+- Or use the **Brand** switcher on the home page, the sign-in page, or the style guide. The
+  choice is kept in a cookie.
+- **http://localhost:3000/design-system** is the living style guide: the brand's colors with their
+  values, type, spacing, shapes, and every component in each state.
+- As `morgan@example.com`, **Brands** edits a brand's token file (or uploads one). A file missing
+  a variable, or with text under 4.5:1 contrast, is refused with each problem listed; a saved one
+  changes every page at once.
+
+A new brand is a folder in [seed/brands/](seed/brands/) (`tokens.json`, `content.json`,
+`hosts.json`) and a logo in `apps/web/public/brands/<id>/`; see
+[the design token contract](specs/001-investor-platform-prototype/contracts/design-tokens.md).
 
 ## Using S3 (optional)
 

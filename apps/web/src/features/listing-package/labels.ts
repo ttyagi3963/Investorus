@@ -135,6 +135,7 @@ const ACTION_TEXT: Record<AuditAction, (details: Record<string, unknown>) => str
   MATCH_DIGESTS_SENT: () => "The daily match digest went out",
   DELIVERY_RETRIED: () => "Operations retried a delivery",
   SIMULATION_CHANGED: () => "Operations changed a simulated outage",
+  BRAND_THEME_UPDATED: () => "Operations changed a brand's theme",
 };
 
 export const timelineText = (entry: TimelineEntryView) => ACTION_TEXT[entry.action](entry.details);

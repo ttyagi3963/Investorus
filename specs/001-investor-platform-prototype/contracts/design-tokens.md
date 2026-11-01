@@ -4,9 +4,11 @@ FR-090 to FR-097; research R21. This is the interface any brand, including a fut
 partner, must supply. Component code depends only on the **semantic utilities** in
 `packages/ui/src/styles/theme.css` and never on a brand's values or ID.
 
-Since Sprint 5 (T327, the owner's design bundle of 2026-11-01), a brand is two files in
-`seed/brands/<brandId>/`, and its tokens use the W3C Design Tokens (DTCG) format the design tool
-exports, so a designer's export drops in unchanged.
+Since Sprint 5 (T327, the owner's design bundle of 2026-11-01), a brand's tokens use the W3C Design
+Tokens (DTCG) format the design tool exports, so a designer's export drops in unchanged. Since
+Sprint 7 (T346–T353) brands live in the `Brand` table (data-model.md): the seed loads them from
+`seed/brands/<brandId>/`, the api serves them, and operations can edit a brand's tokens in the
+console without a deploy.
 
 ## Files
 
@@ -39,18 +41,38 @@ Every token may carry `$extensions["com.investorus.origin"]`: `site`, `site-defa
 }
 ```
 
-Checked by the content schema in `apps/web/src/brand/brands.ts`. The logo lives in
+Checked by `brandContentSchema` in `packages/contracts/src/brand/brand.ts`. The logo lives in
 `apps/web/public/brands/<brandId>/`.
+
+### `hosts.json`
+
+The addresses that open the brand, for example `["partner.localhost"]`. At least one.
+
+## How a brand is stored and chosen
+
+1. **Seed** (`packages/core/src/infra/seed/brands.ts`): every folder in `seed/brands/` is validated
+   (below) and written to the `Brand` table with a hash of its files. A brand is rewritten only
+   when its files changed, which bumps `tokenVersion`; a theme an operator edited survives a
+   restart. A brand that fails validation stops the seed with every failure named.
+2. **Api** (api.md, "Brands"): `GET /brands` (the switcher and the host mapping) and
+   `GET /brands/:id/theme` (the CSS variables, font stack, and content) are public, because the
+   sign-in page needs them. The theme's `ETag` is its version, with `Cache-Control: public,
+   max-age=60`; a caller holding the current version gets a 304.
+3. **Web** (`apps/web/src/brand/active-brand.ts`): each request picks one brand: the `brand` cookie
+   the switcher sets, if it names a brand; else the brand whose `hosts` include the request's host;
+   else `DEFAULT_BRAND_ID`. The list and theme come through Next's data cache (60 seconds, tag
+   `brands`), which the theme editor drops after a save.
+4. **Messages**: emails and texts carry the name of `DEFAULT_BRAND_ID` (the worker's setting).
 
 ## How the tokens reach the screens
 
-1. `apps/web/src/brand/tokens.ts` converts every token to a CSS custom property named
+1. `packages/contracts/src/brand/tokens.ts` converts every token to a CSS custom property named
    `--brand-<path>` (`color.blue.700` → `--brand-color-blue-700`). An alias stays a reference
    (`var(--brand-color-blue-700)`), and a typography token becomes one property per part
    (`--brand-typography-heading-1-font-size`, …).
-2. The root layout writes them in one `:root` rule for the active brand
-   (`DEFAULT_BRAND_ID`; resolution by host or cookie is T094), and loads the brand's font with
-   `next/font` (`apps/web/src/brand/fonts.ts`).
+2. The root layout writes them in one `:root` rule for the request's brand, and loads the brand's
+   font with `next/font` (`apps/web/src/brand/fonts.ts`; a brand's first font must be registered
+   there to load, otherwise its fallback fonts are used).
 3. `packages/ui/src/styles/theme.css` maps each Tailwind utility to one of these properties, for
    example `bg-action-primary` → `--brand-semantic-color-action-primary` or `text-heading-lg` →
    the `heading-1` typography. Tailwind's default palette is removed, so a color can only come
@@ -58,13 +80,33 @@ Checked by the content schema in `apps/web/src/brand/brands.ts`. The logo lives 
 
 ## Validation (refused with the failing token named)
 
-1. Every alias points at an existing token, and no value contains a character that could end a CSS
-   declaration or the style element (`tokens.ts`).
-2. The brand supplies every `--brand-*` property theme.css reads (`brand.test.ts`).
+One validator, `validateBrandTokens` in `packages/contracts/src/brand/brand.ts`, used by the seed,
+the api's theme save, and the tests. It returns every failure as `{ field, message }`:
+
+1. Every alias points at an existing token. Names and values are allow-listed, because they are
+   written into the page's `<style>` element (`tokens.ts`): a token name is letters, digits, `-`,
+   and `_`; a value is a hex color, `rgb()`/`hsl()` color, number, dimension, or keyword from
+   letters, digits, spaces, and `# . , % + -`, so no quote, comment, `url()`, `;`, `}`, or `<`
+   gets through. A font family name is letters, digits, spaces, and hyphens. The finished
+   `:root` rule is checked again before the page writes it. Field: `tokens`.
+2. The brand supplies every `--brand-*` property theme.css reads (`REQUIRED_BRAND_VARIABLES` in
+   `required.ts`; a web test keeps that list equal to what theme.css reads). Field: the variable.
 3. Contrast is at least 4.5:1 for every text and background pair the screens use
-   (`brand.test.ts`): primary, muted, link, and error text on the surface and page backgrounds;
-   text on the primary, success, and CTA actions; inverse text on the operations header; and each
-   status's text on its own background.
+   (`TEXT_ON_BACKGROUND`): primary, muted, link, and error text on the surface and page
+   backgrounds; text on the primary, success, and CTA actions; inverse text on the operations
+   header; and each status's text on its own background. Field: the pair, for example
+   `text-muted on background-surface`, with the ratio in the message.
+
+## Editing a brand (`/ops/brands`, T353)
+
+Operations pick a brand, edit its `tokens.json` as text or upload a file, and save. The save sends
+the `tokenVersion` the editor loaded; if another save came first the api answers 409 and nothing is
+overwritten. A refused file is listed problem by problem. A saved file bumps the version, is
+audited (`BRAND_THEME_UPDATED`), and shows on every page at once. Content and hosts are edited in
+the seed files only.
+
+The living style guide at `/design-system` (T352) shows the request's brand: its semantic colors
+with their resolved values, type scale, spacing, shapes, and every component in each state.
 
 ## Domain status → tone (`packages/ui/src/tokens/status-tones.ts`)
 
@@ -92,9 +134,16 @@ four tokens the screen sources use, marked `added`: `typography.field-label` (14
 These replace the values the owner supplied on 2026-10-30 (`#0052FF` primary and its derived
 status colors), which this contract listed before Sprint 5.
 
-## A second brand (T201, not built)
+## The `larkspur` partner brand (T350)
 
-A white-label partner is another `seed/brands/<brandId>/` folder with the same token paths and its
-own content and logo, registered in `apps/web/src/brand/brands.ts` (and its font in `fonts.ts` if it
-uses a web font). The owner's earlier `brand-beta` values (teal `#0D9488` with `#0F766E` for text and
-actions, pill controls, 4px cards) are to be expressed in this format when T201 is built.
+A fictional partner, Larkspur Home Offers, on `partner.localhost`. Same token paths as `clever`,
+following the owner's earlier `brand-beta` direction (teal actions, pill buttons, 4px cards) with
+its own values so every pair passes AA: teal actions and links (`#0a6359`), pine ink and operations
+header (`#0d2e29`), a coral call to action with dark text (`#ffab85`), Nunito Sans, button radius
+`{radius.pill}`, and `radius.lg` of 4px. Inputs keep `radius.sm` (4px).
+
+A new brand is another `seed/brands/<brandId>/` folder (`tokens.json`, `content.json`,
+`hosts.json`) and a logo; its web font, if any, is registered in `fonts.ts`. No code names a brand.
+
+Buttons read `component.button-primary.radius` (`rounded-button`), so a brand can shape buttons
+apart from inputs.

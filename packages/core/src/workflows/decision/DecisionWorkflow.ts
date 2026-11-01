@@ -55,6 +55,9 @@ export class DecisionWorkflow implements IDecisionWorkflow {
       data.type === "COUNTER" ? checkOfferDates(data.counterTerms, now, "counterTerms.") : null;
 
     return this.uow.run(async (repos) => {
+      // Decisions on one package run one at a time: a second accept waits here, then reads the
+      // package as the first left it and is told an offer was already accepted.
+      await repos.packages.lock(packageId);
       const pkg = await repos.packages.findForAgent(actor.agentId, packageId);
       if (!pkg) throw new NotFoundError("Package not found");
       if (DEAL_STATUSES.includes(pkg.status)) {

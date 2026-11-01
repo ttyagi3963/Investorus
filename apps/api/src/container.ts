@@ -9,6 +9,7 @@ import {
   DecisionWorkflow,
   InvestorImportWorkflow,
   MatchDigestWorkflow,
+  BrandService,
   DeliveryOpsService,
   OpsQueryService,
   OutsideServicesService,
@@ -27,6 +28,7 @@ import {
   type IIdempotencyStore,
   type IInvestorImportWorkflow,
   type IMatchDigestWorkflow,
+  type IBrandService,
   type IDeliveryOpsService,
   type IOpsQueryService,
   type IOutsideServicesService,
@@ -75,6 +77,7 @@ export type AppContainer = Readonly<{
   buyBoxes: IBuyBoxService;
   investorImports: IInvestorImportWorkflow;
   digests: Pick<IMatchDigestWorkflow, "sendNow">;
+  brands: IBrandService;
   ops: {
     queries: IOpsQueryService;
     deliveries: IDeliveryOpsService;
@@ -145,6 +148,7 @@ export function createContainer(env: ApiEnv): AppContainer {
     buyBoxes: new BuyBoxService(uow, { geo }),
     investorImports: new InvestorImportWorkflow(uow, { storage, geo, clock }),
     digests: new MatchDigestWorkflow(uow, { clock }),
+    brands: new BrandService(uow),
     ops: {
       queries: new OpsQueryService(uow),
       deliveries: new DeliveryOpsService(uow),

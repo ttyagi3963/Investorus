@@ -2,7 +2,8 @@
 // header is hidden, and an unknown route is a 404 only for a signed-in caller (others get 401, so
 // they learn nothing about the routes). Every answer names the request's trace ID, and code behind
 // the JSON body parser still runs inside that trace (T283). An investor's package goes out as the
-// investor view, without the seller or the street (T298, SC-006).
+// investor view, without the seller or the street (T298, SC-006). A brand's theme is public and
+// cached by its version: a caller holding the current version gets a 304 (T348).
 import { UnauthenticatedError } from "@clever/contracts/common";
 import { currentTraceId } from "@clever/core";
 import { pino } from "pino";
@@ -56,6 +57,7 @@ const container: AppContainer = {
   buyBoxes: { list: unused, get: unused, create: unused, update: unused },
   investorImports: { requestUpload: unused, start: unused, run: unused, getBatch: unused },
   digests: { sendNow: unused },
+  brands: { list: unused, getTheme: unused, getTokens: unused, updateTheme: unused },
   ops: {
     queries: { listPackages: unused, trace: unused, explainMatch: unused },
     deliveries: { list: unused, retry: unused, retryAll: unused },
@@ -115,6 +117,34 @@ describe("tracing", () => {
       .expect(401);
     expect(res.body.requestId).toMatch(/^[0-9a-f]{32}$/);
     expect(res.headers["x-request-id"]).toBe(res.body.requestId);
+  });
+});
+
+describe("brand routes", () => {
+  it("serve a theme without a session, and a 304 to a caller holding its version", async () => {
+    const app = createApp({
+      ...container,
+      brands: {
+        list: unused,
+        getTokens: unused,
+        updateTheme: unused,
+        getTheme: async (brandId) => ({
+          brandId,
+          tokenVersion: 3,
+          cssVariables: {},
+          fontFamily: ["Inter"],
+          content: {} as never,
+        }),
+      },
+    });
+
+    const first = await request(app).get("/api/v1/brands/test/theme").expect(200);
+    expect(first.headers.etag).toBe('"test-v3"');
+    await request(app)
+      .get("/api/v1/brands/test/theme")
+      .set("If-None-Match", '"test-v3"')
+      .expect(304);
+    await request(app).put("/api/v1/ops/brands/test/theme").send({}).expect(401);
   });
 });
 

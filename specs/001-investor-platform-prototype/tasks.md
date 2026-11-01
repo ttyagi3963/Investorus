@@ -1274,6 +1274,69 @@ the package trace shows the retries.
 
 ---
 
+## Sprint 7: White-Label: a Partner Brand, Brands in the Database, and the Style Guide
+
+**Goal** (owner, 2026-11-01: "start working on sprint 6 7 and 8"; FR-090 to FR-097, SC-013 to
+SC-015): the same app runs as Clever or as a fictional partner brand with no code change. Brands
+live in the database and are served by the api; the web app picks the brand once per request (the
+reviewer's `brand` cookie, then the address the visitor used, then `DEFAULT_BRAND_ID`); the reviewer
+can switch brands from the home page, sign-in, and the style guide; operations can replace a brand's
+tokens, and a token set that misses a variable or fails WCAG AA is refused with the failures named;
+a living style guide shows every token and component in the active brand.
+
+**Decisions** (proposed by Claude, following spec.md, the constitution (X, XI, XVI), and
+contracts/design-tokens.md, for the owner to confirm):
+- **The Brand table** holds each brand's DTCG token file and content as JSONB, the host names that
+  pick it, and a `tokenVersion` that goes up on every change. `seed/brands/<id>/` stays the source
+  the seed loads. The seed rewrites a brand only when its files changed since it last loaded them
+  (a hash is kept), so an operator's theme edit survives a restart.
+- **One converter and one validator, in `@clever/contracts/brand`**: the api refuses a token set
+  that is unsafe, misses a variable the theme reads, or has a text and background pair under 4.5:1,
+  naming each failure; a test runs the same checks on every file in `seed/brands/` (SC-015).
+- **The api serves the theme**: `GET /brands` and `GET /brands/:id/theme` are public (the sign-in
+  page needs them), the theme with `ETag` = `tokenVersion`; the web app caches it per brand.
+- **Brand detection happens once, in the web root layout** (X): the `brand` cookie, then the request
+  host (`partner.localhost:3000` opens the partner brand with no setup, since browsers resolve
+  `*.localhost`), then `DEFAULT_BRAND_ID`. The brand ID is metadata; nothing branches on it (XVI).
+- **The partner brand is fictional**: "Larkspur Home Offers", teal (the owner's earlier `brand-beta`
+  values in the DTCG format, AA-adjusted), pill controls, 4px cards, its own logo, and another web
+  font through next/font, so the switch shows on every screen.
+- **Emails name the default brand**, read from the Brand table: packages carry no brand yet.
+- **One PR for the sprint**, merged by Claude when every check is green.
+- **Made while building** (also for the owner to confirm):
+  - A theme save names the `tokenVersion` it started from and is refused (409) if another save came
+    first, so two operators cannot overwrite each other; the editor reads the raw file from
+    `GET /ops/brands/:id/tokens` (OPS).
+  - The web app keeps the brand list and theme in Next's data cache for 60 seconds, tagged so the
+    editor's save drops them at once; the api gained a health check and the web app waits for it,
+    since every page now reads its brand from the api.
+  - Larkspur has pill **buttons** only; inputs keep 4px corners. Buttons now read the brand's
+    button radius token (`rounded-button`).
+  - Texts carry the brand name as a prefix (`Larkspur Home Offers: …`), as senders are expected to
+    identify themselves.
+  - `PhotoPicker` became `FilePicker` (one file unless asked), since it also picks the import CSV
+    and the token file.
+  - After review: token names and values are allow-listed (an operator could otherwise have saved a
+    token *name* that closed the style element); the editor's save runs in a server action with
+    the operator's session and drops the brand cache only when the api accepts it; the worker
+    refuses to start if `DEFAULT_BRAND_ID` names no brand.
+
+- [X] T346 Record the Sprint 7 goal, decisions, and tasks in this section; add "Sprint 7" to the board and mirror the section
+- [X] T347 The Brand table and the brand contracts (tests first): Brand (`id`, `name`, `tokens` and `content` JSONB, `hosts`, `tokenVersion`, `seedHash`); the DTCG converter, the content schema, and `validateBrandTokens` (unsafe values, dangling aliases, every variable theme.css reads, every AA pair, each failure named) moved to `@clever/contracts/brand`; a test that every brand in `seed/brands/` passes; the seed loads `seed/brands/` into the table (from T027–T029, T050, T085, T099's brand part, T199)
+- [X] T348 The brands api (tests first): `GET /brands` and `GET /brands/:id/theme` (public; `ETag` = `tokenVersion`), `PUT /ops/brands/:id/theme` (OPS; the validator's failures as field errors; `tokenVersion` + 1; BRAND_THEME_UPDATED audited); emails use the default brand's name (from T095, T200, T202)
+- [X] T349 Brand resolution in the web app: the `brand` cookie, the host, then `DEFAULT_BRAND_ID`; the theme fetched from the api and cached per brand version; the brand's font from the next/font registry; the bundled brand files removed from the web app (from T094)
+- [X] T350 The partner brand "Larkspur Home Offers": `seed/brands/larkspur/` tokens and content, its logo, its font, and `partner.localhost` as its host (from T201)
+- [X] T351 The brand switcher on the home page, sign-in, and the style guide: a React Aria select of the brands that sets the `brand` cookie through a server action and refreshes (from T203)
+- [X] T352 The living style guide at `/design-system`: every semantic color with its value, the type scale, spacing, and every component in each state, in the active brand (from T204)
+- [X] T353 The operations theme editor at `/ops/brands`: each brand's tokens as JSON to edit or upload, saved through the api, with the refused variables and contrast pairs listed (from T205)
+- [X] T354 Documentation: contracts/design-tokens.md, data-model.md (Brand), api.md, plan.md (the brand shortcut row), README (switching brands)
+
+**Checkpoint**: open http://partner.localhost:3000 and see Larkspur on every screen, with no code
+change; switch back with the switcher; save a token set with an unreadable text color in the theme
+editor and see it refused with the pair and ratio named.
+
+---
+
 ## After Sprint 1: Production Storage Adapter (owner-scheduled)
 
 **Purpose**: show that storage is swappable by adding the production adapter that

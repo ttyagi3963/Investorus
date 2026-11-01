@@ -80,10 +80,13 @@ beforeAll(async () => {
     messaging: new SandboxMessagingProviderImpl(target),
     clock,
     retry: RETRY,
+    brandId: "test",
   });
   queue.startConsumer((id) => dispatcher.dispatch(id), { concurrency: 3, onSetAside: () => {} });
 
   await db.query(`
+    INSERT INTO "Brand" (id, name, tokens, content, hosts, "updatedAt")
+      VALUES ('test', 'Test Homes', '{}', '{}', '{localhost}', now());
     INSERT INTO "Agent" (id, name, email, brokerage, "updatedAt")
       VALUES ('agent-a', 'Avery', 'avery@example.test', 'Demo Realty', now());
     INSERT INTO "Investor" (id, "companyName", "contactName", email, phone, "investorType", "updatedAt")

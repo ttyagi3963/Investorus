@@ -1,15 +1,25 @@
 // Turns a brand's design tokens (W3C DTCG format, seed/brands/<id>/tokens.json) into CSS custom
-// properties named --brand-<path>, which styles/theme.css maps onto the Tailwind utilities (T327;
+// properties named --brand-<path>, which styles/theme.css maps onto the Tailwind utilities (T327, T347;
 // contracts/design-tokens.md). An alias such as {color.blue.700} becomes var(--brand-color-blue-700),
-// so the browser keeps the semantic layer's references. Values are checked, because the result is
-// written into the page's <style> element.
+// so the browser keeps the semantic layer's references. The result is written into the page's
+// <style> element, so names and values are allow-listed, not deny-listed: a token name is letters,
+// digits, `-` and `_`; a value is a color, number, dimension, or font name from a narrow character
+// set (no quotes, comments, `url()`, or anything that could end a declaration or the element).
 
 type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
 type TokenGroup = { [key: string]: Json };
 
 const ALIAS = /^\{([\w.-]+)\}$/;
-/** Characters that could end a declaration, a rule, or the style element itself. */
-const UNSAFE = /[<>;{}\\]/;
+/** A token name: one segment of a token's path. */
+const SAFE_KEY = /^[A-Za-z0-9_-]+$/;
+/** A plain value: a hex color, number, dimension, keyword, or font name. */
+const SAFE_WORDS = /^[#A-Za-z0-9 .,%+-]*$/;
+/** A color function, such as rgba(0, 39, 87, 0.8). */
+const SAFE_COLOR_FUNCTION = /^(?:rgba?|hsla?)\([0-9 .,%-]*\)$/;
+/** What may reach the style element, checked again on the finished rule. */
+const SAFE_NAME = /^--brand-[A-Za-z0-9_-]+$/;
+const SAFE_VALUE =
+  /^(?:var\(--[A-Za-z0-9_-]+\)|"[A-Za-z0-9 -]+"|[#A-Za-z0-9 .,%+-]|(?:rgba?|hsla?)\([0-9 .,%-]*\))*$/;
 const TYPOGRAPHY_PARTS = {
   fontFamily: "font-family",
   fontSize: "font-size",
@@ -32,7 +42,9 @@ function scalar(path: string, value: Json, aliases: Aliases): string {
       aliases.push([path, alias[1]!]);
       return `var(${variableOf(alias[1]!)})`;
     }
-    if (UNSAFE.test(value)) throw new Error(`Token ${path} has an unsafe value`);
+    if (!SAFE_WORDS.test(value) && !SAFE_COLOR_FUNCTION.test(value)) {
+      throw new Error(`Token ${path} has an unsafe value`);
+    }
     return value;
   }
   if (typeof value === "number") return String(value);
@@ -66,6 +78,9 @@ export function toCssVariables(tokens: TokenGroup): Record<string, string> {
     const type = typeof group.$type === "string" ? group.$type : inheritedType;
     for (const [key, child] of Object.entries(group)) {
       if (key.startsWith("$") || !isGroup(child)) continue;
+      if (!SAFE_KEY.test(key)) {
+        throw new Error(`Token name ${[...path, key].join(".")} is not allowed`);
+      }
       const childPath = [...path, key];
       if (!("$value" in child)) {
         visit(child, childPath, type);
@@ -99,8 +114,16 @@ export function toCssVariables(tokens: TokenGroup): Record<string, string> {
   return variables;
 }
 
-/** The variables as one :root rule for the page's <style> element. */
+/**
+ * The variables as one :root rule for the page's <style> element. Every name and value is checked
+ * again here, so nothing that skipped the converter can reach the page.
+ */
 export function toCssRule(variables: Record<string, string>): string {
-  const declarations = Object.entries(variables).map(([name, value]) => `${name}:${value}`);
+  const declarations = Object.entries(variables).map(([name, value]) => {
+    if (!SAFE_NAME.test(name) || !SAFE_VALUE.test(value)) {
+      throw new Error(`The CSS variable ${name} is not safe to write into the page`);
+    }
+    return `${name}:${value}`;
+  });
   return `:root{${declarations.join(";")}}`;
 }

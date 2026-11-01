@@ -1,6 +1,7 @@
 // The unit of work (T043): a service runs every write of one change inside `run`, which commits all
 // of them or none (constitution IV). Each repository a service may use is listed here.
 import type { IAuditRepository } from "../repositories/audit/IAuditRepository.js";
+import type { IBrandRepository } from "../repositories/brand/IBrandRepository.js";
 import type { IBuyBoxRepository } from "../repositories/buy-box/IBuyBoxRepository.js";
 import type { IConfigRepository } from "../repositories/config/IConfigRepository.js";
 import type { IDealRepository } from "../repositories/deal/IDealRepository.js";
@@ -42,6 +43,7 @@ export interface UnitOfWorkRepositories {
   outbox: IOutboxRepository;
   deliveries: IDeliveryRepository;
   opsQuery: IOpsQueryRepository;
+  brands: IBrandRepository;
 }
 
 export interface IUnitOfWork {

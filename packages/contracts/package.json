@@ -41,6 +41,10 @@
       "types": "./dist/ops/index.d.ts",
       "import": "./dist/ops/index.js"
     },
+    "./brand": {
+      "types": "./dist/brand/index.d.ts",
+      "import": "./dist/brand/index.js"
+    },
     "./offer": {
       "types": "./dist/offer/index.d.ts",
       "import": "./dist/offer/index.js"

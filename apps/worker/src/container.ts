@@ -93,6 +93,7 @@ export async function createContainer(env: WorkerEnv): Promise<WorkerContainer> 
       messaging: new SandboxMessagingProviderImpl(sandbox),
       clock,
       retry,
+      brandId: env.DEFAULT_BRAND_ID,
     }),
     deliveries: queue,
     dispose: async () => {

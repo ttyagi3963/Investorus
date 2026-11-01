@@ -38,7 +38,7 @@ export function buttonClasses({
     VARIANTS[variant],
     SIZES[size],
     fullWidth ? "w-full" : "",
-    "inline-flex cursor-pointer items-center justify-center gap-inline-sm rounded-control font-body transition-colors",
+    "inline-flex cursor-pointer items-center justify-center gap-inline-sm rounded-button font-body transition-colors",
     "data-disabled:cursor-not-allowed data-disabled:border-0 data-disabled:bg-disabled data-disabled:text-disabled data-pending:opacity-75",
   ].join(" ");
 }

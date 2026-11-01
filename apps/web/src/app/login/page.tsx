@@ -1,9 +1,10 @@
 "use client";
 // The login page (T104, T300, T329): the brand panel beside the sign-in card, pre-filled with the
 // demo agent, and the demo accounts under it, so the reviewer can switch roles with one press and
-// sign in through the real session flow.
+// sign in through the real session flow. The brand switcher sits last (T351).
 import { Button, Card, TextField } from "@clever/ui";
 import { useId, useState, type FormEvent } from "react";
+import { BrandSwitcher } from "@/brand/BrandSwitcher";
 import { BrandPanel } from "@/features/auth/BrandPanel";
 import { DEMO_ACCOUNTS, DEMO_PASSWORD, DemoAccounts } from "@/features/auth/DemoAccounts";
 import { useLogin } from "@/features/auth/useLogin";
@@ -26,7 +27,11 @@ export default function LoginPage() {
       <div className="flex items-center justify-center px-inset-lg py-inset-xl">
         <div className="flex w-full max-w-md flex-col gap-stack-lg">
           <Card padding="xl">
-            <form aria-labelledby={headingId} onSubmit={onSubmit} className="flex flex-col gap-stack-lg">
+            <form
+              aria-labelledby={headingId}
+              onSubmit={onSubmit}
+              className="flex flex-col gap-stack-lg"
+            >
               <div className="flex flex-col gap-stack-xs">
                 <h2 id={headingId} className="font-heading text-heading-lg text-heading">
                   Sign in
@@ -61,6 +66,7 @@ export default function LoginPage() {
             </form>
           </Card>
           <DemoAccounts onUse={setEmail} />
+          <BrandSwitcher />
         </div>
       </div>
     </main>

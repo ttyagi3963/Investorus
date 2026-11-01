@@ -13,7 +13,7 @@ export {
   type CheckboxOption,
 } from "./primitives/CheckboxGroup.js";
 export { NumberField, type NumberFieldProps } from "./primitives/NumberField.js";
-export { PhotoPicker, type PhotoPickerProps } from "./primitives/PhotoPicker.js";
+export { FilePicker, type FilePickerProps } from "./primitives/FilePicker.js";
 export { RadioGroup, type RadioGroupProps, type RadioOption } from "./primitives/RadioGroup.js";
 export {
   SegmentedControl,

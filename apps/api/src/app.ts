@@ -12,6 +12,7 @@ import { trace } from "./middleware/trace.js";
 import { createBuyBoxesRouter } from "./routes/buy-boxes.router.js";
 import { createDealsRouter } from "./routes/deals.router.js";
 import { createDecisionsRouter } from "./routes/decisions.router.js";
+import { createBrandsRouter } from "./routes/brands.router.js";
 import { createHealthRouter } from "./routes/health.router.js";
 import { createInvestorImportsRouter } from "./routes/investor-imports.router.js";
 import { createMatchDigestsRouter } from "./routes/match-digests.router.js";
@@ -49,6 +50,7 @@ export function createApp(c: AppContainer): Express {
   v1.use(createInvestorImportsRouter(c.investorImports));
   v1.use(createMatchDigestsRouter(c.digests));
   v1.use(createOpsRouter(c.ops));
+  v1.use(createBrandsRouter(c.brands));
   app.use("/api/v1", v1);
 
   app.use(notFound);

@@ -17,19 +17,21 @@ beforeAll(async () => {
 
 afterAll(() => stop?.());
 
-const insertUser = (username: string, role: string, agentId: string | null) =>
+const insertUser = (email: string, role: string, agentId: string | null) =>
   db.query(
-    `INSERT INTO "User" (id, username, "passwordHash", role, "displayName", "agentId", "updatedAt")
+    `INSERT INTO "User" (id, email, "passwordHash", role, "displayName", "agentId", "updatedAt")
      VALUES ($1, $1, 'hash', $2, 'Name', $3, now())`,
-    [username, role, agentId],
+    [email, role, agentId],
   );
 
 describe("User table", () => {
   it("links an AGENT to exactly one Agent and an OPS user to none", async () => {
-    await expect(insertUser("agent.avery", "AGENT", "agent-1")).resolves.toBeDefined();
-    await expect(insertUser("ops.morgan", "OPS", null)).resolves.toBeDefined();
-    await expect(insertUser("agent.none", "AGENT", null)).rejects.toThrow(/User_role_link_check/);
-    await expect(insertUser("ops.linked", "OPS", "agent-1")).rejects.toThrow(
+    await expect(insertUser("avery@example.com", "AGENT", "agent-1")).resolves.toBeDefined();
+    await expect(insertUser("morgan@example.com", "OPS", null)).resolves.toBeDefined();
+    await expect(insertUser("none@example.com", "AGENT", null)).rejects.toThrow(
+      /User_role_link_check/,
+    );
+    await expect(insertUser("linked@example.com", "OPS", "agent-1")).rejects.toThrow(
       /User_role_link_check/,
     );
   });

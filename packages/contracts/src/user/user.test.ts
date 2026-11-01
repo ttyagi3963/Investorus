@@ -5,7 +5,7 @@ import { toUserView, type User } from "./index.js";
 
 const agent = {
   id: "user-1",
-  username: "agent.avery",
+  email: "avery@example.com",
   role: "AGENT",
   displayName: "Avery Agent",
   agentId: "agent-1",
@@ -15,12 +15,7 @@ const agent = {
 } satisfies User;
 
 describe("toUserView", () => {
-  it("exposes only id, username, role, and display name", () => {
-    expect(Object.keys(toUserView(agent)).sort()).toEqual([
-      "displayName",
-      "id",
-      "role",
-      "username",
-    ]);
+  it("exposes only id, email, role, and display name", () => {
+    expect(Object.keys(toUserView(agent)).sort()).toEqual(["displayName", "email", "id", "role"]);
   });
 });

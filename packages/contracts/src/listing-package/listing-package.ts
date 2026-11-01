@@ -13,6 +13,8 @@ export type ListingPackage = {
   status: PackageStatus;
   priceExpectationMin: number;
   priceExpectationMax: number;
+  /** Optimistic concurrency: an update names the version it read (T243). */
+  version: number;
   createdAt: Date;
   updatedAt: Date;
 };

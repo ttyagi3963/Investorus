@@ -15,7 +15,7 @@ import type { Property } from "@clever/contracts/property";
 import type { Seller } from "@clever/contracts/seller";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 
-/** A matched package as its investor sees it, before the photos' read links are signed. */
+/** A matched package as its investor sees it, before the photos' addresses are added. */
 export type InvestorPackage = {
   package: ListingPackage;
   property: Property;

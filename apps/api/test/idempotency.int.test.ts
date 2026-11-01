@@ -69,7 +69,7 @@ function appOver(databaseUrl: string): Express {
         return { package: { id: `package-${calls}` } } as AgentPackage;
       },
     },
-    presentPackage: async (parts) =>
+    presentPackage: (parts) =>
       ({ id: parts.package.id, seller: { fullName: "Maria Lopez" } }) as AgentPackageView,
   });
 }

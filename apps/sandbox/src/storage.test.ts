@@ -54,6 +54,25 @@ describe("sandbox storage", () => {
     await request(app).put(larger).set("Content-Type", "image/jpeg").send(jpeg).expect(400);
   });
 
+  it("serves a photo to anyone at its plain address, but nothing outside packages/", async () => {
+    await request(app)
+      .put(uploadPath("packages/p1/f.jpg", "image/jpeg", 2_000))
+      .set("Content-Type", "image/jpeg")
+      .send(jpeg)
+      .expect(200);
+    await request(app)
+      .put(uploadPath("imports/i2.csv", "text/csv", 8))
+      .set("Content-Type", "text/csv")
+      .send("a,b\n1,2\n")
+      .expect(200);
+
+    const photo = await request(app)
+      .get(`/storage/objects/${encodeURIComponent("packages/p1/f.jpg")}`)
+      .expect(200);
+    expect(photo.headers["content-type"]).toBe("image/jpeg");
+    await request(app).get(`/storage/objects/${encodeURIComponent("imports/i2.csv")}`).expect(403);
+  });
+
   it("reports a stored object's type and size on the internal route, only with the token", async () => {
     await request(app)
       .put(uploadPath("packages/p1/d.jpg", "image/jpeg", 2_000))

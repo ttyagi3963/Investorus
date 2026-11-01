@@ -42,6 +42,14 @@ describe("S3StorageProviderImpl", () => {
     });
   });
 
+  it("gives a photo the bucket's plain address, with no signature or expiry", () => {
+    const { storage } = setup();
+
+    expect(storage.getPublicUrl("packages/p1/a b")).toBe(
+      "https://listing-photos.s3.us-west-1.amazonaws.com/packages/p1/a%20b",
+    );
+  });
+
   it("reads the stored type and size, and reports nothing uploaded on a 404", async () => {
     const { client, storage } = setup();
     const send = vi.spyOn(client, "send");

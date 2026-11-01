@@ -1,7 +1,7 @@
 // The agent's packages (T256, T298, T313, contracts/api.md): list, create (201), read, edit, publish,
 // withdraw, reopen, extend the deadline, and the timeline of what happened. Each route makes one service call and maps the
-// result to its view; `presentPackage` (built in the container) signs the photos' short-lived read
-// links on the way.
+// result to its view; `presentPackage` (built in the container) adds the photos' public addresses
+// on the way.
 import { toTimelineEntryView } from "@clever/contracts/audit";
 import {
   toAgentPackageSummary,
@@ -14,7 +14,7 @@ import { Router } from "express";
 export function createListingPackagesRouter(
   packages: IListingPackageService,
   publication: IPublicationWorkflow,
-  presentPackage: (parts: AgentPackageParts) => Promise<AgentPackageView>,
+  presentPackage: (parts: AgentPackageParts) => AgentPackageView,
 ): Router {
   const router = Router();
   router.get("/listing-packages", async (_req, res) => {
@@ -23,31 +23,31 @@ export function createListingPackagesRouter(
   });
   router.post("/listing-packages", async (req, res) => {
     const created = await packages.create(res.locals.actor, req.body);
-    res.status(201).json(await presentPackage(created));
+    res.status(201).json(presentPackage(created));
   });
   router.get("/listing-packages/:id", async (req, res) => {
     const found = await packages.get(res.locals.actor, req.params.id);
-    res.status(200).json(await presentPackage(found));
+    res.status(200).json(presentPackage(found));
   });
   router.patch("/listing-packages/:id", async (req, res) => {
     const updated = await packages.update(res.locals.actor, req.params.id, req.body);
-    res.status(200).json(await presentPackage(updated));
+    res.status(200).json(presentPackage(updated));
   });
   router.post("/listing-packages/:id/publication", async (req, res) => {
     const published = await publication.publish(res.locals.actor, req.params.id, req.body);
-    res.status(200).json(await presentPackage(published));
+    res.status(200).json(presentPackage(published));
   });
   router.post("/listing-packages/:id/withdrawal", async (req, res) => {
     const withdrawn = await publication.withdraw(res.locals.actor, req.params.id, req.body);
-    res.status(200).json(await presentPackage(withdrawn));
+    res.status(200).json(presentPackage(withdrawn));
   });
   router.post("/listing-packages/:id/reopening", async (req, res) => {
     const reopened = await publication.reopen(res.locals.actor, req.params.id, req.body);
-    res.status(200).json(await presentPackage(reopened));
+    res.status(200).json(presentPackage(reopened));
   });
   router.patch("/listing-packages/:id/offer-deadline", async (req, res) => {
     const extended = await publication.extendDeadline(res.locals.actor, req.params.id, req.body);
-    res.status(200).json(await presentPackage(extended));
+    res.status(200).json(presentPackage(extended));
   });
   router.get("/listing-packages/:id/timeline", async (req, res) => {
     const entries = await packages.timeline(res.locals.actor, req.params.id);

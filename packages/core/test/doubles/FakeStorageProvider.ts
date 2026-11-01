@@ -25,8 +25,8 @@ export class FakeStorageProvider implements IStorageProvider {
     };
   }
 
-  async getReadUrl(key: string): Promise<string> {
-    return `https://storage.test/${key}?read`;
+  getPublicUrl(key: string): string {
+    return `https://storage.test/${key}`;
   }
 
   async stat(key: string): Promise<StoredObject | null> {

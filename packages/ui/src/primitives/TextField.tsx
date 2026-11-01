@@ -9,7 +9,7 @@ import {
   Text,
   type TextFieldProps as AriaTextFieldProps,
 } from "react-aria-components";
-import { FIELD, FIELD_ERROR, FIELD_GROUP, FIELD_LABEL, FOCUS_RING } from "./styles.js";
+import { FIELD, FIELD_ERROR, FIELD_GROUP, FIELD_HINT, FIELD_LABEL, FOCUS_RING } from "./styles.js";
 
 export type TextFieldProps = Omit<AriaTextFieldProps, "className" | "style" | "isInvalid"> & {
   label: string;
@@ -23,7 +23,7 @@ export function TextField({ label, description, errorMessage, ...props }: TextFi
       <Label className={FIELD_LABEL}>{label}</Label>
       <Input className={`${FIELD} ${FOCUS_RING}`} />
       {description && (
-        <Text slot="description" className="text-label text-muted">
+        <Text slot="description" className={FIELD_HINT}>
           {description}
         </Text>
       )}

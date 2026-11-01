@@ -3,6 +3,7 @@
 // it closes; Escape cancels.
 import { Dialog, DialogTrigger, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { Button } from "./Button.js";
+import { MODAL_OVERLAY, MODAL_PANEL } from "./styles.js";
 
 export type ConfirmDialogProps = {
   /** The button that opens the dialog. */
@@ -31,13 +32,13 @@ export function ConfirmDialog({
       </Button>
       <ModalOverlay
         isDismissable
-        className="fixed inset-0 flex items-center justify-center p-inset-lg"
+        className={MODAL_OVERLAY}
       >
-        <Modal className="w-full max-w-md rounded-card border border-default bg-card p-inset-lg shadow-card">
+        <Modal className={MODAL_PANEL}>
           <Dialog role="alertdialog" className="flex flex-col gap-stack-md outline-none">
             {({ close }) => (
               <>
-                <Heading slot="title" className="font-heading text-heading-sm">
+                <Heading slot="title" className="font-heading text-heading-sm text-heading">
                   {title}
                 </Heading>
                 <p>{message}</p>

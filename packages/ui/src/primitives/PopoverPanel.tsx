@@ -16,10 +16,12 @@ export type PopoverPanelProps = {
 export function PopoverPanel({ triggerLabel, panelLabel, children }: PopoverPanelProps) {
   return (
     <DialogTrigger>
-      <Button variant="secondary">{triggerLabel}</Button>
+      <Button variant="secondary" size="sm">
+        {triggerLabel}
+      </Button>
       <Popover
         placement="bottom end"
-        className="w-screen max-w-sm rounded-card border border-default bg-card p-inset-md shadow-card"
+        className="w-screen max-w-sm rounded-card border border-default bg-card p-inset-lg shadow-card"
       >
         <Dialog aria-label={panelLabel} className="flex flex-col gap-stack-sm outline-none">
           {({ close }) => (typeof children === "function" ? children(close) : children)}

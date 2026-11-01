@@ -12,12 +12,13 @@ export function SignOutButton() {
   return (
     <div className="flex items-center gap-inline-md">
       {failed && (
-        <p role="alert" className="text-label text-danger">
+        <p role="alert" className="text-helper text-danger">
           Sign out failed. Try again.
         </p>
       )}
       <Button
         variant="secondary"
+        size="sm"
         onPress={async () => {
           setFailed(false);
           try {

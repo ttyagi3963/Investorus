@@ -26,10 +26,3 @@ Thumbs.db
 
 # Release artifact
 investor-platform.zip
-
-# Confidential: the take-home brief stays local and is never committed
-assignment.md
-.claude
-.specify
-assignment.md
-settings.local.json

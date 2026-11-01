@@ -118,6 +118,7 @@ describe("publish and match", () => {
 
     const summit: Actor = { userId: "user-summit", role: "INVESTOR", investorId: "summit" };
     const ridge: Actor = { userId: "user-ridge", role: "INVESTOR", investorId: "ridge" };
+    expect((await packages.get(avery, created.id)).matchedCount).toBe(1);
     const reads = new InvestorPackageQueryService(uow);
     expect((await reads.listMatched(summit)).map((p) => p.package.id)).toEqual([created.id]);
     expect(await reads.listMatched(ridge)).toEqual([]);

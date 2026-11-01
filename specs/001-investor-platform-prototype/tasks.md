@@ -494,7 +494,7 @@ it. Every request and job can be traced end to end.
 
 ### PR: api
 
-- [ ] T298 Add the routes in contracts/api.md: `POST /listing-packages/:id/publication`, `POST /listing-packages/:id/withdrawal`, `GET /listing-packages/:id/timeline`; the agent view gains `matchedCount`; `GET /investor/packages`, `GET /investor/packages/:id`; `POST /listing-packages/:id/offers`, `PATCH /offers/:offerId`, `GET /listing-packages/:id/offers` (agent); `GET /notifications`, `POST /notifications/:id/read`; each route checks the caller's role through the service; wire them in container.ts and app.ts; add the typed client calls (from T129, T132, T150, T151)
+- [X] T298 Add the routes in contracts/api.md: `POST /listing-packages/:id/publication`, `POST /listing-packages/:id/withdrawal`, `GET /listing-packages/:id/timeline`; the agent view gains `matchedCount`; `GET /investor/packages`, `GET /investor/packages/:id`; `POST /listing-packages/:id/offers`, `PATCH /offers/:offerId`, `GET /listing-packages/:id/offers` (agent); `GET /notifications`, `POST /notifications/:id/read`; each route checks the caller's role through the service; wire them in container.ts and app.ts; publication and withdrawal answer 200 with the agent view (api.md); the typed client calls arrive with the screens that use them, T300–T302 (from T129, T132, T150, T151)
 
 ### PR: seed
 

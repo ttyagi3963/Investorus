@@ -13,6 +13,8 @@ export type AgentPackageParts = {
   seller: Seller;
   property: Property;
   photos: Photo[];
+  /** How many investors the package matched in its current round. */
+  matchedCount: number;
 };
 
 /** The parts with each photo's read link already signed (signing is async; this mapper is not). */
@@ -34,6 +36,7 @@ export type AgentPackageView = {
   eligiblePrograms: OfferProgram[];
   offerDeadline: string | null;
   publishedAt: string | null;
+  matchedCount: number;
   seller: Pick<Seller, "fullName" | "email" | "phone">;
   property: Omit<Property, "id" | "createdAt" | "updatedAt">;
   photos: { id: string; position: number; contentType: string; sizeBytes: number; url: string }[];
@@ -52,6 +55,7 @@ export type AgentPackageSummary = {
   priceExpectationMax: number;
   offerDeadline: string | null;
   photoCount: number;
+  matchedCount: number;
   updatedAt: string;
 };
 
@@ -71,6 +75,7 @@ export function toAgentPackageView(parts: SignedAgentPackageParts): AgentPackage
     eligiblePrograms: pkg.eligiblePrograms,
     offerDeadline: pkg.offerDeadline?.toISOString() ?? null,
     publishedAt: pkg.publishedAt?.toISOString() ?? null,
+    matchedCount: parts.matchedCount,
     seller: { fullName: seller.fullName, email: seller.email, phone: seller.phone },
     property: {
       streetLine: p.streetLine,
@@ -115,6 +120,7 @@ export function toAgentPackageSummary(parts: AgentPackageParts): AgentPackageSum
     priceExpectationMax: pkg.priceExpectationMax,
     offerDeadline: pkg.offerDeadline?.toISOString() ?? null,
     photoCount: parts.photos.length,
+    matchedCount: parts.matchedCount,
     updatedAt: pkg.updatedAt.toISOString(),
   };
 }

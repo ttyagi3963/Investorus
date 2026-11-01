@@ -4,13 +4,21 @@
 // IDatabase, T276), and STORAGE_PROVIDER picks the sandbox or S3 behind the storage port (T275).
 import {
   AuthService,
+  InvestorPackageQueryService,
   ListingPackageService,
+  NotificationService,
+  OfferService,
   PhotoService,
+  PublicationWorkflow,
   type IAuthService,
   type IErrorReporter,
   type IIdempotencyStore,
+  type IInvestorPackageQueryService,
   type IListingPackageService,
+  type INotificationService,
+  type IOfferService,
   type IPhotoService,
+  type IPublicationWorkflow,
 } from "@clever/core";
 import {
   AesGcmPiiCipherImpl,
@@ -30,13 +38,20 @@ import {
 } from "@clever/contracts/listing-package";
 import type { Logger } from "pino";
 import type { ApiEnv } from "./env.js";
+import type { SignPhotos } from "./routes/investor.router.js";
 
 export type AppContainer = Readonly<{
   auth: IAuthService;
   packages: IListingPackageService;
   photos: IPhotoService;
+  publication: IPublicationWorkflow;
+  investorPackages: IInvestorPackageQueryService;
+  offers: IOfferService;
+  notifications: INotificationService;
   /** A package's view, with each photo's short-lived read link signed. */
   presentPackage: (parts: AgentPackageParts) => Promise<AgentPackageView>;
+  /** Each photo with its short-lived read link signed. */
+  signPhotos: SignPhotos;
   checkDatabase: () => Promise<void>;
   /** The Idempotency-Key store every POST and PATCH goes through (T285). */
   idempotency: IIdempotencyStore;
@@ -68,6 +83,11 @@ export function createContainer(env: ApiEnv): AppContainer {
           clock,
         });
 
+  const signPhotos: SignPhotos = (photos) =>
+    Promise.all(
+      photos.map(async (photo) => ({ ...photo, url: await storage.getReadUrl(photo.storageKey) })),
+    );
+
   return Object.freeze({
     auth: new AuthService(uow, { jwtSecret: env.JWT_SECRET, clock }),
     packages: new ListingPackageService(uow, {
@@ -76,16 +96,13 @@ export function createContainer(env: ApiEnv): AppContainer {
       clock,
     }),
     photos: new PhotoService(uow, storage),
+    publication: new PublicationWorkflow(uow, { clock }),
+    investorPackages: new InvestorPackageQueryService(uow),
+    offers: new OfferService(uow, { clock }),
+    notifications: new NotificationService(uow, { clock }),
     presentPackage: async (parts) =>
-      toAgentPackageView({
-        ...parts,
-        photos: await Promise.all(
-          parts.photos.map(async (photo) => ({
-            ...photo,
-            url: await storage.getReadUrl(photo.storageKey),
-          })),
-        ),
-      }),
+      toAgentPackageView({ ...parts, photos: await signPhotos(parts.photos) }),
+    signPhotos,
     checkDatabase: () => db.check(),
     idempotency: db.idempotency,
     logger,

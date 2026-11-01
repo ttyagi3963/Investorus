@@ -10,7 +10,10 @@ import { errorTranslator, notFound } from "./middleware/errors.js";
 import { idempotency } from "./middleware/idempotency.js";
 import { trace } from "./middleware/trace.js";
 import { createHealthRouter } from "./routes/health.router.js";
+import { createInvestorRouter } from "./routes/investor.router.js";
 import { createListingPackagesRouter } from "./routes/listing-packages.router.js";
+import { createNotificationsRouter } from "./routes/notifications.router.js";
+import { createOffersRouter } from "./routes/offers.router.js";
 import { createPhotosRouter } from "./routes/photos.router.js";
 import { createSessionsRouter } from "./routes/sessions.router.js";
 
@@ -27,8 +30,11 @@ export function createApp(c: AppContainer): Express {
   const v1 = Router();
   v1.use(createHealthRouter(c.checkDatabase));
   v1.use(createSessionsRouter(c.auth));
-  v1.use(createListingPackagesRouter(c.packages, c.presentPackage));
+  v1.use(createListingPackagesRouter(c.packages, c.publication, c.presentPackage));
   v1.use(createPhotosRouter(c.photos));
+  v1.use(createInvestorRouter(c.investorPackages, c.signPhotos));
+  v1.use(createOffersRouter(c.offers));
+  v1.use(createNotificationsRouter(c.notifications));
   app.use("/api/v1", v1);
 
   app.use(notFound);

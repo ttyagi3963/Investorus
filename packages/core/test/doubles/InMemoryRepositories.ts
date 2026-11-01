@@ -271,6 +271,9 @@ export class InMemoryMatchRepository implements IMatchRepository {
   async listByPackage(packageId: string, round: number) {
     return this.rows.filter((r) => r.packageId === packageId && r.round === round);
   }
+  async countByPackage(packageId: string, round: number) {
+    return (await this.listByPackage(packageId, round)).length;
+  }
 }
 
 export class InMemoryNotificationRepository implements INotificationRepository {

@@ -41,5 +41,19 @@ export {
   type IListingPackageService,
 } from "./services/listing-package/ListingPackageService.js";
 export { PhotoService, type IPhotoService } from "./services/photo/PhotoService.js";
+export {
+  InvestorPackageQueryService,
+  type IInvestorPackageQueryService,
+  type InvestorPackage,
+} from "./services/investor-package/InvestorPackageQueryService.js";
+export { OfferService, type IOfferService } from "./services/offer/OfferService.js";
+export {
+  NotificationService,
+  type INotificationService,
+} from "./services/notification/NotificationService.js";
+export {
+  PublicationWorkflow,
+  type IPublicationWorkflow,
+} from "./workflows/publication/PublicationWorkflow.js";
 export { MatchingWorkflow, type IMatchingWorkflow } from "./workflows/matching/MatchingWorkflow.js";
 export { createJobHandlers, type JobHandler } from "./jobs/handlers.js";

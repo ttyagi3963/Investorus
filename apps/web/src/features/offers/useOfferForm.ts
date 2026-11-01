@@ -1,6 +1,6 @@
 // Making or revising an offer (T302; XX.2, FR-042): one request at a time, and one Idempotency-Key
-// per action. The key is kept until an answer arrives, so a retry after a lost answer is a replay,
-// never a second offer. The api's field errors are keyed by field name, which is each input's name.
+// per action. The key is kept until an answer arrives, so a retry of the same terms after a lost
+// answer is a replay, never a second offer; changed terms are a new action with a new key. The api's field errors are keyed by field name, which is each input's name.
 import type { OfferView } from "@clever/contracts/offer";
 import type { CreateOfferInput } from "@clever/contracts/offer";
 import { ApiError } from "@clever/contracts/client";
@@ -18,7 +18,8 @@ const newKey = () =>
 export function useOfferForm(packageId: string, myOffer: OfferView | null) {
   const queryClient = useQueryClient();
   const inFlight = useRef(false);
-  const actionKey = useRef<string | null>(null);
+  // The key and the terms it was sent with: a retry reuses it only for the same terms.
+  const actionKey = useRef<{ key: string; terms: string } | null>(null);
   const [isPending, setPending] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<ErrorInfo | null>(null);
@@ -31,8 +32,9 @@ export function useOfferForm(packageId: string, myOffer: OfferView | null) {
     setFieldErrors({});
     setError(null);
     setSaved(false);
-    actionKey.current ??= newKey();
-    const options = { idempotencyKey: actionKey.current };
+    const sent = JSON.stringify(terms);
+    if (actionKey.current?.terms !== sent) actionKey.current = { key: newKey(), terms: sent };
+    const options = { idempotencyKey: actionKey.current.key };
     try {
       if (myOffer?.status === "ACTIVE") {
         await investor.reviseOffer(myOffer.id, { ...terms, version: myOffer.version }, options);

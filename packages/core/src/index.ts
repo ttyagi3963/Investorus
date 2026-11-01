@@ -8,6 +8,7 @@ export type { AddressHasher, IPiiCipher } from "./providers/pii-cipher/IPiiCiphe
 export type { IClock } from "./providers/clock/IClock.js";
 export type { IGeoProvider, ZipInfo } from "./providers/geo/IGeoProvider.js";
 export type { IStorageProvider, StoredObject } from "./providers/storage/IStorageProvider.js";
+export type { IDatabase } from "./unit-of-work/IDatabase.js";
 export type { IUnitOfWork, UnitOfWorkRepositories } from "./unit-of-work/IUnitOfWork.js";
 export type { IUserRepository } from "./repositories/user/IUserRepository.js";
 export type {

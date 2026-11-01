@@ -188,7 +188,7 @@ packages/
 │   ├── prisma/              # schema.prisma, migrations/, seed.ts
 │   └── src/
 │       ├── index.ts                 # barrel: ports, services, workflows, domain types, errors — NO impls
-│       ├── adapters.ts              # barrel: every *Impl, createPrismaClient, createRedisClient (container.ts only)
+│       ├── adapters.ts              # barrel: every *Impl and client factory, e.g. PostgresDatabaseImpl, createRedisClient (container.ts only)
 │       ├── services/<entity>/       # noun services + I<Entity>Service interfaces
 │       ├── workflows/               # verb services: publication, matching, decision, deal-lifecycle, investor-import
 │       ├── repositories/<entity>/   # vertical slice per entity:
@@ -197,7 +197,7 @@ packages/
 │       │                            # entities: listing-package, seller, property, photo, investor, buy-box,
 │       │                            #   match, offer, decision, deal, job, outbox, delivery, notification,
 │       │                            #   audit, config, brand, import
-│       ├── unit-of-work/            # IUnitOfWork (port) + PrismaUnitOfWorkImpl (one interactive tx)
+│       ├── unit-of-work/            # IUnitOfWork + IDatabase (ports), PrismaUnitOfWorkImpl (one interactive tx), PostgresDatabaseImpl
 │       ├── providers/<port>/        # I<Name>Provider.ts (port) + <Vendor><Name>ProviderImpl.ts
 │       │                            #   crm, messaging, storage, geo, simulation, error-reporter, clock, pii-cipher
 │       ├── registry/                # Criterion Registry evaluators + EVALUATOR_VERSION + toListingFacts (XIX)

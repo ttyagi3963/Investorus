@@ -1,10 +1,9 @@
 // The api's composition root (T255, constitution I): the one place adapters are built and wired.
 // Everything is created once from validated settings; `dispose` closes the database pool on
-// shutdown. Swapping a vendor is a change here and nowhere else: STORAGE_PROVIDER picks the
-// sandbox or S3 behind the same storage port (T275).
+// shutdown. Swapping a vendor is a change here and nowhere else: the database is one line (any
+// IDatabase, T276), and STORAGE_PROVIDER picks the sandbox or S3 behind the storage port (T275).
 import {
   AuthService,
-  InfrastructureError,
   ListingPackageService,
   PhotoService,
   type IAuthService,
@@ -15,14 +14,13 @@ import {
 import {
   AesGcmPiiCipherImpl,
   LogErrorReporterImpl,
-  PrismaUnitOfWorkImpl,
+  PostgresDatabaseImpl,
   S3StorageProviderImpl,
   SandboxStorageProviderImpl,
   StaticGeoProviderImpl,
   SystemClockImpl,
   createAddressHasher,
   createLogger,
-  createPrismaClient,
 } from "@clever/core/adapters";
 import {
   toAgentPackageView,
@@ -46,9 +44,12 @@ export type AppContainer = Readonly<{
 
 export function createContainer(env: ApiEnv): AppContainer {
   const logger = createLogger("api", { level: env.LOG_LEVEL });
-  const prisma = createPrismaClient(env.DATABASE_URL);
+  const db = new PostgresDatabaseImpl(
+    env.DATABASE_URL,
+    new AesGcmPiiCipherImpl(env.PII_ENCRYPTION_KEY),
+  );
+  const { uow } = db;
   const clock = new SystemClockImpl();
-  const uow = new PrismaUnitOfWorkImpl(prisma, new AesGcmPiiCipherImpl(env.PII_ENCRYPTION_KEY));
   const storage =
     env.STORAGE_PROVIDER === "s3"
       ? new S3StorageProviderImpl({
@@ -82,15 +83,9 @@ export function createContainer(env: ApiEnv): AppContainer {
           })),
         ),
       }),
-    checkDatabase: async () => {
-      try {
-        await prisma.$queryRaw`SELECT 1`;
-      } catch (cause) {
-        throw new InfrastructureError("The database did not answer", 503, cause);
-      }
-    },
+    checkDatabase: () => db.check(),
     logger,
     reporter: new LogErrorReporterImpl(logger),
-    dispose: () => prisma.$disconnect(),
+    dispose: () => db.dispose(),
   });
 }

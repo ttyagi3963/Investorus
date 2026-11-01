@@ -15,6 +15,8 @@ export function toUser(row: UserRow): User {
   };
   if (row.role === "AGENT" && row.agentId !== null)
     return { ...base, role: "AGENT", agentId: row.agentId };
+  if (row.role === "INVESTOR" && row.investorId !== null && row.agentId === null)
+    return { ...base, role: "INVESTOR", agentId: null, investorId: row.investorId };
   if (row.role === "OPS" && row.agentId === null) return { ...base, role: "OPS", agentId: null };
   throw new InfrastructureError(`User ${row.id} breaks the role link rule`, 502);
 }

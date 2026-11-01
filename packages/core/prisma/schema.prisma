@@ -14,25 +14,28 @@ generator client {
   moduleFormat = "esm"
 }
 
-// Login roles. INVESTOR and User.investorId arrive with the Investor table in Sprint 2.
+// Login roles. Each role links to exactly its own record (see User_role_link_check).
 enum Role {
   AGENT
+  INVESTOR
   OPS
 }
 
 // A login account, signed in to by email (stored lowercase). CHECK User_role_link_check
-// (migration): an AGENT has agentId, OPS has none.
+// (migration): an AGENT has agentId only, an INVESTOR has investorId only, OPS has neither.
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   passwordHash String
   role         Role
   displayName  String
-  agentId      String?  @unique
-  agent        Agent?   @relation(fields: [agentId], references: [id])
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  agentId      String?   @unique
+  agent        Agent?    @relation(fields: [agentId], references: [id])
+  investorId   String?   @unique
+  investor     Investor? @relation(fields: [investorId], references: [id])
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }
 
 // The person behind an AGENT login; owns listing packages. Email is how the seed and ops find them.
@@ -45,6 +48,34 @@ model Agent {
   updatedAt DateTime         @updatedAt
   user      User?
   packages  ListingPackage[]
+}
+
+enum InvestorType {
+  DIRECT_BUYER
+  WHOLESALER
+  IBUYER
+}
+
+enum InvestorStatus {
+  ACTIVE
+  INACTIVE
+}
+
+// A buying company Clever sends matched packages to (T278). Only ACTIVE investors whose proof
+// of funds has not expired are matched (FR-024); proofOfFundsExpiresAt null means unverified.
+model Investor {
+  id                    String         @id @default(cuid())
+  companyName           String
+  contactName           String
+  email                 String         @unique
+  phone                 String?
+  investorType          InvestorType
+  status                InvestorStatus @default(ACTIVE)
+  proofOfFundsExpiresAt DateTime?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+  user                  User?
+  buyBoxes              BuyBox[]
 }
 
 // The homeowner's contact details for one listing package. fullName, email, and phone hold
@@ -147,4 +178,92 @@ model Photo {
   createdAt   DateTime       @default(now())
 
   @@unique([packageId, position])
+}
+
+// Clever's offer programs: a package names the ones the seller is open to, and a buy box the ones
+// the investor buys through (the `programs` criterion needs one in common).
+enum OfferProgram {
+  CASH_OFFER
+  CASH_WITH_UPSIDE
+  SEVEN_DAY_SOLD
+}
+
+enum BuyBoxStatus {
+  ACTIVE
+  PAUSED
+}
+
+// A label for organizing and reports; not a criterion.
+enum BuyBoxStrategy {
+  FIX_FLIP
+  BUY_HOLD
+  WHOLESALE
+  NOVATION
+  SELLER_FINANCE
+}
+
+enum GeographyMode {
+  NATIONWIDE
+  STATES
+  ZIPS
+}
+
+enum GeographyKind {
+  STATE
+  ZIP
+}
+
+// What one investor wants to buy (T279; constitution XIX.2): every criterion is a typed,
+// nullable column, and null means "any" (FR-025). An investor can have several boxes; only
+// ACTIVE ones are matched. The range and non-empty-list rules are CHECKs in the migration, and
+// at most one box per investor is the default (a partial unique index). `version` goes up on
+// each save, and match decisions record the version they read.
+model BuyBox {
+  id                 String              @id @default(cuid())
+  investorId         String
+  investor           Investor            @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  name               String
+  status             BuyBoxStatus        @default(ACTIVE)
+  isDefault          Boolean             @default(false)
+  strategy           BuyBoxStrategy?
+  geographyMode      GeographyMode
+  propertyTypes      PropertyType[]
+  priceMin           Int?
+  priceMax           Int?
+  yearBuiltMin       Int?
+  yearBuiltMax       Int?
+  bedsMin            Int?
+  bedsMax            Int?
+  bathsMin           Decimal?            @db.Decimal(3, 1)
+  bathsMax           Decimal?            @db.Decimal(3, 1)
+  sqftMin            Int?
+  sqftMax            Int?
+  unitsMin           Int?
+  unitsMax           Int?
+  conditionsAccepted PropertyCondition[]
+  repairMax          Int?
+  closeWithinDays    Int?
+  acceptsListed      Boolean             @default(true)
+  programsAccepted   OfferProgram[]
+  version            Int                 @default(1)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  geography          BuyBoxGeography[]
+
+  @@unique([investorId, name])
+  @@index([investorId])
+  @@index([status])
+}
+
+// The states or ZIPs a STATES or ZIPS buy box covers; a NATIONWIDE box has none. Indexed by
+// (kind, value) for matching's first stage.
+model BuyBoxGeography {
+  id       String        @id @default(cuid())
+  buyBoxId String
+  buyBox   BuyBox        @relation(fields: [buyBoxId], references: [id], onDelete: Cascade)
+  kind     GeographyKind
+  value    String
+
+  @@unique([buyBoxId, kind, value])
+  @@index([kind, value])
 }

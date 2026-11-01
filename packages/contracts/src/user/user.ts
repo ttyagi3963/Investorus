@@ -13,7 +13,9 @@ type UserBase = {
 
 /** Each role carries exactly its own link, as the database CHECK requires. */
 export type User =
-  (UserBase & { role: "AGENT"; agentId: string }) | (UserBase & { role: "OPS"; agentId: null });
+  | (UserBase & { role: "AGENT"; agentId: string })
+  | (UserBase & { role: "INVESTOR"; agentId: null; investorId: string })
+  | (UserBase & { role: "OPS"; agentId: null });
 
 /** A user plus the stored bcrypt hash. Only the user repository returns it, for sign-in. */
 export type UserCredentials = { user: User; passwordHash: string };

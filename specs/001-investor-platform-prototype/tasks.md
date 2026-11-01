@@ -729,7 +729,7 @@ data-model.md, contracts/api.md, and contracts/investor-import.md; for the owner
 
 ### PR: api and seed
 
-- [ ] T323 Add the routes in contracts/api.md: GET and POST `/investor/buy-boxes`, GET and PUT `/investor/buy-boxes/:id`; POST `/ops/investor-imports/uploads`, POST `/ops/investor-imports` (202), and GET `/ops/investor-imports/:batchId`; the idempotency middleware covers PUT as well as POST and PATCH, since the buy box save is the api's first PUT (XX.2; plan.md and contracts/api.md updated), with a test that a retried PUT replays its answer; the typed client modules; seed `morgan@example.com` (OPS) and each seeded box's version 1 snapshot (from T183, T187)
+- [X] T323 Add the routes in contracts/api.md: GET and POST `/investor/buy-boxes`, GET and PUT `/investor/buy-boxes/:id`; POST `/ops/investor-imports/uploads`, POST `/ops/investor-imports` (202), and GET `/ops/investor-imports/:batchId`; the idempotency middleware covers PUT as well as POST and PATCH, since the buy box save is the api's first PUT (XX.2; plan.md and contracts/api.md updated), with a test that a retried PUT replays its answer; the typed client modules; seed `morgan@example.com` (OPS) and each seeded box's version 1 snapshot (from T183, T187)
 
 ### PR: screens (apps/web)
 

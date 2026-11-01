@@ -18,4 +18,11 @@ export {
   type CreateDecisionInput,
   type DealMilestone,
 } from "./inputs.js";
-export { toDecisionView, type DealParts, type DecisionView } from "./views.js";
+export {
+  toDealView,
+  toDecisionView,
+  type BackupView,
+  type DealParts,
+  type DealView,
+  type DecisionView,
+} from "./views.js";

@@ -4,18 +4,24 @@
 // IDatabase, T276), and STORAGE_PROVIDER picks the sandbox or S3 behind the storage port (T275).
 import {
   AuthService,
+  DealLifecycleWorkflow,
+  DecisionWorkflow,
   InvestorPackageQueryService,
   ListingPackageService,
   NotificationService,
+  OfferComparisonService,
   OfferService,
   PhotoService,
   PublicationWorkflow,
   type IAuthService,
+  type IDealLifecycleWorkflow,
+  type IDecisionWorkflow,
   type IErrorReporter,
   type IIdempotencyStore,
   type IInvestorPackageQueryService,
   type IListingPackageService,
   type INotificationService,
+  type IOfferComparisonService,
   type IOfferService,
   type IPhotoService,
   type IPublicationWorkflow,
@@ -47,6 +53,9 @@ export type AppContainer = Readonly<{
   publication: IPublicationWorkflow;
   investorPackages: IInvestorPackageQueryService;
   offers: IOfferService;
+  comparison: IOfferComparisonService;
+  decisions: IDecisionWorkflow;
+  deals: IDealLifecycleWorkflow;
   notifications: INotificationService;
   /** A package's view, with each photo's short-lived read link signed. */
   presentPackage: (parts: AgentPackageParts) => Promise<AgentPackageView>;
@@ -99,6 +108,9 @@ export function createContainer(env: ApiEnv): AppContainer {
     publication: new PublicationWorkflow(uow, { clock }),
     investorPackages: new InvestorPackageQueryService(uow),
     offers: new OfferService(uow, { clock }),
+    comparison: new OfferComparisonService(uow, { clock }),
+    decisions: new DecisionWorkflow(uow, { clock }),
+    deals: new DealLifecycleWorkflow(uow, { clock }),
     notifications: new NotificationService(uow, { clock }),
     presentPackage: async (parts) =>
       toAgentPackageView({ ...parts, photos: await signPhotos(parts.photos) }),

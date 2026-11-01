@@ -1,25 +1,18 @@
 "use client";
-// The login page (T104, T300): pre-filled with the demo agent, and a list of every demo account the
-// migrate step seeds (packages/core/src/infra/seed/seed.ts), so the reviewer can switch roles with
-// one press and sign in through the real session flow.
-import { Button, TextField } from "@clever/ui";
-import { useState, type FormEvent } from "react";
+// The login page (T104, T300, T329): the brand panel beside the sign-in card, pre-filled with the
+// demo agent, and the demo accounts under it, so the reviewer can switch roles with one press and
+// sign in through the real session flow.
+import { Button, Card, TextField } from "@clever/ui";
+import { useId, useState, type FormEvent } from "react";
+import { BrandPanel } from "@/features/auth/BrandPanel";
+import { DEMO_ACCOUNTS, DEMO_PASSWORD, DemoAccounts } from "@/features/auth/DemoAccounts";
 import { useLogin } from "@/features/auth/useLogin";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
-
-const DEMO_PASSWORD = "demo1234";
-const DEMO_ACCOUNTS = [
-  { email: "avery@example.com", role: "Agent", shows: "builds and publishes listing packages" },
-  { email: "blake@example.com", role: "Agent", shows: "compares four offers and tracks the deal" },
-  { email: "summit@example.com", role: "Investor", shows: "two buy boxes that match the sample" },
-  { email: "harbor@example.com", role: "Investor", shows: "one broad buy box" },
-  { email: "ridge@example.com", role: "Investor", shows: "a narrow buy box that does not match" },
-  { email: "morgan@example.com", role: "Operations", shows: "imports the legacy investor list" },
-] as const;
 
 export default function LoginPage() {
   const { submit, isPending, error } = useLogin();
   const [email, setEmail] = useState<string>(DEMO_ACCOUNTS[0].email);
+  const headingId = useId();
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -28,63 +21,48 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-stack-lg p-inset-lg">
-      <form
-        onSubmit={onSubmit}
-        className="flex w-full max-w-sm flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card"
-      >
-        <h1 className="font-heading text-heading-md">Sign in</h1>
-        <p className="text-label text-muted">A demo account&apos;s details are filled in.</p>
-        {/* The key remounts the fields, so choosing a demo account fills them in. */}
-        <div key={email} className="flex flex-col gap-stack-md">
-          <TextField
-            name="email"
-            type="email"
-            label="Email"
-            autoComplete="username"
-            defaultValue={email}
-            isRequired
-          />
-          <TextField
-            name="password"
-            type="password"
-            label="Password"
-            autoComplete="current-password"
-            defaultValue={DEMO_PASSWORD}
-            isRequired
-          />
-        </div>
-        {error && <ErrorNotice error={error} />}
-        <Button type="submit" isPending={isPending}>
-          Sign in
-        </Button>
-      </form>
-
-      <section
-        aria-labelledby="demo-accounts"
-        className="flex w-full max-w-sm flex-col gap-stack-sm rounded-card bg-card p-inset-lg shadow-card"
-      >
-        <h2 id="demo-accounts" className="font-heading text-heading-sm">
-          Demo accounts
-        </h2>
-        <p className="text-label text-muted">Every account uses the password {DEMO_PASSWORD}.</p>
-        <ul className="flex flex-col gap-stack-sm">
-          {DEMO_ACCOUNTS.map((account) => (
-            <li key={account.email} className="flex items-center justify-between gap-stack-sm">
-              <span className="text-label">
-                <strong>{account.role}</strong> {account.email}: {account.shows}
-              </span>
-              <Button
-                variant="secondary"
-                onPress={() => setEmail(account.email)}
-                aria-label={`Use ${account.email}`}
-              >
-                Use
+    <main className="grid min-h-screen lg:grid-cols-2">
+      <BrandPanel />
+      <div className="flex items-center justify-center px-inset-lg py-inset-xl">
+        <div className="flex w-full max-w-md flex-col gap-stack-lg">
+          <Card padding="xl">
+            <form aria-labelledby={headingId} onSubmit={onSubmit} className="flex flex-col gap-stack-lg">
+              <div className="flex flex-col gap-stack-xs">
+                <h2 id={headingId} className="font-heading text-heading-lg text-heading">
+                  Sign in
+                </h2>
+                <p className="text-body text-muted">
+                  Agents, investors and operations use the same sign-in.
+                </p>
+              </div>
+              {/* The key remounts the fields, so choosing a demo account fills them in. */}
+              <div key={email} className="flex flex-col gap-stack-md">
+                <TextField
+                  name="email"
+                  type="email"
+                  label="Email"
+                  autoComplete="username"
+                  defaultValue={email}
+                  isRequired
+                />
+                <TextField
+                  name="password"
+                  type="password"
+                  label="Password"
+                  autoComplete="current-password"
+                  defaultValue={DEMO_PASSWORD}
+                  isRequired
+                />
+              </div>
+              {error && <ErrorNotice error={error} />}
+              <Button type="submit" isPending={isPending} fullWidth>
+                Sign in
               </Button>
-            </li>
-          ))}
-        </ul>
-      </section>
+            </form>
+          </Card>
+          <DemoAccounts onUse={setEmail} />
+        </div>
+      </div>
     </main>
   );
 }

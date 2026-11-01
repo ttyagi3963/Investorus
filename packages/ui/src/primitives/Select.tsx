@@ -1,3 +1,4 @@
+"use client";
 // A labelled single-choice list (T268) on React Aria's Select, which gives the keyboard, typeahead,
 // and screen reader behavior of a native select with a styled popover.
 import {

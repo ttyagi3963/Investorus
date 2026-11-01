@@ -1,13 +1,27 @@
-// Home page placeholder with the way in (sign in); replaced by the demo explainer in T103.
+"use client";
+// Home page placeholder (T329): the brand panel and the way in (sign in); replaced by the demo
+// explainer in T103. A client page: the @clever/ui barrel has no server-safe entry.
+import { buttonClasses, Card } from "@clever/ui";
 import Link from "next/link";
+import { BrandPanel } from "@/features/auth/BrandPanel";
 
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-stack-md p-inset-lg">
-      <h1 className="font-heading text-heading-lg">Investor Platform prototype</h1>
-      <Link href="/login" className="text-link underline">
-        Sign in
-      </Link>
+    <main className="grid min-h-screen lg:grid-cols-2">
+      <BrandPanel />
+      <div className="flex items-center justify-center px-inset-lg py-inset-xl">
+        <div className="w-full max-w-md">
+          <Card
+            title="Try the prototype"
+            description="Sign in with a demo account to see the agent, investor and operations views."
+            padding="xl"
+          >
+            <Link href="/login" className={buttonClasses({ fullWidth: true })}>
+              Sign in
+            </Link>
+          </Card>
+        </div>
+      </div>
     </main>
   );
 }

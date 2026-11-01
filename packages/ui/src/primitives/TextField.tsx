@@ -1,3 +1,4 @@
+"use client";
 // A labelled text input (T268) on React Aria's TextField. `description` adds a hint and
 // `errorMessage` marks the field invalid; both are linked to the input, so a screen reader reads
 // them with the field.

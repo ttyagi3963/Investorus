@@ -1,3 +1,4 @@
+"use client";
 // A button that opens a labelled panel beside it (T300), on React Aria's DialogTrigger and Popover:
 // the button and panel are linked for screen readers, focus moves into the panel and back, and
 // Escape or a click outside closes it. `children` may take `close` to close it from inside.

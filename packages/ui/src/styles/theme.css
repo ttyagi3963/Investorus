@@ -73,6 +73,7 @@
   --spacing-inset-md: var(--brand-space-16);
   --spacing-inset-lg: var(--brand-space-24);
   --spacing-inset-xl: var(--brand-space-32);
+  --spacing-inset-2xl: var(--brand-space-50);
   --spacing-stack-xs: var(--brand-space-4);
   --spacing-stack-sm: var(--brand-space-8);
   --spacing-stack-md: var(--brand-space-16);

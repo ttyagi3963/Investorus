@@ -1,3 +1,4 @@
+"use client";
 // A labelled number input (T268) on React Aria's NumberField, which parses and formats the number
 // for the user's locale (the screen passes `formatOptions`, for example whole US dollars).
 import {

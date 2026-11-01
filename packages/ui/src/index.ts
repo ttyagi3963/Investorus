@@ -1,11 +1,11 @@
 // Public API of @clever/ui.
+export { Button, type ButtonProps } from "./primitives/Button.js";
 export {
-  Button,
   buttonClasses,
-  type ButtonProps,
+  type ButtonLook,
   type ButtonSize,
   type ButtonVariant,
-} from "./primitives/Button.js";
+} from "./primitives/button-classes.js";
 export { Card, type CardProps } from "./primitives/Card.js";
 export {
   CheckboxGroup,

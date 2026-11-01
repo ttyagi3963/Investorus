@@ -1,8 +1,10 @@
+"use client";
 // A button that asks before a change that cannot be undone (T301), on React Aria's DialogTrigger
 // and modal alert dialog: focus moves into the dialog, stays there, and returns to the button when
 // it closes; Escape cancels.
 import { Dialog, DialogTrigger, Heading, Modal, ModalOverlay } from "react-aria-components";
-import { Button, type ButtonVariant } from "./Button.js";
+import type { ButtonVariant } from "./button-classes.js";
+import { Button } from "./Button.js";
 import { MODAL_OVERLAY, MODAL_PANEL } from "./styles.js";
 
 export type ConfirmDialogProps = {

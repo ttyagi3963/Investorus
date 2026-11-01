@@ -1,9 +1,11 @@
+"use client";
 // A button that opens a small form in a modal dialog (T315), on React Aria's DialogTrigger: focus
 // moves into the dialog and returns to the button when it closes, Escape cancels, and the form's
 // own required fields block an empty submit. Used where a choice needs a few words or terms first.
 import type { FormEvent, ReactNode } from "react";
 import { Dialog, DialogTrigger, Heading, Modal, ModalOverlay } from "react-aria-components";
-import { Button, type ButtonVariant } from "./Button.js";
+import type { ButtonVariant } from "./button-classes.js";
+import { Button } from "./Button.js";
 import { MODAL_OVERLAY, MODAL_PANEL } from "./styles.js";
 
 export type FormDialogProps = {

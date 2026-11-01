@@ -1,3 +1,4 @@
+"use client";
 // A labelled group of checkboxes (T301, T327) on React Aria's CheckboxGroup, which gives each box its
 // keyboard and screen reader behavior and submits every checked value under the group's `name`.
 // The "chips" variant shows each option as a pill that is outlined when checked, for short choice

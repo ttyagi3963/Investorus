@@ -5,14 +5,16 @@
 // package with no offers can be extended or reopened; from acceptance on, a link goes to the deal.
 // Withdraw asks in a dialog first (focus moves into it and back to the button).
 import type { AgentPackageView, PackageStatus } from "@clever/contracts/listing-package";
-import { Button, ConfirmDialog, FormDialog, TextField } from "@clever/ui";
+import { Button, ConfirmDialog } from "@clever/ui";
 import Link from "next/link";
-import { toLocalInput } from "@/features/decisions/DecisionDialogs";
-import { useAgentAction } from "@/features/decisions/useAgentAction";
+
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { listingPackages } from "@/lib/bff-client";
+import { useAction } from "@/lib/use-action";
+import { DeadlineDialog } from "./DeadlineDialog";
 import { STATUS_LABELS } from "./labels";
 import { PublishBlockers } from "./PublishBlockers";
+import { packageKeys } from "./queries";
 import { usePublication } from "./usePublication";
 
 const when = (iso: string) =>
@@ -27,44 +29,9 @@ const DEAL: PackageStatus[] = [
   "FELL_THROUGH",
 ];
 
-/** A new deadline, three days out unless the agent picks another. */
-function DeadlineDialog({
-  label,
-  title,
-  note,
-  onSubmit,
-  isDisabled,
-}: {
-  label: string;
-  title: string;
-  note: string;
-  onSubmit: (offerDeadline: string) => void;
-  isDisabled: boolean;
-}) {
-  return (
-    <FormDialog
-      triggerLabel={label}
-      title={title}
-      submitLabel={label}
-      cancelLabel="Cancel"
-      isDisabled={isDisabled}
-      onSubmit={(values) => onSubmit(new Date(String(values.get("offerDeadline"))).toISOString())}
-    >
-      <p>{note}</p>
-      <TextField
-        name="offerDeadline"
-        type="datetime-local"
-        label="New offer deadline"
-        defaultValue={toLocalInput(new Date(Date.now() + 72 * 3_600_000).toISOString())}
-        isRequired
-      />
-    </FormDialog>
-  );
-}
-
 export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
   const { publish, withdraw, isBusy, blockers, error } = usePublication();
-  const round = useAgentAction("The offer round could not be changed. Try again.");
+  const round = useAction("The offer round could not be changed. Try again.", packageKeys.all);
   const target = { id: pkg.id, version: pkg.version };
   const busy = isBusy || round.isBusy;
   const deadlinePassed = pkg.offerDeadline !== null && Date.parse(pkg.offerDeadline) <= Date.now();

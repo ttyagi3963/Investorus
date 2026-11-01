@@ -7,11 +7,12 @@
 import type { DealView } from "@clever/contracts/deal";
 import type { AgentPackageView } from "@clever/contracts/listing-package";
 import { Button, ConfirmDialog, FormDialog, TextField } from "@clever/ui";
-import { toLocalInput } from "@/features/decisions/DecisionDialogs";
-import { useAgentAction } from "@/features/decisions/useAgentAction";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
+import { DeadlineDialog } from "@/features/listing-package/DeadlineDialog";
 import { DEAL_STATUS_LABELS, formatUsd } from "@/features/listing-package/labels";
+import { packageKeys } from "@/features/listing-package/queries";
 import { deals, listingPackages } from "@/lib/bff-client";
+import { useAction } from "@/lib/use-action";
 
 const SECTION = "flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card";
 const STEPS = ["OFFER_ACCEPTED", "UNDER_CONTRACT", "INSPECTION", "CLOSING", "CLOSED"] as const;
@@ -20,7 +21,10 @@ const when = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 
 export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealView }) {
-  const { run, isBusy, error } = useAgentAction("That change could not be saved. Try again.");
+  const { run, isBusy, error } = useAction(
+    "That change could not be saved. Try again.",
+    packageKeys.all,
+  );
   const current = STEPS.indexOf(deal.status as (typeof STEPS)[number]);
   const usable = deal.backups.filter((b) => !b.expired);
   const decided = pkg.status === "FELL_THROUGH" && deal.status !== "PENDING_RECONFIRMATION";
@@ -145,31 +149,16 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
           </ul>
           {decided && usable.length === 0 && (
             <div className="flex flex-wrap gap-inline-md">
-              <FormDialog
-                triggerLabel="Reopen for a new round"
+              <DeadlineDialog
+                label="Reopen for a new round"
                 title="Reopen the package?"
-                submitLabel="Reopen"
-                cancelLabel="Cancel"
+                note="Matched investors are told again and can make new offers."
                 triggerVariant="primary"
                 isDisabled={isBusy}
-                onSubmit={(values) =>
-                  run(() =>
-                    listingPackages.reopen(pkg.id, {
-                      version: pkg.version,
-                      offerDeadline: new Date(String(values.get("offerDeadline"))).toISOString(),
-                    }),
-                  )
+                onSubmit={(offerDeadline) =>
+                  run(() => listingPackages.reopen(pkg.id, { version: pkg.version, offerDeadline }))
                 }
-              >
-                <p>Matched investors are told again and can make new offers.</p>
-                <TextField
-                  name="offerDeadline"
-                  type="datetime-local"
-                  label="New offer deadline"
-                  defaultValue={toLocalInput(new Date(Date.now() + 72 * 3_600_000).toISOString())}
-                  isRequired
-                />
-              </FormDialog>
+              />
               <ConfirmDialog
                 triggerLabel="Withdraw"
                 title="Withdraw this package?"

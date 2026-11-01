@@ -5,6 +5,7 @@ import { CONTINGENCIES, type CreateOfferInput, type OfferView } from "@clever/co
 import { Button, CheckboxGroup, NumberField, Select, TextField } from "@clever/ui";
 import { useState, type FormEvent } from "react";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
+import { toLocalInput } from "@/lib/local-time";
 import { useOfferForm } from "./useOfferForm";
 
 const USD = { style: "currency", currency: "USD", maximumFractionDigits: 0 } as const;
@@ -16,12 +17,6 @@ const contingencyOptions = CONTINGENCIES.map((id) => ({
   id,
   label: id.charAt(0) + id.slice(1).toLowerCase().replaceAll("_", " "),
 }));
-/** `YYYY-MM-DDTHH:mm` in local time, what a datetime-local input shows. */
-const toLocalInput = (iso: string) => {
-  const d = new Date(iso);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-};
-
 export function OfferForm({
   packageId,
   myOffer,

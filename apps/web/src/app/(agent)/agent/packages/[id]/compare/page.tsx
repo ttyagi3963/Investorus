@@ -15,12 +15,12 @@ import {
   DeclineAllDialog,
 } from "@/features/decisions/DecisionDialogs";
 import { useComparison } from "@/features/decisions/queries";
-import { useAgentAction } from "@/features/decisions/useAgentAction";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { OFFER_STATUS_LABELS, formatUsd } from "@/features/listing-package/labels";
-import { usePackage } from "@/features/listing-package/queries";
+import { packageKeys, usePackage } from "@/features/listing-package/queries";
 import { listingPackages } from "@/lib/bff-client";
 import { describeError } from "@/lib/errors";
+import { useAction } from "@/lib/use-action";
 
 const SORTS = [
   { id: "netProceeds", label: "Net proceeds (highest first)" },
@@ -57,7 +57,10 @@ export default function ComparePage() {
   const [sort, setSort] = useState<ComparisonSort>("netProceeds");
   const pkg = usePackage(id);
   const comparison = useComparison(id, sort);
-  const { run, isBusy, error } = useAgentAction("The decision could not be recorded. Try again.");
+  const { run, isBusy, error } = useAction(
+    "The decision could not be recorded. Try again.",
+    packageKeys.all,
+  );
   const decide = (input: CreateDecisionInput) => run(() => listingPackages.decide(id, input));
   const open = pkg.data?.status === "ACCEPTING_OFFERS";
 
@@ -104,7 +107,9 @@ export default function ComparePage() {
       {(comparison.data?.rows.length ?? 0) > 0 && (
         <div className="overflow-x-auto rounded-card bg-card p-inset-md shadow-card">
           <table className="w-full border-collapse">
-            <caption className="sr-only">Offers, sorted by {lower(sort)}</caption>
+            <caption className="sr-only">
+              Offers, sorted by {SORTS.find((option) => option.id === sort)?.label.toLowerCase()}
+            </caption>
             <thead>
               <tr>
                 {[

@@ -8,13 +8,9 @@ import type { CreateDecisionInput } from "@clever/contracts/deal";
 import type { OfferView } from "@clever/contracts/offer";
 import { ConfirmDialog, FormDialog, NumberField, TextField } from "@clever/ui";
 import { formatUsd } from "@/features/listing-package/labels";
+import { toLocalInput } from "@/lib/local-time";
 
 const USD = { style: "currency", currency: "USD", maximumFractionDigits: 0 } as const;
-/** `YYYY-MM-DDTHH:mm` in local time, what a datetime-local input shows. */
-export const toLocalInput = (iso: string) => {
-  const d = new Date(iso);
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-};
 const amount = (values: FormData, name: string) =>
   Number(String(values.get(name) ?? "").replace(/[^0-9.]/g, ""));
 

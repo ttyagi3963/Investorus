@@ -7,30 +7,17 @@
 import type { WinningInvestorPackageView } from "@clever/contracts/listing-package";
 import type { OfferView } from "@clever/contracts/offer";
 import { Button, ConfirmDialog, FormDialog, TextField } from "@clever/ui";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { toLocalInput } from "@/features/decisions/DecisionDialogs";
+
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { formatUsd } from "@/features/listing-package/labels";
 import { investor } from "@/lib/bff-client";
-import { describeError, type ErrorInfo } from "@/lib/errors";
+import { toLocalInput } from "@/lib/local-time";
+import { useAction } from "@/lib/use-action";
 import { investorKeys } from "./queries";
 import { timeLeft, useNow } from "./time-left";
 
 const SECTION = "flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card";
 const lower = (code: string) => code.toLowerCase().replaceAll("_", " ");
-
-function useInvestorAction() {
-  const queryClient = useQueryClient();
-  const [error, setError] = useState<ErrorInfo | null>(null);
-  const mutation = useMutation({
-    mutationFn: (action: () => Promise<unknown>) => action(),
-    onMutate: () => setError(null),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: investorKeys.all }),
-    onError: (err) => setError(describeError(err, "That could not be saved. Try again.")),
-  });
-  return { run: mutation.mutate, isBusy: mutation.isPending, error };
-}
 
 function Terms({ offer }: { offer: OfferView }) {
   return (
@@ -45,7 +32,7 @@ function Terms({ offer }: { offer: OfferView }) {
 }
 
 export function WithdrawOfferButton({ offer }: { offer: OfferView }) {
-  const { run, isBusy, error } = useInvestorAction();
+  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
   return (
     <div className="flex flex-col gap-stack-sm">
       <div>
@@ -65,7 +52,7 @@ export function WithdrawOfferButton({ offer }: { offer: OfferView }) {
 }
 
 export function CounterPanel({ offer }: { offer: OfferView }) {
-  const { run, isBusy, error } = useInvestorAction();
+  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
   const answer = (action: "ACCEPT" | "DECLINE") =>
     run(() => investor.respondToCounter(offer.id, { action, version: offer.version }));
   return (
@@ -91,7 +78,7 @@ export function CounterPanel({ offer }: { offer: OfferView }) {
 }
 
 export function BackupPanel({ offer }: { offer: OfferView }) {
-  const { run, isBusy, error } = useInvestorAction();
+  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
   return (
     <section aria-labelledby="backup-heading" className={SECTION}>
       <h2 id="backup-heading" className="font-heading text-heading-sm">
@@ -143,7 +130,7 @@ export function BackupPanel({ offer }: { offer: OfferView }) {
 }
 
 export function ReconfirmPanel({ offer, reconfirmBy }: { offer: OfferView; reconfirmBy: string }) {
-  const { run, isBusy, error } = useInvestorAction();
+  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
   const now = useNow();
   const answer = (action: "CONFIRM" | "DECLINE") =>
     run(() => investor.reconfirm(offer.id, { action }));

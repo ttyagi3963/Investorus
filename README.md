@@ -211,5 +211,19 @@ pnpm test               # unit tests, offline
 pnpm test:integration   # needs Docker (Testcontainers)
 ```
 
+### Checking the limits
+
+The prototype must build within 20 minutes and show the home page within 5 minutes on a 2 GB
+x86_64 machine. On such a machine (for example a 2 GB cloud VM with Docker), from the unzipped
+folder:
+
+```sh
+scripts/verify-limits.sh --clean   # --clean empties Docker's build cache first, so the build is timed cold
+```
+
+It times the build and the home page's first answer, prints each container's memory and the total,
+and exits 1 if a limit is broken. `scripts/submission/rehearse.sh <zip>` checks the same limits in
+a simulated 2 GB, 2-core machine; CI runs it on every pull request.
+
 The specification, plan, and task list are in
 [specs/001-investor-platform-prototype](specs/001-investor-platform-prototype/).

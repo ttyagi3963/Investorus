@@ -2,7 +2,8 @@
 // The agent's listing packages (T269, T301, T330): a table of their packages with the address,
 // photo count, status, price range, matched investors, and offer deadline, each linking to its page;
 // a Publish button on each draft, which either publishes or lists every blocking field with a link
-// to it; loading, error, and empty states, and a "New package" link.
+// to it; loading, error, and empty states, and a "New package" link. Status tabs with counts filter
+// the table (T359).
 import type { AgentPackageSummary } from "@clever/contracts/listing-package";
 import {
   Button,
@@ -16,6 +17,7 @@ import Link from "next/link";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { STATUS_LABELS, formatUsd } from "@/features/listing-package/labels";
 import { PublishBlockers } from "@/features/listing-package/PublishBlockers";
+import { useStatusFilter, type StatusGroup } from "@/features/listing-package/StatusFilter";
 import { usePackages } from "@/features/listing-package/queries";
 import { usePublication } from "@/features/listing-package/usePublication";
 import { PageHeader } from "@/features/shell/PageHeader";
@@ -114,8 +116,31 @@ const newPackageLink = (
   </Link>
 );
 
+const among =
+  (...statuses: AgentPackageSummary["status"][]) =>
+  (pkg: AgentPackageSummary) =>
+    statuses.includes(pkg.status);
+
+const GROUPS: StatusGroup<AgentPackageSummary>[] = [
+  { id: "all", label: "All", includes: () => true },
+  { id: "draft", label: "Draft", includes: among("DRAFT") },
+  { id: "open", label: "Open for offers", includes: among("ACCEPTING_OFFERS") },
+  {
+    id: "contract",
+    label: "Under contract",
+    includes: among("OFFER_ACCEPTED", "UNDER_CONTRACT", "INSPECTION", "CLOSING"),
+  },
+  {
+    id: "decide",
+    label: "Needs a decision",
+    includes: among("NO_OFFERS_RECEIVED", "FELL_THROUGH"),
+  },
+  { id: "ended", label: "Closed or withdrawn", includes: among("CLOSED", "WITHDRAWN") },
+];
+
 export default function AgentDashboard() {
   const { data: packages, isPending, isError, error } = usePackages();
+  const { shown, tabs, groupLabel } = useStatusFilter(packages ?? [], GROUPS);
 
   return (
     <>
@@ -138,7 +163,13 @@ export default function AgentDashboard() {
           <div>{newPackageLink}</div>
         </Card>
       )}
-      {packages && packages.length > 0 && (
+      {packages && packages.length > 0 && tabs}
+      {packages && packages.length > 0 && shown.length === 0 && (
+        <p role="status" className="text-body text-muted">
+          No packages in {groupLabel.toLowerCase()}.
+        </p>
+      )}
+      {shown.length > 0 && (
         <Card>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse">
@@ -166,7 +197,7 @@ export default function AgentDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {packages.map((pkg) => (
+                {shown.map((pkg) => (
                   <PackageRow key={pkg.id} pkg={pkg} />
                 ))}
               </tbody>

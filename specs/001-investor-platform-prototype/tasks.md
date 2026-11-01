@@ -1358,6 +1358,10 @@ the shortcuts, and a script measures the build and start limits.
 - **List filters** (design gaps that fit): status tabs with counts on the agent's packages (All,
   Draft, Open for offers, Offers in, Under contract) and the investor's matched listings (Open,
   Offered, All), filtered in the browser over the list already loaded.
+- **The agent's tabs follow the statuses, not the design's labels**: the design has "Offers in",
+  but offers arrive on a package that is still open, so the tabs are All, Draft, Open for offers,
+  Under contract, Needs a decision (no offers received, or fell through), and Closed or withdrawn.
+  The investor's tabs are the design's: Open, Offered, All.
 - **One PR for the sprint**, merged by Claude when every check is green.
 - **The end-to-end test** runs the loop against real Postgres and the sandbox's CRM through the
   outbox (publish, match, offer, accept, milestones, closed), and the log test captures every log
@@ -1367,7 +1371,7 @@ the shortcuts, and a script measures the build and start limits.
 - [X] T356 The home page: what the prototype demonstrates (the deal loop, the outage demo, the brand switch), the demo accounts, and links to sign in, the sandbox (`PUBLIC_SANDBOX_URL`), and the style guide, with the brand switcher; brand words from the brand's content (from T103)
 - [X] T357 One-click demo sign-in on the sign-in page: each demo account signs in with one press through the real session flow (design gap)
 - [X] T358 Role pages: a signed-in user who opens another role's pages goes to their role's home (proxy.ts), and the header shows the user's name from `GET /me` (from T105, T106)
-- [ ] T359 Status tabs with counts on the agent's packages (All, Draft, Open for offers, Offers in, Under contract) and the investor's matched listings (Open, Offered, All) (design gap)
+- [X] T359 Status tabs with counts on the agent's packages (All, Draft, Open for offers, Offers in, Under contract) and the investor's matched listings (Open, Offered, All) (design gap)
 - [ ] T360 The end-to-end integration test: publish → match → offer → accept → milestones → CLOSED, with the CRM deliveries SENT and the sandbox CRM record closed (from T208; R18, SC-010)
 - [ ] T361 The log redaction integration test: every log line of the end-to-end run, with a failed delivery, has no seeded seller name, email, phone, or street (from T209; FR-032, SC-006)
 - [ ] T362 Review the security settings: helmet defaults, no `x-powered-by`, the JSON size limit, no CORS on the api; the BFF's cookie flags and Origin check on every state-changing route; fix what falls short (from T210)

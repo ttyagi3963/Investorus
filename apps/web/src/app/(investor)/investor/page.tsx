@@ -1,7 +1,8 @@
 "use client";
 // The investor's opportunities (T302, T331; FR-040): the packages they were matched to, newest
 // first, as cards with the first photo, the place, the time left (or the status once offers close),
-// the price range, and their own offer's status; loading, error, and empty states.
+// the price range, and their own offer's status; loading, error, and empty states. Tabs with counts
+// show the listings still open, the ones they offered on, or all (T359).
 import type { InvestorPackageSummary } from "@clever/contracts/listing-package";
 import { OFFER_STATUS_TONES, PACKAGE_STATUS_TONES, StatusChip, Thumbnail } from "@clever/ui";
 import Link from "next/link";
@@ -14,12 +15,20 @@ import {
 } from "@/features/listing-package/labels";
 import { useMatchedPackages } from "@/features/offers/queries";
 import { timeLeft, useNow } from "@/features/offers/time-left";
+import { useStatusFilter, type StatusGroup } from "@/features/listing-package/StatusFilter";
 import { PageHeader } from "@/features/shell/PageHeader";
 import { describeError } from "@/lib/errors";
+
+const GROUPS: StatusGroup<InvestorPackageSummary>[] = [
+  { id: "open", label: "Open", includes: (pkg) => pkg.status === "ACCEPTING_OFFERS" },
+  { id: "offered", label: "Offered", includes: (pkg) => pkg.myOfferStatus !== null },
+  { id: "all", label: "All", includes: () => true },
+];
 
 export default function InvestorDashboard() {
   const { data: packages, isPending, isError, error } = useMatchedPackages();
   const now = useNow();
+  const { shown, tabs, groupLabel } = useStatusFilter(packages ?? [], GROUPS);
 
   return (
     <>
@@ -37,8 +46,14 @@ export default function InvestorDashboard() {
       )}
       {packages && packages.length > 0 && (
         <>
+          {tabs}
+          {shown.length === 0 && (
+            <p role="status" className="text-body text-muted">
+              No listings in {groupLabel.toLowerCase()}.
+            </p>
+          )}
           <ul className="grid grid-cols-1 gap-stack-lg md:grid-cols-2 lg:grid-cols-3">
-            {packages.map((pkg) => (
+            {shown.map((pkg) => (
               <li key={pkg.id}>
                 <OpportunityCard pkg={pkg} now={now} />
               </li>

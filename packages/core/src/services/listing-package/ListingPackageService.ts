@@ -248,7 +248,7 @@ export class ListingPackageService implements IListingPackageService {
           })
         : property;
       const photos = await repos.photos.listByPackage(id);
-      if (material) await snapshotAndQueueMatching(repos, pkg, savedProperty);
+      if (material) await snapshotAndQueueMatching(repos, pkg, savedProperty, "PACKAGE_EDIT");
       await repos.audit.append({
         ...this.auditEntry(actor, id, "PACKAGE_UPDATED"),
         details: {

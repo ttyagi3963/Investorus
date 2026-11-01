@@ -2,9 +2,14 @@
 // ACTIVE offer hits the partial unique index, which becomes the same BusinessRuleError the service
 // raises, so two racing submits still leave one offer.
 import { BusinessRuleError, ConflictError } from "@clever/contracts/common";
-import type { Offer, OfferTerms } from "@clever/contracts/offer";
+import type { Offer, OfferStatus, OfferTerms } from "@clever/contracts/offer";
 import { Prisma } from "../../generated/prisma/client.js";
-import type { IOfferRepository, NewOffer } from "./IOfferRepository.js";
+import {
+  LIVE_OFFER_STATUSES,
+  OPEN_OFFER_STATUSES,
+  type IOfferRepository,
+  type NewOffer,
+} from "./IOfferRepository.js";
 import { toOffer, toOfferColumns, toRevisionTerms } from "./offer.mapper.js";
 
 export class PrismaOfferRepositoryImpl implements IOfferRepository {
@@ -36,10 +41,11 @@ export class PrismaOfferRepositoryImpl implements IOfferRepository {
   }
 
   async findLatest(packageId: string, investorId: string, round: number): Promise<Offer | null> {
-    const row = await this.db.offer.findFirst({
-      where: { packageId, investorId, round },
-      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-    });
+    const where = { packageId, investorId, round };
+    const row =
+      (await this.db.offer.findFirst({
+        where: { ...where, status: { in: LIVE_OFFER_STATUSES } },
+      })) ?? (await this.db.offer.findFirst({ where, orderBy: { createdAt: "desc" } }));
     return row ? toOffer(row) : null;
   }
 
@@ -70,11 +76,24 @@ export class PrismaOfferRepositoryImpl implements IOfferRepository {
     return toOffer(row);
   }
 
-  async declineOpen(packageId: string, round: number): Promise<number> {
+  async updateStatus(id: string, version: number, status: OfferStatus): Promise<Offer> {
     const { count } = await this.db.offer.updateMany({
-      where: { packageId, round, status: "ACTIVE" },
-      data: { status: "DECLINED" },
+      where: { id, version },
+      data: { status, version: { increment: 1 } },
     });
-    return count;
+    if (count === 0) {
+      throw new ConflictError("This offer changed since you opened it. Reload and try again.");
+    }
+    return toOffer(await this.db.offer.findUniqueOrThrow({ where: { id } }));
+  }
+
+  async declineOpen(packageId: string, round: number): Promise<Offer[]> {
+    const where = { packageId, round, status: { in: OPEN_OFFER_STATUSES } };
+    const open = await this.db.offer.findMany({ where });
+    await this.db.offer.updateMany({
+      where: { id: { in: open.map((o) => o.id) } },
+      data: { status: "DECLINED", version: { increment: 1 } },
+    });
+    return open.map((row) => ({ ...toOffer(row), status: "DECLINED", version: row.version + 1 }));
   }
 }

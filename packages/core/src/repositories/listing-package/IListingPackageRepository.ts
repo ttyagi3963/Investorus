@@ -27,7 +27,7 @@ export type ListingPackagePatch = Partial<
     | "currentlyListed"
     | "eligiblePrograms"
   > &
-    Pick<ListingPackage, "status" | "offerDeadline" | "publishedAt" | "listingVersion">
+    Pick<ListingPackage, "status" | "round" | "offerDeadline" | "publishedAt" | "listingVersion">
 >;
 
 export interface IListingPackageRepository {

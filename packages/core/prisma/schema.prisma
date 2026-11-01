@@ -344,6 +344,8 @@ model Match {
 
 enum JobType {
   MATCH_PACKAGE
+  CLOSE_OFFER_ROUND
+  EXPIRE_OFFER
 }
 
 enum JobStatus {

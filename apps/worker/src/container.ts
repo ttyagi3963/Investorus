@@ -2,7 +2,9 @@
 // wired, from validated settings. `dispose` closes the database pool on shutdown.
 import {
   MatchingWorkflow,
+  OfferRoundWorkflow,
   createJobHandlers,
+  type IClock,
   type IErrorReporter,
   type IUnitOfWork,
   type JobHandler,
@@ -23,6 +25,7 @@ export type WorkerContainer = Readonly<{
   handlers: Record<JobType, JobHandler>;
   logger: Logger;
   reporter: IErrorReporter;
+  clock: IClock;
   dispose: () => Promise<void>;
 }>;
 
@@ -35,9 +38,13 @@ export function createContainer(env: WorkerEnv): WorkerContainer {
   const clock = new SystemClockImpl();
   return Object.freeze({
     uow: db.uow,
-    handlers: createJobHandlers({ matching: new MatchingWorkflow(db.uow, { clock }) }),
+    handlers: createJobHandlers({
+      matching: new MatchingWorkflow(db.uow, { clock }),
+      offerRound: new OfferRoundWorkflow(db.uow),
+    }),
     logger,
     reporter: new LogErrorReporterImpl(logger),
+    clock,
     dispose: () => db.dispose(),
   });
 }

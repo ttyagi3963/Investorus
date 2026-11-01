@@ -10,7 +10,7 @@ import type { Job } from "@clever/contracts/jobs";
 import type { ListingPackage } from "@clever/contracts/listing-package";
 import type { Match } from "@clever/contracts/match";
 import type { Notification } from "@clever/contracts/notification";
-import type { Offer, OfferTerms } from "@clever/contracts/offer";
+import type { Offer, OfferStatus, OfferTerms } from "@clever/contracts/offer";
 import type { Photo } from "@clever/contracts/photo";
 import type { Property } from "@clever/contracts/property";
 import type { Seller } from "@clever/contracts/seller";
@@ -33,7 +33,12 @@ import type {
   INotificationRepository,
   NewNotification,
 } from "../../src/repositories/notification/INotificationRepository.js";
-import type { IOfferRepository, NewOffer } from "../../src/repositories/offer/IOfferRepository.js";
+import {
+  LIVE_OFFER_STATUSES,
+  OPEN_OFFER_STATUSES,
+  type IOfferRepository,
+  type NewOffer,
+} from "../../src/repositories/offer/IOfferRepository.js";
 import type {
   IListingPackageRepository,
   ListingPackagePatch,
@@ -73,6 +78,12 @@ export class InMemoryUserRepository implements IUserRepository {
   async findIdByInvestorId(investorId: string) {
     const found = this.credentials.find(
       (c) => c.user.role === "INVESTOR" && c.user.investorId === investorId,
+    );
+    return found?.user.id ?? null;
+  }
+  async findIdByAgentId(agentId: string) {
+    const found = this.credentials.find(
+      (c) => c.user.role === "AGENT" && c.user.agentId === agentId,
     );
     return found?.user.id ?? null;
   }
@@ -297,7 +308,7 @@ export class InMemoryNotificationRepository implements INotificationRepository {
   }
 }
 
-/** Offers with the partial unique index (one ACTIVE per investor, package, round) and versions. */
+/** Offers with the partial unique index (one live offer per investor, package, round) and versions. */
 export class InMemoryOfferRepository implements IOfferRepository {
   readonly rows: Offer[] = [];
   readonly revisions: { offerId: string; revision: number; terms: OfferTerms }[] = [];
@@ -308,7 +319,7 @@ export class InMemoryOfferRepository implements IOfferRepository {
           r.packageId === packageId &&
           r.investorId === investorId &&
           r.round === round &&
-          r.status === "ACTIVE",
+          LIVE_OFFER_STATUSES.includes(r.status),
       )
     ) {
       throw new BusinessRuleError("You already have an offer on this package", "OFFER_EXISTS");
@@ -337,7 +348,7 @@ export class InMemoryOfferRepository implements IOfferRepository {
     const mine = this.rows.filter(
       (r) => r.packageId === packageId && r.investorId === investorId && r.round === round,
     );
-    return mine.find((r) => r.status === "ACTIVE") ?? mine.at(-1) ?? null;
+    return mine.find((r) => LIVE_OFFER_STATUSES.includes(r.status)) ?? mine.at(-1) ?? null;
   }
   async listByPackage(packageId: string, round: number) {
     return this.rows.filter((r) => r.packageId === packageId && r.round === round);
@@ -352,19 +363,27 @@ export class InMemoryOfferRepository implements IOfferRepository {
     this.revisions.push({ offerId: id, revision: row.currentRevision, terms });
     return { ...row };
   }
+  async updateStatus(id: string, version: number, status: OfferStatus) {
+    const row = this.rows.find((r) => r.id === id);
+    if (!row || row.version !== version) throw new ConflictError("This offer changed.");
+    Object.assign(row, { status, version: row.version + 1 });
+    return { ...row };
+  }
   async declineOpen(packageId: string, round: number) {
     const open = this.rows.filter(
-      (r) => r.packageId === packageId && r.round === round && r.status === "ACTIVE",
+      (r) =>
+        r.packageId === packageId && r.round === round && OPEN_OFFER_STATUSES.includes(r.status),
     );
-    for (const offer of open) offer.status = "DECLINED";
-    return open.length;
+    for (const offer of open)
+      Object.assign(offer, { status: "DECLINED", version: offer.version + 1 });
+    return open.map((offer) => ({ ...offer }));
   }
 }
 
 /** Only what the services use: enqueue, with one live job per dedupe key. */
 export class InMemoryJobRepository implements IJobRepository {
   readonly rows: Job[] = [];
-  async enqueue({ type, dedupeKey, payload }: NewJob) {
+  async enqueue({ type, dedupeKey, payload, runAt }: NewJob) {
     const live = this.rows.find(
       (j) =>
         j.type === type &&
@@ -378,7 +397,7 @@ export class InMemoryJobRepository implements IJobRepository {
       status: "QUEUED",
       dedupeKey,
       payload,
-      runAt: NOW,
+      runAt: runAt ?? NOW,
       retryCount: 0,
       maxRetries: 3,
       error: null,

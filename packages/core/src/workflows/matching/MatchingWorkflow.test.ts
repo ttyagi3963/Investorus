@@ -119,7 +119,12 @@ const actions = (uow: InMemoryUnitOfWork, action: string) =>
 describe("MatchingWorkflow", () => {
   it("matches each investor once with every matching box, notifies each once, and audits each decision", async () => {
     const { uow, pkg, matching } = await published();
-    await matching.evaluatePackage(pkg.id, 1, 1);
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
 
     expect(
       uow.repos.matches.rows.map((m) => [m.investorId, m.matchedBuyBoxIds, m.trigger]),
@@ -167,8 +172,18 @@ describe("MatchingWorkflow", () => {
 
   it("adds no match, notification, or decision when the same version runs again", async () => {
     const { uow, pkg, matching } = await published();
-    await matching.evaluatePackage(pkg.id, 1, 1);
-    await matching.evaluatePackage(pkg.id, 1, 1);
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
     expect(uow.repos.matches.rows).toHaveLength(2);
     expect(uow.repos.notifications.rows).toHaveLength(2);
     expect(actions(uow, "MATCH_DECISION")).toHaveLength(2);
@@ -176,13 +191,28 @@ describe("MatchingWorkflow", () => {
 
   it("after a material edit, tells matched investors once that it changed and new ones that it matches", async () => {
     const { uow, packages, pkg, matching } = await published();
-    await matching.evaluatePackage(pkg.id, 1, 1);
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
     const { package: edited } = await packages.update(avery, pkg.id, {
       version: pkg.version,
       priceExpectationMax: 275_000,
     });
-    await matching.evaluatePackage(pkg.id, 1, edited.listingVersion);
-    await matching.evaluatePackage(pkg.id, 1, edited.listingVersion);
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: edited.listingVersion,
+      trigger: "PACKAGE_EDIT",
+    });
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: edited.listingVersion,
+      trigger: "PACKAGE_EDIT",
+    });
 
     expect(uow.repos.notifications.rows.slice(2).map((n) => [n.userId, n.type])).toEqual([
       ["user-summit", "PACKAGE_CHANGED"],
@@ -200,13 +230,23 @@ describe("MatchingWorkflow", () => {
       version: pkg.version,
       priceExpectationMax: 275_000,
     });
-    await matching.evaluatePackage(pkg.id, 1, 1);
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
     expect(uow.repos.matches.rows).toEqual([]);
 
     await new PublicationWorkflow(uow, { clock: { now: () => NOW } }).withdraw(avery, pkg.id, {
       version: edited.version,
     });
-    await matching.evaluatePackage(pkg.id, 1, edited.listingVersion);
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: edited.listingVersion,
+      trigger: "PACKAGE_EDIT",
+    });
     expect(uow.repos.matches.rows).toEqual([]);
     expect(uow.repos.notifications.rows).toEqual([]);
   });

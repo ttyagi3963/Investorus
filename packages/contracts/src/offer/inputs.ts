@@ -25,3 +25,7 @@ export type CreateOfferInput = z.input<typeof createOfferInputSchema>;
 /** A revision restates every term and names the version the investor read. */
 export const reviseOfferInputSchema = terms.and(z.object({ version: z.number().int().positive() }));
 export type ReviseOfferInput = z.input<typeof reviseOfferInputSchema>;
+
+/** POST /offers/:offerId/withdrawal (T307): names the version the investor read. */
+export const withdrawOfferInputSchema = z.object({ version: z.number().int().positive() });
+export type WithdrawOfferInput = z.input<typeof withdrawOfferInputSchema>;

@@ -1,8 +1,9 @@
-// The offer rules (T296; FR-042, XII): a matched investor makes one offer per package and round
-// and can revise it until the deadline; each revise restates every term, names the version it
-// read, and is kept as a revision. A refusal says why (the deadline passed, the package was
-// withdrawn, an offer already exists). Only the package's agent lists its offers. Every submit and
-// revise is audited.
+// The offer rules (T296, T307; FR-042, FR-043, XII): a matched investor makes one offer per package
+// and round and can revise it until the deadline; each revise restates every term, names the
+// version it read, and is kept as a revision with its own expiry job. The investor can withdraw an
+// offer until it is accepted, even after the deadline. A refusal says why (the deadline passed, the
+// package was withdrawn, an offer already exists). Only the package's agent lists its offers.
+// Every submit, revise, and withdrawal is audited.
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -15,16 +16,23 @@ import type { ListingPackage } from "@clever/contracts/listing-package";
 import {
   createOfferInputSchema,
   reviseOfferInputSchema,
+  withdrawOfferInputSchema,
   type Offer,
   type OfferTerms,
 } from "@clever/contracts/offer";
 import type { IClock } from "../../providers/clock/IClock.js";
+import {
+  LIVE_OFFER_STATUSES,
+  OPEN_OFFER_STATUSES,
+} from "../../repositories/offer/IOfferRepository.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
+import { scheduleOfferExpiry } from "../../workflows/offer-round/schedule.js";
 import { investorOf } from "../investor-package/InvestorPackageQueryService.js";
 
 export interface IOfferService {
   create(actor: Actor, packageId: string, input: unknown): Promise<Offer>;
   revise(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
+  withdraw(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
   listForPackage(actor: Actor, packageId: string): Promise<Offer[]>;
 }
 
@@ -45,7 +53,7 @@ export class OfferService implements IOfferService {
       if (!pkg || !match) throw new NotFoundError(NOT_FOUND);
       this.assertOpen(pkg);
       const existing = await repos.offers.findLatest(packageId, investorId, pkg.round);
-      if (existing?.status === "ACTIVE") {
+      if (existing && LIVE_OFFER_STATUSES.includes(existing.status)) {
         throw new BusinessRuleError(
           "You already have an offer on this package; revise it instead",
           "OFFER_EXISTS",
@@ -58,6 +66,7 @@ export class OfferService implements IOfferService {
         round: pkg.round,
         ...terms,
       });
+      await scheduleOfferExpiry(repos, offer);
       await audit(repos, actor, offer, "OFFER_SUBMITTED");
       return offer;
     });
@@ -77,7 +86,24 @@ export class OfferService implements IOfferService {
       if (!pkg) throw new NotFoundError(NOT_FOUND);
       this.assertOpen(pkg);
       const offer = await repos.offers.revise(offerId, version, terms);
+      await scheduleOfferExpiry(repos, offer);
       await audit(repos, actor, offer, "OFFER_REVISED");
+      return offer;
+    });
+  }
+
+  async withdraw(actor: Actor, offerId: string, input: unknown): Promise<Offer> {
+    const investorId = investorOf(actor);
+    const { version } = withdrawOfferInputSchema.parse(input);
+    return this.uow.run(async (repos) => {
+      const current = await repos.offers.findById(offerId);
+      if (!current || current.investorId !== investorId) throw new NotFoundError("Offer not found");
+      // Until it is accepted, an offer can be taken back, deadline or not (FR-043, FR-054).
+      if (!OPEN_OFFER_STATUSES.includes(current.status)) {
+        throw new BusinessRuleError("This offer can no longer be withdrawn", "OFFER_NOT_OPEN");
+      }
+      const offer = await repos.offers.updateStatus(offerId, version, "WITHDRAWN");
+      await audit(repos, actor, offer, "OFFER_WITHDRAWN");
       return offer;
     });
   }
@@ -123,7 +149,7 @@ function audit(
   repos: UnitOfWorkRepositories,
   actor: Actor,
   offer: Offer,
-  action: "OFFER_SUBMITTED" | "OFFER_REVISED",
+  action: "OFFER_SUBMITTED" | "OFFER_REVISED" | "OFFER_WITHDRAWN",
 ) {
   return repos.audit.append({
     actorType: "USER",

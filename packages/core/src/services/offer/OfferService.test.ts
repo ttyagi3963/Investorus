@@ -2,7 +2,8 @@
 // found"); no offer after the deadline or on a withdrawn package, and the refusal says why; one
 // active offer per investor and round, so a second points to revise; a revise writes the next
 // revision and needs the version it read; the dates must be ahead; only the package's agent sees
-// its offers; and every submit and revise is audited.
+// its offers; every submit and revise is audited; and an investor can withdraw an offer until it
+// is accepted, even after the deadline (T307, FR-043).
 import type { ValidationError } from "@clever/contracts/common";
 import { describe, expect, it } from "vitest";
 import { avery, blake, investor, offer, world } from "../../../test/fixtures/published-package.js";
@@ -91,5 +92,40 @@ describe("OfferService", () => {
     expect(await offers.listForPackage(avery, pkg.id)).toHaveLength(1);
     await expect(offers.listForPackage(blake, pkg.id)).rejects.toMatchObject({ status: 404 });
     await expect(offers.listForPackage(summit, pkg.id)).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+describe("OfferService.withdraw", () => {
+  it("withdraws an open offer, so a new one can be made before the deadline, and still withdraws after it", async () => {
+    const { uow, clock, publish } = world();
+    const pkg = await publish();
+    const offers = new OfferService(uow, { clock });
+    const first = await offers.create(summit, pkg.id, offer());
+
+    await expect(
+      offers.withdraw(summit, first.id, { version: first.version }),
+    ).resolves.toMatchObject({ status: "WITHDRAWN" });
+    const second = await offers.create(summit, pkg.id, offer());
+
+    clock.at = new Date(pkg.offerDeadline!.getTime() + 1);
+    await expect(
+      offers.withdraw(summit, second.id, { version: second.version }),
+    ).resolves.toMatchObject({ status: "WITHDRAWN" });
+    expect(uow.repos.audit.entries.filter((e) => e.action === "OFFER_WITHDRAWN")).toHaveLength(2);
+  });
+
+  it("refuses to withdraw an accepted offer, or another investor's", async () => {
+    const { uow, clock, publish } = world();
+    const pkg = await publish("12 Elm St", ["summit", "harbor"]);
+    const offers = new OfferService(uow, { clock });
+    const made = await offers.create(summit, pkg.id, offer());
+
+    await expect(
+      offers.withdraw(investor("harbor"), made.id, { version: made.version }),
+    ).rejects.toMatchObject({ status: 404 });
+    const accepted = await uow.repos.offers.updateStatus(made.id, made.version, "ACCEPTED");
+    await expect(
+      offers.withdraw(summit, made.id, { version: accepted.version }),
+    ).rejects.toMatchObject({ code: "OFFER_NOT_OPEN" });
   });
 });

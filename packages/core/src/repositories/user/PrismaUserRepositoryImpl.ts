@@ -21,4 +21,9 @@ export class PrismaUserRepositoryImpl implements IUserRepository {
     const row = await this.db.user.findUnique({ where: { investorId }, select: { id: true } });
     return row?.id ?? null;
   }
+
+  async findIdByAgentId(agentId: string): Promise<string | null> {
+    const row = await this.db.user.findUnique({ where: { agentId }, select: { id: true } });
+    return row?.id ?? null;
+  }
 }

@@ -4,10 +4,12 @@ export { PACKAGE_STATUSES, type ListingPackage, type PackageStatus } from "./lis
 export { OFFER_PROGRAMS, type OfferProgram } from "./programs.js";
 export {
   createListingPackageInputSchema,
+  offerDeadlineInputSchema,
   publishInputSchema,
   updateListingPackageInputSchema,
   withdrawInputSchema,
   type CreateListingPackageInput,
+  type OfferDeadlineInput,
   type PublishInput,
   type UpdateListingPackageInput,
   type WithdrawInput,

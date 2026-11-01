@@ -1,5 +1,5 @@
 // A published package in an in-memory unit of work, for the tests of what happens after publish
-// (T295–T297): the demo agent, investor logins, and a clock the test can move.
+// (T295–T297, T306 on): the demo agent and investor logins, and a clock the test can move.
 import type { Actor } from "@clever/contracts/auth";
 import type { CreateListingPackageInput } from "@clever/contracts/listing-package";
 import type { CreateOfferInput } from "@clever/contracts/offer";
@@ -65,7 +65,18 @@ export const offer = (change: Partial<CreateOfferInput> = {}): CreateOfferInput 
 });
 
 export function world() {
-  const uow = new InMemoryUnitOfWork(["summit", "harbor"].map(login));
+  const averyLogin = {
+    user: {
+      id: "user-a",
+      email: "avery@example.com",
+      role: "AGENT",
+      displayName: "Avery",
+      agentId: "agent-a",
+      active: true,
+    },
+    passwordHash: "hash",
+  } as UserCredentials;
+  const uow = new InMemoryUnitOfWork([averyLogin, ...["summit", "harbor"].map(login)]);
   const clock = { at: START, now: () => clock.at };
   const packages = new ListingPackageService(uow, {
     geo: new StaticGeoProviderImpl(),

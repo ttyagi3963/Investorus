@@ -26,6 +26,9 @@ on:
       - apps/*/package.json
       - packages/*/package.json
       - apps/web/next.config.ts
+      - packages/core/prisma/** # migrations run inside the one-command start
+      - packages/core/prisma.config.ts
+      - packages/core/scripts/**
       - README.md
       - scripts/package-zip.sh
       - scripts/submission/**

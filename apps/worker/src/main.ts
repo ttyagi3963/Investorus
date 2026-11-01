@@ -1,4 +1,5 @@
-// Entry point (T294, T339): check the settings, build the container, write the heartbeat file (a
+// Entry point (T294, T339, T348): check the settings, build the container, stop if the default
+// brand the messages carry is not in the database, write the heartbeat file (a
 // liveness signal, since the worker has no port), and run the job loop, the outbox relay, and the
 // delivery consumer. On SIGTERM or SIGINT each finishes the work in hand and takes no more, then the
 // queue and the database pool close.
@@ -15,6 +16,14 @@ const DELIVERY_CONCURRENCY = 5;
 
 const env = parseEnv(process.env);
 const container = await createContainer(env);
+if (!(await container.uow.run((repos) => repos.brands.findById(env.DEFAULT_BRAND_ID)))) {
+  container.logger.fatal(
+    { brand_id: env.DEFAULT_BRAND_ID },
+    "DEFAULT_BRAND_ID names no brand in the database; check .env and seed/brands/",
+  );
+  await container.dispose();
+  process.exit(1);
+}
 // The daily match digest keeps itself scheduled; this queues the first run (keyed, so once).
 await container.digests.ensureScheduled();
 const stopHeartbeat = startHeartbeat(

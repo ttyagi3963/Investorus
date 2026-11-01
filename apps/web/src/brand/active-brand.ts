@@ -30,11 +30,18 @@ export const listBrands = cache(async (): Promise<BrandSummary[]> => {
 });
 
 export const activeBrand = cache(async (): Promise<BrandThemeView> => {
-  const [cookieStore, headerStore, brands] = await Promise.all([cookies(), headers(), listBrands()]);
+  const [cookieStore, headerStore, brands] = await Promise.all([
+    cookies(),
+    headers(),
+    listBrands(),
+  ]);
   const brandId = pickBrand(brands, {
     cookie: cookieStore.get(BRAND_COOKIE)?.value,
     host: headerStore.get("host"),
     defaultBrandId: serverEnv().DEFAULT_BRAND_ID,
   });
+  if (!brands.some((b) => b.brandId === brandId)) {
+    throw new Error(`DEFAULT_BRAND_ID "${brandId}" names no brand; check .env and seed/brands/`);
+  }
   return brandsApi().theme(brandId);
 });

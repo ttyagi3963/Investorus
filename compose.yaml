@@ -38,7 +38,17 @@ services:
   redis:
     image: redis:7-alpine
     command:
-      ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction", "--save", "", "--appendonly", "no"]
+      [
+        "redis-server",
+        "--maxmemory",
+        "64mb",
+        "--maxmemory-policy",
+        "noeviction",
+        "--save",
+        "",
+        "--appendonly",
+        "no",
+      ]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -98,6 +108,8 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+      # A slow first start on a small machine is not a failure.
+      start_period: 60s
     restart: unless-stopped
 
   worker:

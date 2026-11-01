@@ -138,13 +138,13 @@ describe("brand routes", () => {
       },
     });
 
-    const first = await request(app).get("/api/v1/brands/clever/theme").expect(200);
-    expect(first.headers.etag).toBe('"clever-v3"');
+    const first = await request(app).get("/api/v1/brands/test/theme").expect(200);
+    expect(first.headers.etag).toBe('"test-v3"');
     await request(app)
-      .get("/api/v1/brands/clever/theme")
-      .set("If-None-Match", '"clever-v3"')
+      .get("/api/v1/brands/test/theme")
+      .set("If-None-Match", '"test-v3"')
       .expect(304);
-    await request(app).put("/api/v1/ops/brands/clever/theme").send({}).expect(401);
+    await request(app).put("/api/v1/ops/brands/test/theme").send({}).expect(401);
   });
 });
 

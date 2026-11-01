@@ -1316,6 +1316,10 @@ contracts/design-tokens.md, for the owner to confirm):
     identify themselves.
   - `PhotoPicker` became `FilePicker` (one file unless asked), since it also picks the import CSV
     and the token file.
+  - After review: token names and values are allow-listed (an operator could otherwise have saved a
+    token *name* that closed the style element); the editor's save runs in a server action with
+    the operator's session and drops the brand cache only when the api accepts it; the worker
+    refuses to start if `DEFAULT_BRAND_ID` names no brand.
 
 - [X] T346 Record the Sprint 7 goal, decisions, and tasks in this section; add "Sprint 7" to the board and mirror the section
 - [X] T347 The Brand table and the brand contracts (tests first): Brand (`id`, `name`, `tokens` and `content` JSONB, `hosts`, `tokenVersion`, `seedHash`); the DTCG converter, the content schema, and `validateBrandTokens` (unsafe values, dangling aliases, every variable theme.css reads, every AA pair, each failure named) moved to `@clever/contracts/brand`; a test that every brand in `seed/brands/` passes; the seed loads `seed/brands/` into the table (from T027–T029, T050, T085, T099's brand part, T199)

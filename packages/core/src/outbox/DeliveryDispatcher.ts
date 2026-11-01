@@ -8,6 +8,7 @@
 import type { DeliveryRetryPolicy } from "@clever/contracts/config";
 import { outboxEventInputSchema, type OutboxEventInput } from "@clever/contracts/events";
 import { DeliveryRejectedError } from "../errors/DeliveryRejectedError.js";
+import { InfrastructureError } from "../errors/InfrastructureError.js";
 import type { IClock } from "../providers/clock/IClock.js";
 import type { ICrmProvider } from "../providers/crm/ICrmProvider.js";
 import type { IMessagingProvider } from "../providers/messaging/IMessagingProvider.js";
@@ -102,7 +103,8 @@ export class DeliveryDispatcher {
     }
     const contact = await repos.investors.findContact(delivery.recipientRef);
     const brand = await repos.brands.findById(this.deps.brandId);
-    if (!brand) throw new DeliveryRejectedError(`The ${this.deps.brandId} brand does not exist`);
+    // A setting error, not this message's fault: thrown (rolled back and retried), never set aside.
+    if (!brand) throw new InfrastructureError(`The ${this.deps.brandId} brand does not exist`);
     if (event.type === "investor.notice") {
       if (delivery.target === "EMAIL") {
         if (!contact) throw new DeliveryRejectedError("The investor has no email address");

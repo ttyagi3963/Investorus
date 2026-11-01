@@ -9,17 +9,18 @@ import { describe, expect, it } from "vitest";
 import { InMemoryUnitOfWork } from "../../../test/doubles/InMemoryRepositories.js";
 import { BrandService } from "./BrandService.js";
 
-const CLEVER = new URL("../../../../../seed/brands/clever/", import.meta.url);
-const read = (file: string) => JSON.parse(readFileSync(new URL(file, CLEVER), "utf8"));
+// A real seed file supplies a complete, valid token set; the brand under test is synthetic (XVI).
+const SEED = new URL("../../../../../seed/brands/clever/", import.meta.url);
+const read = (file: string) => JSON.parse(readFileSync(new URL(file, SEED), "utf8"));
 const ops: Actor = { userId: "user-ops", role: "OPS", agentId: null };
 const agent: Actor = { userId: "user-a", role: "AGENT", agentId: "agent-a" };
 
 function setup() {
   const uow = new InMemoryUnitOfWork();
   const tokens = read("tokens.json");
-  uow.repos.brands.rows.set("clever", {
-    id: "clever",
-    name: "Clever",
+  uow.repos.brands.rows.set("test", {
+    id: "test",
+    name: "Test Homes",
     hosts: ["localhost"],
     tokens,
     content: read("content.json"),
@@ -34,26 +35,26 @@ describe("BrandService.updateTheme", () => {
     const broken = structuredClone(tokens);
     delete broken.layout["page-padding-x"];
 
-    await expect(brands.updateTheme(agent, "clever", { tokens, tokenVersion: 1 })).rejects.toThrow(
+    await expect(brands.updateTheme(agent, "test", { tokens, tokenVersion: 1 })).rejects.toThrow(
       ForbiddenError,
     );
     const refused = await brands
-      .updateTheme(ops, "clever", { tokens: broken, tokenVersion: 1 })
+      .updateTheme(ops, "test", { tokens: broken, tokenVersion: 1 })
       .catch((e) => e);
 
     expect(refused).toBeInstanceOf(ValidationError);
     expect(refused.details.fields).toContainEqual(
       expect.objectContaining({ field: "--brand-layout-page-padding-x" }),
     );
-    expect(uow.repos.brands.rows.get("clever")!.tokenVersion).toBe(1);
+    expect(uow.repos.brands.rows.get("test")!.tokenVersion).toBe(1);
     expect(uow.repos.audit.entries).toEqual([]);
   });
 
   it("saves a valid set under the next version, audits it, and refuses a save over a stale version", async () => {
     const { uow, tokens, brands } = setup();
 
-    const theme = await brands.updateTheme(ops, "clever", { tokens, tokenVersion: 1 });
-    const stale = brands.updateTheme(ops, "clever", { tokens, tokenVersion: 1 });
+    const theme = await brands.updateTheme(ops, "test", { tokens, tokenVersion: 1 });
+    const stale = brands.updateTheme(ops, "test", { tokens, tokenVersion: 1 });
 
     await expect(stale).rejects.toThrow(ConflictError);
     expect(theme.tokenVersion).toBe(2);
@@ -61,7 +62,7 @@ describe("BrandService.updateTheme", () => {
       expect.objectContaining({
         actorId: "user-ops",
         action: "BRAND_THEME_UPDATED",
-        entityId: "clever",
+        entityId: "test",
         details: { tokenVersion: 2 },
       }),
     ]);

@@ -83,8 +83,12 @@ The addresses that open the brand, for example `["partner.localhost"]`. At least
 One validator, `validateBrandTokens` in `packages/contracts/src/brand/brand.ts`, used by the seed,
 the api's theme save, and the tests. It returns every failure as `{ field, message }`:
 
-1. Every alias points at an existing token, and no value contains a character that could end a CSS
-   declaration or the style element (`tokens.ts`). Field: `tokens`.
+1. Every alias points at an existing token. Names and values are allow-listed, because they are
+   written into the page's `<style>` element (`tokens.ts`): a token name is letters, digits, `-`,
+   and `_`; a value is a hex color, `rgb()`/`hsl()` color, number, dimension, or keyword from
+   letters, digits, spaces, and `# . , % + -`, so no quote, comment, `url()`, `;`, `}`, or `<`
+   gets through. A font family name is letters, digits, spaces, and hyphens. The finished
+   `:root` rule is checked again before the page writes it. Field: `tokens`.
 2. The brand supplies every `--brand-*` property theme.css reads (`REQUIRED_BRAND_VARIABLES` in
    `required.ts`; a web test keeps that list equal to what theme.css reads). Field: the variable.
 3. Contrast is at least 4.5:1 for every text and background pair the screens use

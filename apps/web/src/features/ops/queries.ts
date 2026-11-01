@@ -5,7 +5,8 @@
 import type { DeliveryStatus } from "@clever/contracts/events";
 import type { SimulationMode, SimulationService, RetryAllInput } from "@clever/contracts/ops";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { refreshBrands } from "@/brand/actions";
+import { ApiError } from "@clever/contracts/client";
+import { saveBrandTokens } from "@/brand/actions";
 import { brands, ops } from "../../lib/bff-client";
 
 const opsKeys = {
@@ -70,10 +71,13 @@ export const useSetSimulation = () =>
     ops.setSimulation(service, mode),
   );
 
-/** Saves a brand's tokens, then drops the web server's cached theme so every page shows it now. */
+/**
+ * Saves a brand's tokens through a server action, which also drops the web server's cached theme so
+ * every page shows it now; a refusal comes back as the api's error, with its field list.
+ */
 export const useSaveBrandTokens = () =>
   useOpsAction(async (input: { brandId: string; tokens: unknown; tokenVersion: number }) => {
-    const theme = await brands.updateTheme(input.brandId, input);
-    await refreshBrands();
-    return theme;
+    const result = await saveBrandTokens(input);
+    if (!result.ok) throw new ApiError(result.status, result.body);
+    return result.theme;
   });

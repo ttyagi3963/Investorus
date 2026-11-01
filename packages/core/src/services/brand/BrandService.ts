@@ -48,15 +48,17 @@ export class BrandService implements IBrandService {
     const brand = await this.uow.run((repos) => repos.brands.findById(brandId));
     if (!brand) throw new NotFoundError(NOT_FOUND);
     const checked = validateBrandTokens(brand.tokens);
-    // Stored tokens passed the same check when saved; failing now means the data was changed outside.
-    if (!checked.ok)
-      throw new InfrastructureError(`The ${brandId} brand's stored tokens are unusable`, 502);
+    const content = brandContentSchema.safeParse(brand.content);
+    // Stored data passed the same checks when saved; failing now means it was changed outside.
+    if (!checked.ok || !content.success) {
+      throw new InfrastructureError(`The ${brandId} brand's stored theme is unusable`, 502);
+    }
     return {
       brandId,
       tokenVersion: brand.tokenVersion,
       cssVariables: checked.variables,
       fontFamily: checked.fontFamily,
-      content: brandContentSchema.parse(brand.content),
+      content: content.data,
     };
   }
 

@@ -29,5 +29,7 @@ export function brandFont(fontFamily: string[]): { className?: string; stack?: s
   const [first, ...rest] = fontFamily;
   const font = first === undefined ? undefined : FONTS[first];
   if (!font) return {};
-  return { className: font.variable, stack: [`var(${font.cssVariable})`, ...rest].join(", ") };
+  // The validator allows only letters, digits, spaces, and hyphens in a name; one with a space is quoted.
+  const fallbacks = rest.map((name) => (/\s/.test(name) ? `"${name}"` : name));
+  return { className: font.variable, stack: [`var(${font.cssVariable})`, ...fallbacks].join(", ") };
 }

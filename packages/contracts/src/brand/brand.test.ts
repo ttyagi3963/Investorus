@@ -42,10 +42,17 @@ describe("validateBrandTokens", () => {
     });
   });
 
-  it("refuses a value that could close the style element, and an alias to nothing", () => {
+  it("refuses a name or value that could break out of the style element, and an alias to nothing", () => {
+    const breakout = "x:red}</style><script>alert(1)</script><style>";
     expect(validateBrandTokens({ color: { bad: { $value: "red</style><script>" } } })).toEqual({
       ok: false,
       problems: [{ field: "tokens", message: expect.stringContaining("color.bad") }],
+    });
+    expect(validateBrandTokens({ color: { [breakout]: { $value: "#ffffff" } } })).toMatchObject({
+      ok: false,
+    });
+    expect(validateBrandTokens({ color: { open: { $value: "red /*" } } })).toMatchObject({
+      ok: false,
     });
     expect(validateBrandTokens({ color: { link: { $value: "{color.missing}" } } })).toEqual({
       ok: false,

@@ -13,10 +13,11 @@ import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { describeError } from "@/lib/errors";
 import { useBrandTokens, useSaveBrandTokens } from "./queries";
 
-function TokenForm({ loaded }: { loaded: BrandTokensView }) {
+type Save = ReturnType<typeof useSaveBrandTokens>;
+
+function TokenForm({ loaded, save }: { loaded: BrandTokensView; save: Save }) {
   const [text, setText] = useState(() => JSON.stringify(loaded.tokens, null, 2));
   const [notJson, setNotJson] = useState(false);
-  const save = useSaveBrandTokens();
   const problems = save.error instanceof ApiError ? save.error.fields : [];
 
   function onSave() {
@@ -71,9 +72,6 @@ function TokenForm({ loaded }: { loaded: BrandTokensView }) {
         <Link href="/design-system" className="text-body text-link hover:text-link-hover">
           Open the style guide
         </Link>
-        <p role="status" className="text-helper text-muted">
-          {save.data && `Saved as version ${save.data.tokenVersion}.`}
-        </p>
       </div>
     </Card>
   );
@@ -81,12 +79,21 @@ function TokenForm({ loaded }: { loaded: BrandTokensView }) {
 
 function BrandTokens({ brandId }: { brandId: string }) {
   const { data, isPending, isError, error } = useBrandTokens(brandId);
+  // Here, not in the form: the form starts again at each new version, and the result must stay.
+  const save = useSaveBrandTokens();
   if (isPending) return <p role="status">Loading the tokens…</p>;
   if (isError) {
     return <ErrorNotice error={describeError(error, "The tokens could not be loaded.")} />;
   }
-  // A new version (this save or another operator's) starts the form again from the stored file.
-  return <TokenForm key={data.tokenVersion} loaded={data} />;
+  return (
+    <div className="flex flex-col gap-stack-sm">
+      <p role="status" className="text-helper text-muted">
+        {save.data && `Saved as version ${save.data.tokenVersion}.`}
+      </p>
+      {/* A new version (this save or another operator's) starts the form again from the stored file. */}
+      <TokenForm key={data.tokenVersion} loaded={data} save={save} />
+    </div>
+  );
 }
 
 export function BrandEditor() {

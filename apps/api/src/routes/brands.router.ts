@@ -1,6 +1,7 @@
 // The brands (T348; contracts/api.md): the list for the switcher and the host mapping, and a brand's
-// theme, both public because the sign-in page needs them; the theme is cached by its version (ETag
-// and a short max-age), so the web app re-reads it only after a change. Operations read and replace
+// theme, both public because the sign-in page needs them. The theme carries its version as an ETag
+// (a caller holding it gets a 304) and a short max-age; the web app keeps its own copy in Next's
+// data cache. Operations read and replace
 // a brand's tokens (T353). One service call each; the service checks who may change a brand.
 import type { IBrandService } from "@clever/core";
 import { Router } from "express";

@@ -96,7 +96,10 @@ export type BrandValidation =
 
 const fontFamilySchema = z.object({
   font: z.object({
-    family: z.object({ base: z.object({ $value: z.array(z.string().min(1)).min(1) }) }),
+    // Plain names only (no aliases, quotes, or commas): the web app quotes them itself (fonts.ts).
+    family: z.object({
+      base: z.object({ $value: z.array(z.string().regex(/^[A-Za-z0-9 -]+$/)).min(1) }),
+    }),
   }),
 });
 

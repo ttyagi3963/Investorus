@@ -4,17 +4,17 @@ import { describe, expect, it } from "vitest";
 import { pickBrand } from "./pick-brand";
 
 const brands = [
-  { brandId: "clever", displayName: "Clever", hosts: ["localhost"] },
-  { brandId: "larkspur", displayName: "Larkspur", hosts: ["partner.localhost"] },
+  { brandId: "alpha", displayName: "Alpha Homes", hosts: ["localhost"] },
+  { brandId: "beta", displayName: "Beta Homes", hosts: ["partner.localhost"] },
 ];
 
 describe("pickBrand", () => {
   it("takes a known cookie, ignores an unknown one for the host, and falls back to the default", () => {
     const pick = (cookie: string | undefined, host: string | null) =>
-      pickBrand(brands, { cookie, host, defaultBrandId: "clever" });
+      pickBrand(brands, { cookie, host, defaultBrandId: "alpha" });
 
-    expect(pick("larkspur", "localhost:3000")).toBe("larkspur");
-    expect(pick("forged", "Partner.localhost:3000")).toBe("larkspur");
-    expect(pick(undefined, "example.test")).toBe("clever");
+    expect(pick("beta", "localhost:3000")).toBe("beta");
+    expect(pick("forged", "Partner.localhost:3000")).toBe("beta");
+    expect(pick(undefined, "example.test")).toBe("alpha");
   });
 });

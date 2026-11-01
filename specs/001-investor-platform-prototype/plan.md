@@ -169,7 +169,7 @@ scripts/wait-for-home.sh
 seed/
 ├── legacy-investors.csv     # 30 rows, 4 invalid (contracts/investor-import.md)
 ├── expected-matches.json    # oracle for V2 / SC-003
-├── brands/                  # clever.json (owner-extracted tokens), brand-beta.json (fictional partner)
+├── brands/                  # <id>/tokens.json (DTCG, the owner's design bundle) + content.json; brand-beta later (T201)
 └── photos/                  # small sample JPEGs
 
 packages/
@@ -308,6 +308,7 @@ comparison screen. The full adapter table and migration steps are in
 | Email/password demo auth, 8 h JWT, no refresh, revocation, or MFA | SSO for agents and ops (Okta/Google), magic link or passkeys for investors, short-lived tokens with rotation |
 | Sandbox stand-ins for CRM, email/SMS, storage | HubSpot, SendGrid/Twilio, and S3 provider implementations behind the same ports (S3 storage is T274–T275, after Sprint 1) |
 | Listing photos are public: anyone with a photo's link can open it, and the link never expires (the owner's decision, 2026-11-01, T326). Import files stay private. | A private bucket served through a CDN with signed cookies, or an app address that checks access and redirects to a short-lived link, so a leaked link stops working and access can be withdrawn |
+| The brand's token and content files are built into the web app, and one brand is chosen by `DEFAULT_BRAND_ID` (Sprint 5, T327) | A Brand table with the ops theme API (T095, T205), the brand resolved per request by host or cookie (T094), and its CSS cached per brand version |
 | Static ZIP code list for the seeded markets | Address validation and geocoding provider |
 | `LogErrorReporterImpl` instead of Sentry | Sentry provider plus alert routing for needs-attention deliveries |
 | Tracing is a W3C `traceparent` trace ID carried in an `AsyncLocalStorage` request context and written as `trace_id` on every log line, with no spans, metrics, or dashboards | The OpenTelemetry SDK with HTTP, Express, and Postgres instrumentation reading the same context and header, exporting traces to a collector (Jaeger or Tempo); Prometheus metrics (request latency and errors, job queue depth and age, failed jobs, match run time) with Grafana dashboards and alerts |

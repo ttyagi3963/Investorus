@@ -1,26 +1,26 @@
-// The investor area's layout (T300, T324): a header with their buy boxes, the notification inbox,
-// and sign out around every /investor page. proxy.ts has already sent visitors without a session to /login.
-import Link from "next/link";
+// The investor area's layout (T300, T324, T327): the brand header with the investor's pages (their
+// matched listings and their buy boxes), the notification inbox, and sign out, around every
+// /investor page. proxy.ts has already sent visitors without a session to /login.
 import type { ReactNode } from "react";
 import { SignOutButton } from "@/features/auth/SignOutButton";
 import { NotificationInbox } from "@/features/notifications/NotificationInbox";
+import { AppHeader } from "@/features/shell/AppHeader";
+import { PAGE_MAIN } from "@/features/shell/styles";
 
 export default function InvestorLayout({ children }: { children: ReactNode }) {
   return (
     <>
-      <header className="flex items-center justify-between gap-inline-md border-b border-default bg-card p-inset-md">
-        <Link href="/investor" className="font-heading text-heading-sm">
-          Your matched listings
-        </Link>
-        <div className="flex items-center gap-inline-md">
-          <Link href="/investor/buy-boxes" className="text-label text-link underline">
-            Your buy boxes
-          </Link>
-          <NotificationInbox packagesPath="/investor/packages" />
-          <SignOutButton />
-        </div>
-      </header>
-      <main className="p-inset-lg">{children}</main>
+      <AppHeader
+        areaLabel="Investor"
+        nav={[
+          { href: "/investor", label: "Opportunities", alsoActiveUnder: ["/investor/packages"] },
+          { href: "/investor/buy-boxes", label: "Buy boxes" },
+        ]}
+      >
+        <NotificationInbox packagesPath="/investor/packages" />
+        <SignOutButton />
+      </AppHeader>
+      <main className={PAGE_MAIN}>{children}</main>
     </>
   );
 }

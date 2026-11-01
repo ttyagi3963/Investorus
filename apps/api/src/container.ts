@@ -42,8 +42,10 @@ import {
   createLogger,
 } from "@clever/core/adapters";
 import {
+  toAgentPackageSummary,
   toAgentPackageView,
   type AgentPackageParts,
+  type AgentPackageSummary,
   type AgentPackageView,
 } from "@clever/contracts/listing-package";
 import type { Logger } from "pino";
@@ -65,6 +67,8 @@ export type AppContainer = Readonly<{
   investorImports: IInvestorImportWorkflow;
   /** A package's view, with each photo's public address. */
   presentPackage: (parts: AgentPackageParts) => AgentPackageView;
+  /** A package's list row, with its first photo's public address. */
+  presentSummary: (parts: AgentPackageParts) => AgentPackageSummary;
   /** Each photo with its public address. */
   addPhotoUrls: AddPhotoUrls;
   checkDatabase: () => Promise<void>;
@@ -121,6 +125,8 @@ export function createContainer(env: ApiEnv): AppContainer {
     buyBoxes: new BuyBoxService(uow, { geo }),
     investorImports: new InvestorImportWorkflow(uow, { storage, geo, clock }),
     presentPackage: (parts) => toAgentPackageView({ ...parts, photos: addPhotoUrls(parts.photos) }),
+    presentSummary: (parts) =>
+      toAgentPackageSummary({ ...parts, photos: addPhotoUrls(parts.photos) }),
     addPhotoUrls,
     checkDatabase: () => db.check(),
     idempotency: db.idempotency,

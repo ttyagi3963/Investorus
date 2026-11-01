@@ -29,6 +29,9 @@ const container: AppContainer = {
   presentPackage: () => {
     throw new Error("not used in this test");
   },
+  presentSummary: () => {
+    throw new Error("not used in this test");
+  },
   addPhotoUrls: (photos) => photos.map((photo) => ({ ...photo, url: "https://storage/p" })),
   publication: { publish: unused, withdraw: unused, reopen: unused, extendDeadline: unused },
   investorPackages: { listMatched: unused, getForInvestor: unused },

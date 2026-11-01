@@ -1,8 +1,11 @@
+"use client";
 // A button that asks before a change that cannot be undone (T301), on React Aria's DialogTrigger
 // and modal alert dialog: focus moves into the dialog, stays there, and returns to the button when
 // it closes; Escape cancels.
 import { Dialog, DialogTrigger, Heading, Modal, ModalOverlay } from "react-aria-components";
+import type { ButtonVariant } from "./button-classes.js";
 import { Button } from "./Button.js";
+import { MODAL_OVERLAY, MODAL_PANEL } from "./styles.js";
 
 export type ConfirmDialogProps = {
   /** The button that opens the dialog. */
@@ -13,6 +16,8 @@ export type ConfirmDialogProps = {
   cancelLabel: string;
   onConfirm: () => void;
   isDisabled?: boolean;
+  /** How the opening button looks; primary when the action is the screen's main one. */
+  triggerVariant?: ButtonVariant;
 };
 
 export function ConfirmDialog({
@@ -23,21 +28,22 @@ export function ConfirmDialog({
   cancelLabel,
   onConfirm,
   isDisabled,
+  triggerVariant = "secondary",
 }: ConfirmDialogProps) {
   return (
     <DialogTrigger>
-      <Button variant="secondary" isDisabled={isDisabled}>
+      <Button variant={triggerVariant} isDisabled={isDisabled}>
         {triggerLabel}
       </Button>
       <ModalOverlay
         isDismissable
-        className="fixed inset-0 flex items-center justify-center p-inset-lg"
+        className={MODAL_OVERLAY}
       >
-        <Modal className="w-full max-w-md rounded-card border border-default bg-card p-inset-lg shadow-card">
+        <Modal className={MODAL_PANEL}>
           <Dialog role="alertdialog" className="flex flex-col gap-stack-md outline-none">
             {({ close }) => (
               <>
-                <Heading slot="title" className="font-heading text-heading-sm">
+                <Heading slot="title" className="font-heading text-heading-sm text-heading">
                   {title}
                 </Heading>
                 <p>{message}</p>

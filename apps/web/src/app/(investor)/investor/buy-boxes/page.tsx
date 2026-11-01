@@ -1,14 +1,20 @@
 "use client";
-// The investor's buy boxes (T324; FR-060): each with its status, strategy label, and default badge,
-// a link to edit it, and Pause or Resume, which saves the box with its new status (a resumed box is
-// matched again); loading, error, and empty states. Never optimistic (XIII): the list changes once
-// the api has answered.
+// The investor's buy boxes (T324, T331; FR-060): a card for each with its status, strategy label,
+// default badge, and a short summary of its criteria, a link to edit it, and Pause or Resume, which
+// saves the box with its new status (a resumed box is matched again); loading, error, and empty
+// states. Never optimistic (XIII): the list changes once the api has answered.
 import type { BuyBoxView } from "@clever/contracts/buy-box";
-import { Button } from "@clever/ui";
+import { BUY_BOX_STATUS_TONES, Button, StatusChip, buttonClasses } from "@clever/ui";
 import Link from "next/link";
-import { BUY_BOX_STATUS_LABELS, STRATEGY_LABELS } from "@/features/buy-box/labels";
+import {
+  BUY_BOXES_DESCRIPTION,
+  BUY_BOX_STATUS_LABELS,
+  STRATEGY_LABELS,
+  buyBoxSummary,
+} from "@/features/buy-box/labels";
 import { buyBoxKeys, useBuyBoxes } from "@/features/buy-box/queries";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
+import { PageHeader } from "@/features/shell/PageHeader";
 import { buyBoxes } from "@/lib/bff-client";
 import { describeError } from "@/lib/errors";
 import { useAction } from "@/lib/use-action";
@@ -21,55 +27,69 @@ export default function BuyBoxesPage() {
     toggle.run(() => buyBoxes.save(id, { ...box, status, version }));
 
   return (
-    <div className="flex max-w-3xl flex-col gap-stack-lg">
-      <div className="flex flex-wrap items-center justify-between gap-inline-md">
-        <h1 className="font-heading text-heading-lg">Your buy boxes</h1>
-        <Link
-          href="/investor/buy-boxes/new"
-          className="rounded-control bg-action-primary px-inset-md py-inset-sm text-label text-on-primary"
-        >
-          Add a buy box
-        </Link>
-      </div>
+    <>
+      <PageHeader
+        title="Buy boxes"
+        description={BUY_BOXES_DESCRIPTION}
+        actions={
+          <Link href="/investor/buy-boxes/new" className={buttonClasses({ variant: "secondary" })}>
+            New buy box
+          </Link>
+        }
+      />
       {isPending && <p role="status">Loading your buy boxes…</p>}
       {isError && (
         <ErrorNotice error={describeError(error, "Your buy boxes could not be loaded.")} />
       )}
       {toggle.error && <ErrorNotice error={toggle.error} />}
       {boxes?.length === 0 && (
-        <p className="rounded-card bg-card p-inset-lg text-muted shadow-card">
+        <p className="rounded-card bg-card p-inset-lg text-body-lg text-muted shadow-card">
           No buy boxes yet. Add one to be matched to listings that fit it.
         </p>
       )}
-      <ul className="flex flex-col gap-stack-md">
+      <ul className="grid grid-cols-1 gap-stack-lg md:grid-cols-2">
         {boxes?.map((box) => (
           <li
             key={box.id}
-            className="flex flex-wrap items-center justify-between gap-inline-md rounded-card border border-default bg-card p-inset-md shadow-card"
+            className="flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card"
           >
-            <span className="flex flex-col gap-stack-sm">
-              <Link
-                href={`/investor/buy-boxes/${box.id}`}
-                className="font-heading text-heading-sm text-link underline"
-              >
-                {box.name}
-              </Link>
-              <span className="text-label text-muted">
-                {BUY_BOX_STATUS_LABELS[box.status]}
-                {box.strategy && ` · ${STRATEGY_LABELS[box.strategy]}`}
-                {box.isDefault && " · Default (imported)"}
+            <div className="flex flex-wrap items-center justify-between gap-inline-md">
+              <h2 className="font-heading text-heading-xs font-semibold text-heading">
+                <Link
+                  href={`/investor/buy-boxes/${box.id}`}
+                  className="text-link underline hover:text-link-hover"
+                >
+                  {box.name}
+                </Link>
+              </h2>
+              <span className="flex flex-wrap items-center gap-inline-sm">
+                {box.isDefault && (
+                  <span className="inline-flex min-h-chip items-center rounded-pill border border-default px-inset-md text-chip text-muted">
+                    Default (imported)
+                  </span>
+                )}
+                <StatusChip tone={BUY_BOX_STATUS_TONES[box.status]}>
+                  {BUY_BOX_STATUS_LABELS[box.status]}
+                </StatusChip>
               </span>
-            </span>
-            <Button
-              variant="secondary"
-              isDisabled={toggle.isBusy}
-              onPress={() => setStatus(box, box.status === "ACTIVE" ? "PAUSED" : "ACTIVE")}
-            >
-              {box.status === "ACTIVE" ? `Pause ${box.name}` : `Resume ${box.name}`}
-            </Button>
+            </div>
+            <p className="text-body text-muted">
+              {buyBoxSummary(box)}
+              {box.strategy && ` · ${STRATEGY_LABELS[box.strategy]}`}
+            </p>
+            <div>
+              <Button
+                variant="secondary"
+                size="sm"
+                isDisabled={toggle.isBusy}
+                onPress={() => setStatus(box, box.status === "ACTIVE" ? "PAUSED" : "ACTIVE")}
+              >
+                {box.status === "ACTIVE" ? `Pause ${box.name}` : `Resume ${box.name}`}
+              </Button>
+            </div>
           </li>
         ))}
       </ul>
-    </div>
+    </>
   );
 }

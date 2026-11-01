@@ -1,0 +1,16 @@
+{
+  "brandId": "clever",
+  "displayName": "Clever Offers",
+  "productName": "Investor Platform",
+  "opsProductName": "Ops console",
+  "logoPath": "/brands/clever/logo.svg",
+  "signIn": {
+    "headline": "One agent. Many competing offers.",
+    "intro": "Agents build a listing package once. The platform shops it to investors whose buy boxes fit, and brings every offer back to the agent for the seller.",
+    "steps": [
+      "The agent assembles photos and home details.",
+      "Matching investors get the package, without the seller's contact details.",
+      "Offers come back side by side, and the seller decides."
+    ]
+  }
+}

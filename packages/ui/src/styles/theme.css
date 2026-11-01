@@ -1,73 +1,157 @@
-/* The Tailwind 4 bridge for the semantic tokens (T267; contracts/design-tokens.md): neutral
-   default values for every token the Sprint 1 screens use, mapped to semantic utilities such as
-   bg-action-primary or p-inset-md. A brand later overrides the same CSS variables (T094). */
+/* The Tailwind 4 bridge for the semantic tokens (T267, T327; contracts/design-tokens.md). Every
+   utility the design system offers, such as bg-action-primary, text-status-open, or p-inset-lg,
+   reads a --brand-* custom property that the root layout writes from the active brand's token file
+   (seed/brands/<id>/tokens.json). This file holds names only, never a brand value. Tailwind's
+   default palette is removed, so a color can only come from the brand. */
 
-/* Colors and spacing: contract variable names, mapped below to shorter utility names. */
-:root {
-  --color-action-primary: #1f4fd1;
-  --color-action-primary-hover: #183fa8;
-  --color-action-on-primary: #ffffff;
-  --color-action-secondary: #1f2937;
-  --color-action-on-secondary: #ffffff;
-  --color-surface-page: #f8fafc;
-  --color-surface-card: #ffffff;
-  --color-text-default: #111827;
-  --color-text-muted: #4b5563;
-  --color-text-link: #1f4fd1;
-  --color-border-default: #e5e7eb;
-  --color-border-strong: #6b7280;
-  --color-focus-ring: #1f4fd1;
-  --color-status-danger: #dc2626;
-  --color-status-danger-text: #b91c1c;
-  --color-status-danger-surface: #fee2e2;
-
-  --space-inset-sm: 0.5rem;
-  --space-inset-md: 1rem;
-  --space-inset-lg: 1.5rem;
-  --space-stack-sm: 0.5rem;
-  --space-stack-md: 1rem;
-  --space-stack-lg: 2rem;
-  --space-inline-sm: 0.5rem;
-  --space-inline-md: 1rem;
-}
-
-/* Tokens whose contract name is already a Tailwind theme name (radius, shadow, font, text). */
 @theme {
-  --radius-control: 0.5rem;
-  --radius-card: 1rem;
-  --shadow-card: 0 1px 3px 0 #0000001a, 0 1px 2px -1px #0000001a;
-  --font-body: system-ui, sans-serif;
-  --font-heading: system-ui, sans-serif;
-  --text-body: 1rem;
-  --text-label: 0.875rem;
-  --text-heading-sm: 1.25rem;
-  --text-heading-md: 1.5rem;
-  --text-heading-lg: 2rem;
+  --color-*: initial;
 }
 
 @theme inline {
-  --background-color-action-primary: var(--color-action-primary);
-  --background-color-action-primary-hover: var(--color-action-primary-hover);
-  --background-color-action-secondary: var(--color-action-secondary);
-  --background-color-page: var(--color-surface-page);
-  --background-color-card: var(--color-surface-card);
-  --background-color-danger-surface: var(--color-status-danger-surface);
-  --text-color-on-primary: var(--color-action-on-primary);
-  --text-color-on-secondary: var(--color-action-on-secondary);
-  --text-color-default: var(--color-text-default);
-  --text-color-muted: var(--color-text-muted);
-  --text-color-link: var(--color-text-link);
-  --text-color-danger: var(--color-status-danger-text);
-  --border-color-default: var(--color-border-default);
-  --border-color-strong: var(--color-border-strong);
-  --border-color-danger: var(--color-status-danger);
-  --outline-color-focus: var(--color-focus-ring);
-  --spacing-inset-sm: var(--space-inset-sm);
-  --spacing-inset-md: var(--space-inset-md);
-  --spacing-inset-lg: var(--space-inset-lg);
-  --spacing-stack-sm: var(--space-stack-sm);
-  --spacing-stack-md: var(--space-stack-md);
-  --spacing-stack-lg: var(--space-stack-lg);
-  --spacing-inline-sm: var(--space-inline-sm);
-  --spacing-inline-md: var(--space-inline-md);
+  /* Surfaces */
+  --background-color-page: var(--brand-semantic-color-background-subtle);
+  --background-color-card: var(--brand-semantic-color-background-surface);
+  --background-color-soft: var(--brand-semantic-color-background-soft);
+  --background-color-accent-subtle: var(--brand-semantic-color-background-accent-subtle);
+  --background-color-placeholder: var(--brand-semantic-color-background-placeholder);
+  --background-color-disabled: var(--brand-semantic-color-background-disabled);
+  --background-color-inverse: var(--brand-semantic-color-background-header-ops);
+  --background-color-overlay: var(--brand-semantic-color-background-overlay);
+
+  /* Actions */
+  --background-color-action-primary: var(--brand-semantic-color-action-primary);
+  --background-color-action-primary-hover: var(--brand-semantic-color-action-primary-hover);
+  --background-color-action-cta: var(--brand-semantic-color-action-cta);
+  --background-color-action-cta-hover: var(--brand-semantic-color-action-cta-hover);
+  --background-color-action-success: var(--brand-semantic-color-action-success);
+  --background-color-action-success-hover: var(--brand-semantic-color-action-success-hover);
+
+  /* Status chips and tinted panels: one background and one text color per status */
+  --background-color-status-draft: var(--brand-semantic-color-status-draft-background);
+  --background-color-status-open: var(--brand-semantic-color-status-open-background);
+  --background-color-status-offers-in: var(--brand-semantic-color-status-offers-in-background);
+  --background-color-status-under-contract: var(--brand-semantic-color-status-under-contract-background);
+  --background-color-status-closed: var(--brand-semantic-color-status-closed-background);
+  --background-color-status-error: var(--brand-semantic-color-status-error-background);
+  --text-color-status-draft: var(--brand-semantic-color-status-draft-text);
+  --text-color-status-open: var(--brand-semantic-color-status-open-text);
+  --text-color-status-offers-in: var(--brand-semantic-color-status-offers-in-text);
+  --text-color-status-under-contract: var(--brand-semantic-color-status-under-contract-text);
+  --text-color-status-closed: var(--brand-semantic-color-status-closed-text);
+  --text-color-status-error: var(--brand-semantic-color-status-error-text);
+
+  /* Text */
+  --text-color-default: var(--brand-semantic-color-text-primary);
+  --text-color-heading: var(--brand-semantic-color-text-heading);
+  --text-color-muted: var(--brand-semantic-color-text-muted);
+  --text-color-placeholder: var(--brand-semantic-color-text-placeholder);
+  --text-color-link: var(--brand-semantic-color-text-link);
+  --text-color-link-hover: var(--brand-semantic-color-text-link-hover);
+  --text-color-accent: var(--brand-semantic-color-text-accent);
+  --text-color-danger: var(--brand-semantic-color-text-error);
+  --text-color-disabled: var(--brand-semantic-color-text-disabled);
+  --text-color-on-primary: var(--brand-semantic-color-text-on-action);
+  --text-color-on-cta: var(--brand-semantic-color-text-on-cta);
+  --text-color-inverse: var(--brand-semantic-color-text-inverse);
+  --text-color-inverse-muted: var(--brand-semantic-color-text-inverse-muted);
+
+  /* Borders and focus */
+  --border-color-default: var(--brand-semantic-color-border-default);
+  --border-color-strong: var(--brand-semantic-color-border-input);
+  --border-color-subtle: var(--brand-semantic-color-border-subtle);
+  --border-color-empty: var(--brand-semantic-color-border-empty);
+  --border-color-danger: var(--brand-semantic-color-border-error);
+  --border-color-selected: var(--brand-semantic-color-border-selected);
+  --border-color-cta: var(--brand-semantic-color-action-cta);
+  --outline-color-focus: var(--brand-semantic-color-action-primary);
+  --accent-color-action: var(--brand-semantic-color-action-primary);
+
+  /* Spacing: insets pad a box, stacks space a column, inlines space a row */
+  --spacing-inset-xs: var(--brand-space-4);
+  --spacing-inset-sm: var(--brand-space-8);
+  --spacing-inset-md: var(--brand-space-16);
+  --spacing-inset-lg: var(--brand-space-24);
+  --spacing-inset-xl: var(--brand-space-32);
+  --spacing-inset-2xl: var(--brand-space-50);
+  --spacing-stack-xs: var(--brand-space-4);
+  --spacing-stack-sm: var(--brand-space-8);
+  --spacing-stack-md: var(--brand-space-16);
+  --spacing-stack-lg: var(--brand-space-24);
+  --spacing-stack-xl: var(--brand-space-32);
+  --spacing-inline-xs: var(--brand-space-4);
+  --spacing-inline-sm: var(--brand-space-8);
+  --spacing-inline-md: var(--brand-space-12);
+  --spacing-inline-lg: var(--brand-space-24);
+  --spacing-page-x: var(--brand-layout-page-padding-x);
+  --spacing-header: var(--brand-layout-app-header-height);
+  --spacing-control: var(--brand-component-input-height);
+  --spacing-touch: var(--brand-size-touch-target-min);
+  --spacing-chip: var(--brand-component-status-chip-height);
+  --spacing-thumbnail-w: var(--brand-component-thumbnail-width);
+  --spacing-thumbnail-h: var(--brand-component-thumbnail-height);
+  --container-content: var(--brand-layout-container-width);
+
+  /* Shape and elevation */
+  --radius-control: var(--brand-radius-sm);
+  --radius-card: var(--brand-radius-lg);
+  --radius-pill: var(--brand-radius-pill);
+  --shadow-card: var(--brand-shadow-card);
+  --shadow-control: var(--brand-shadow-xs);
+  --default-transition-duration: var(--brand-motion-duration-base);
+
+  /* Type: each text utility sets size, line height, letter spacing, and weight together */
+  --font-body: var(--brand-font-family-base);
+  --font-heading: var(--brand-font-family-base);
+  --text-display: var(--brand-typography-display-font-size);
+  --text-display--line-height: var(--brand-typography-display-line-height);
+  --text-display--letter-spacing: var(--brand-typography-display-letter-spacing);
+  --text-display--font-weight: var(--brand-typography-display-font-weight);
+  --text-heading-lg: var(--brand-typography-heading-1-font-size);
+  --text-heading-lg--line-height: var(--brand-typography-heading-1-line-height);
+  --text-heading-lg--letter-spacing: var(--brand-typography-heading-1-letter-spacing);
+  --text-heading-lg--font-weight: var(--brand-typography-heading-1-font-weight);
+  --text-heading-md: var(--brand-typography-heading-2-font-size);
+  --text-heading-md--line-height: var(--brand-typography-heading-2-line-height);
+  --text-heading-md--letter-spacing: var(--brand-typography-heading-2-letter-spacing);
+  --text-heading-md--font-weight: var(--brand-typography-heading-2-font-weight);
+  --text-heading-sm: var(--brand-typography-heading-3-font-size);
+  --text-heading-sm--line-height: var(--brand-typography-heading-3-line-height);
+  --text-heading-sm--letter-spacing: var(--brand-typography-heading-3-letter-spacing);
+  --text-heading-sm--font-weight: var(--brand-typography-heading-3-font-weight);
+  --text-heading-xs: var(--brand-typography-heading-4-font-size);
+  --text-heading-xs--line-height: var(--brand-typography-heading-4-line-height);
+  --text-heading-xs--letter-spacing: var(--brand-typography-heading-4-letter-spacing);
+  --text-heading-xs--font-weight: var(--brand-typography-heading-4-font-weight);
+  --text-body-lg: var(--brand-typography-body-lg-font-size);
+  --text-body-lg--line-height: var(--brand-typography-body-lg-line-height);
+  --text-body-lg--letter-spacing: var(--brand-typography-body-lg-letter-spacing);
+  --text-body: var(--brand-typography-body-font-size);
+  --text-body--line-height: var(--brand-typography-body-line-height);
+  --text-body--letter-spacing: var(--brand-typography-body-letter-spacing);
+  --text-label: var(--brand-typography-field-label-font-size);
+  --text-label--line-height: var(--brand-typography-field-label-line-height);
+  --text-label--letter-spacing: var(--brand-typography-field-label-letter-spacing);
+  --text-label--font-weight: var(--brand-typography-field-label-font-weight);
+  --text-helper: var(--brand-typography-helper-font-size);
+  --text-helper--line-height: var(--brand-typography-helper-line-height);
+  --text-helper--letter-spacing: var(--brand-typography-helper-letter-spacing);
+  --text-caption: var(--brand-typography-caption-font-size);
+  --text-caption--line-height: var(--brand-typography-caption-line-height);
+  --text-caption--letter-spacing: var(--brand-typography-caption-letter-spacing);
+  --text-chip: var(--brand-component-status-chip-font-size);
+  --text-chip--font-weight: var(--brand-component-status-chip-font-weight);
+  --text-button-sm: var(--brand-typography-button-sm-font-size);
+  --text-button-sm--line-height: var(--brand-typography-button-sm-line-height);
+  --text-button-sm--font-weight: var(--brand-typography-button-sm-font-weight);
+  --text-button: var(--brand-typography-button-md-font-size);
+  --text-button--line-height: var(--brand-typography-button-md-line-height);
+  --text-button--font-weight: var(--brand-typography-button-md-font-weight);
+  --text-button-lg: var(--brand-typography-button-lg-font-size);
+  --text-button-lg--line-height: var(--brand-typography-button-lg-line-height);
+  --text-button-lg--font-weight: var(--brand-typography-button-lg-font-weight);
+  --font-weight-regular: var(--brand-font-weight-regular);
+  --font-weight-medium: var(--brand-font-weight-medium);
+  --font-weight-semibold: var(--brand-font-weight-semibold);
+  --font-weight-bold: var(--brand-font-weight-bold);
 }

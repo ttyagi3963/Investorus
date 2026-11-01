@@ -100,7 +100,7 @@ unchanged (FR-003).
    sandbox. The daily digest email (FR-023) arrives with the outbox in Story 6 (see plan.md
    Complexity Tracking).
 3. Pause that second box, then publish a package only it would fit. Ridge is not matched.
-4. As `morgan@example.com` → **Import investors** → upload `seed/legacy-investors.csv`. The summary
+4. As `morgan@example.com` → **Investor imports** → upload `seed/legacy-investors.csv`. The summary
    shows 26 imported and 4 rejected, each with a row reason. Each imported investor has one
    buy box named "Legacy Import", marked default. Import the file again: 0 imported, 26
    updated, 4 rejected, and still one default buy box per investor (FR-061).

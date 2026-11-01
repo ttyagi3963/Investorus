@@ -1,22 +1,13 @@
-// The design system's button (T268): React Aria's Button, which handles keyboard, touch, and screen
-// readers, styled as the primary or secondary action with a visible focus ring.
+"use client";
+// The design system's button (T268, T327): React Aria's Button, which handles keyboard, touch, and
+// screen readers. Variants: primary (the main action), secondary (white with a link-colored label),
+// cta (the one highlighted action on a page, such as Compare offers or Submit offer), and success.
+// `buttonClasses` gives a link the same look, for navigation that should read as a button.
 import { Button as AriaButton, type ButtonProps as AriaButtonProps } from "react-aria-components";
-import { FOCUS_RING } from "./styles.js";
+import { buttonClasses, type ButtonLook } from "./button-classes.js";
 
-export type ButtonProps = Omit<AriaButtonProps, "className" | "style"> & {
-  variant?: "primary" | "secondary";
-};
+export type ButtonProps = Omit<AriaButtonProps, "className" | "style"> & ButtonLook;
 
-const VARIANTS = {
-  primary: "bg-action-primary text-on-primary data-hovered:bg-action-primary-hover",
-  secondary: "bg-action-secondary text-on-secondary",
-} as const;
-
-export function Button({ variant = "primary", ...props }: ButtonProps) {
-  return (
-    <AriaButton
-      {...props}
-      className={`${FOCUS_RING} ${VARIANTS[variant]} rounded-control px-inset-md py-inset-sm text-label font-body data-disabled:opacity-50 data-pending:opacity-75`}
-    />
-  );
+export function Button({ variant, size, fullWidth, ...props }: ButtonProps) {
+  return <AriaButton {...props} className={buttonClasses({ variant, size, fullWidth })} />;
 }

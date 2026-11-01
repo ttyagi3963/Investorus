@@ -1157,6 +1157,67 @@ and the automated brand checks. The foundation (tokens, primitives, templates) i
 
 ---
 
+## Sprint 5: The Clever Design System on the Screens We Have Built
+
+**Goal** (owner, 2026-11-01: "implement our design system: all our tokens and screen designs";
+"only do design for what we have built and mention the ones that are not done"): every screen
+built so far looks like the owner's approved designs (the design bundle: Clever tokens v2 in DTCG
+format and ten screen designs), with every value coming from the brand's tokens. Parts of the
+designs that need features not yet built are listed at the end of this section, not built.
+
+**Decisions** (from the owner's instructions on 2026-11-01):
+- **The brand lives in data** (X, XVI): `seed/brands/clever/tokens.json` is the bundle's token file
+  (plus four tokens the screen sources use, marked `added`), and `seed/brands/clever/content.json`
+  holds the brand's name, product names, logo, and sign-in copy. The web app converts the tokens
+  to `--brand-*` CSS custom properties once per brand and writes them in the root layout;
+  `packages/ui/src/styles/theme.css` maps every Tailwind utility to one of them and removes
+  Tailwind's default palette, so no component holds a brand value. The active brand is
+  `DEFAULT_BRAND_ID` until brand resolution by host or cookie (T094) and the Brand table (T095).
+- **Fonts through next/font** (owner): the brand's font is downloaded at build time and served by
+  the app; a brand names its font in its tokens, and apps/web/src/brand/fonts.ts registers it.
+- **React Aria for interaction, Tailwind for theming** (XI, X): new components follow the existing
+  primitives; status colors come from one status → tone map (contracts/design-tokens.md).
+- **One PR for the sprint** (owner, 2026-11-01), with a commit per task.
+
+- [X] T327 The brand layer (tests first): the brand's token and content files and logo; the DTCG → CSS custom property converter (aliases kept as `var()`, unsafe values and dangling aliases refused); the brand registry with its content schema; `DEFAULT_BRAND_ID` in the web settings; the root layout writing the variables, loading the font with next/font, and providing the content through `BrandProvider`; theme.css mapped onto the brand variables; tests that each brand supplies every variable theme.css reads and that every text and background pair is at least 4.5:1 (from T084, T085, T094's default-brand part)
+- [X] T328 The design-system components (from T086, T089): Button variants (primary, secondary, cta, success) and sizes with `buttonClasses` for links; the field look (48px fields, semibold labels, 2px error border); chip checkboxes; StatusChip with the status → tone map in packages/ui/src/tokens/status-tones.ts; Card, StatTile, and Thumbnail; the dialogs' backdrop; the signed-in AppHeader (brand mark, area navigation with the current page marked, inverse for operations), PageHeader, and the area layouts
+- [X] T329 The sign-in screen (design 01): the brand panel (name, headline, intro, steps) beside the sign-in card and the demo accounts
+- [X] T330 The agent screens (designs 02, 04, 05): the package list as a table with thumbnail, status chip, matched count, and deadline; the package page with the PageHeader, status, photos, form, offers, and timeline in cards; the new package page; the offer comparison; the deal page in the same system
+- [X] T331 The investor screens (designs 06, 07, 08): opportunities as photo cards with location, time left, facts, and the seller's range; the package page with photos and the offer form; the buy box list and editor with chip choices
+- [X] T332 The operations import screen (design 10): the new-import card beside the batch's results, with stat tiles and outcome chips
+- [X] T333 Documentation: contracts/design-tokens.md (the brand file is the bundle's DTCG file; the Sprint 1 seeded values are replaced), plan.md, README, and this section's list of what the designs show that is not built
+- [X] T334 A record that no longer exists is never shown from memory (owner, 2026-11-01: a tab kept showing a package deleted by a database reset; tests first): the shared React Query client throws a 404 to the area's error page even when the tab remembers the record (`throwOnError`); each signed-in area gets an error.tsx inside its layout with "Not found" and a link back, or "Something went wrong" with Try again (which clears React Query's error state); the deal query opts out, because no deal yet is a normal state the deal page shows plainly
+
+**Not built from the designs** (each needs a feature or data that does not exist yet):
+- **Every signed-in header**: the signed-in user's name, role, and avatar (the web app does not
+  read `GET /me` yet); the agent's "Offers" page, the investor's "My offers" page, and the
+  operations "Packages" (package trace, design 09) and "Failed jobs" pages.
+- **01 Sign-in**: a demo account signs in at once ("Continue"); here it fills in the form ("Use").
+- **02 Package list**: the status filter chips with counts; the seller and offer-count columns;
+  beds, baths, and square feet in each row.
+- **03 Package wizard**: the four-step wizard with its stepper, Back and Continue, "Save and exit",
+  and automatic draft saving; the seller and "What investors see" side cards; the sample-address
+  tip; condition as single-choice chips; the plausibility warning (square feet against bedrooms).
+- **04 Package page**: the status stepper with a date per step; "of N active buy boxes matched"
+  and the top reasons a buy box did not match (near-miss, T222/T223); a read-only "Home details"
+  view with an "Edit package" button (the page shows the form); the agent's notes for investors;
+  photo captions (Front, Kitchen).
+- **05 Offer comparison**: inspection period, repairs, program, and proof-of-funds rows; "close in
+  N days"; a confirmation banner after a decision.
+- **06 Opportunities**: the Open, Offered, and All filter; New and Viewed badges; beds, baths,
+  square feet, and condition on each card; the name of the buy box that matched.
+- **07 Investor package**: "Why this matched", criterion by criterion; proof-of-funds status; the
+  agent's notes; the design's offer fields that the offer model does not have (inspection days,
+  program, as-is).
+- **08 Buy box editor**: the Nationwide / States / ZIP codes switch and the ZIP code tag input
+  (a select and a text field stand in); status as a field (it changes through Pause and Resume);
+  Save disabled until something changes.
+- **09 Package trace**: the whole operations package trace (US6).
+- **10 Investor imports**: recent imports; the template and rejected-rows downloads; the investor's
+  name per row and who uploaded the file; rejected and updated rows sorted first.
+
+---
+
 ## After Sprint 1: Production Storage Adapter (owner-scheduled)
 
 **Purpose**: show that storage is swappable by adding the production adapter that

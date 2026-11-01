@@ -1,3 +1,4 @@
+"use client";
 // A labelled single-choice list (T268) on React Aria's Select, which gives the keyboard, typeahead,
 // and screen reader behavior of a native select with a styled popover.
 import {
@@ -38,7 +39,7 @@ export function Select({ label, options, errorMessage, ...props }: SelectProps) 
           {(option) => (
             <ListBoxItem
               id={option.id}
-              className="rounded-control px-inset-sm py-inset-sm text-body text-default outline-none data-focused:bg-page data-selected:font-semibold"
+              className="flex min-h-touch cursor-pointer items-center rounded-control px-inset-md text-body-lg text-default outline-none data-focused:bg-accent-subtle data-selected:font-semibold data-selected:text-link"
             >
               {option.label}
             </ListBoxItem>

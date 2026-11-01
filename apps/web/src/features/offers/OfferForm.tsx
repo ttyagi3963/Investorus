@@ -1,6 +1,7 @@
 "use client";
-// The offer form (T302; FR-042): every term, filled in from the investor's offer when they revise
-// it. Each input is named by its api field, so an api error shows on its field.
+// The offer form (T302, T331; FR-042): every term, filled in from the investor's offer when they
+// revise it, laid out for the package page's "Your offer" card. Each input is named by its api
+// field, so an api error shows on its field.
 import { CONTINGENCIES, type CreateOfferInput, type OfferView } from "@clever/contracts/offer";
 import { Button, CheckboxGroup, NumberField, Select, TextField } from "@clever/ui";
 import { useState, type FormEvent } from "react";
@@ -48,22 +49,18 @@ export function OfferForm({
   }
 
   return (
-    <form
-      onSubmit={onSubmit}
-      noValidate
-      className="flex flex-col gap-stack-md rounded-card bg-card p-inset-lg shadow-card"
-    >
-      <h2 className="font-heading text-heading-sm">
-        {revising ? "Revise your offer" : "Make an offer"}
-      </h2>
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-stack-md">
       {revising && (
-        <p className="text-label text-muted">
+        <p className="text-helper text-muted">
           You are on revision {myOffer.revision}. A revision restates every term.
         </p>
       )}
       {error && <ErrorNotice error={error} />}
       {saved && (
-        <p role="status" className="rounded-control border border-default p-inset-md">
+        <p
+          role="status"
+          className="rounded-control bg-status-under-contract p-inset-md text-body text-status-under-contract"
+        >
           Your offer was sent.
         </p>
       )}
@@ -76,32 +73,43 @@ export function OfferForm({
         errorMessage={fieldErrors.price}
         isRequired
       />
-      <Select
-        name="paymentType"
-        label="Payment"
-        options={paymentOptions}
-        selectedKey={paymentType}
-        onSelectionChange={(key) => setPaymentType(String(key))}
-        errorMessage={fieldErrors.paymentType}
-        isRequired
-      />
-      <TextField
-        name="closingDate"
-        type="date"
-        label="Closing date"
-        defaultValue={myOffer?.closingDate}
-        errorMessage={fieldErrors.closingDate}
-        isRequired
-      />
-      <NumberField
-        name="earnestMoney"
-        label="Earnest money"
-        minValue={0}
-        formatOptions={USD}
-        defaultValue={myOffer?.earnestMoney ?? 0}
-        errorMessage={fieldErrors.earnestMoney}
-        isRequired
-      />
+      <div className="grid grid-cols-1 gap-x-inline-md gap-y-stack-md sm:grid-cols-2">
+        <Select
+          name="paymentType"
+          label="Payment"
+          options={paymentOptions}
+          selectedKey={paymentType}
+          onSelectionChange={(key) => setPaymentType(String(key))}
+          errorMessage={fieldErrors.paymentType}
+          isRequired
+        />
+        <TextField
+          name="closingDate"
+          type="date"
+          label="Closing date"
+          defaultValue={myOffer?.closingDate}
+          errorMessage={fieldErrors.closingDate}
+          isRequired
+        />
+        <NumberField
+          name="earnestMoney"
+          label="Earnest money"
+          minValue={0}
+          formatOptions={USD}
+          defaultValue={myOffer?.earnestMoney ?? 0}
+          errorMessage={fieldErrors.earnestMoney}
+          isRequired
+        />
+        <NumberField
+          name="feesAndConcessions"
+          label="Fees and concessions"
+          minValue={0}
+          formatOptions={USD}
+          defaultValue={myOffer?.feesAndConcessions ?? 0}
+          errorMessage={fieldErrors.feesAndConcessions}
+          isRequired
+        />
+      </div>
       <CheckboxGroup
         name="contingencies"
         label="Contingencies"
@@ -109,15 +117,6 @@ export function OfferForm({
         options={contingencyOptions}
         defaultValue={myOffer?.contingencies}
         errorMessage={fieldErrors.contingencies}
-      />
-      <NumberField
-        name="feesAndConcessions"
-        label="Fees and concessions"
-        minValue={0}
-        formatOptions={USD}
-        defaultValue={myOffer?.feesAndConcessions ?? 0}
-        errorMessage={fieldErrors.feesAndConcessions}
-        isRequired
       />
       <TextField
         name="expiresAt"
@@ -127,11 +126,9 @@ export function OfferForm({
         errorMessage={fieldErrors.expiresAt}
         isRequired
       />
-      <div>
-        <Button type="submit" isPending={isPending}>
-          {revising ? "Send revision" : "Send offer"}
-        </Button>
-      </div>
+      <Button type="submit" variant="cta" fullWidth isPending={isPending}>
+        {revising ? "Send revision" : "Send offer"}
+      </Button>
     </form>
   );
 }

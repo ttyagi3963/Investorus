@@ -1,12 +1,18 @@
-// The new package page (T270): the package form with nothing filled in. Saving creates the draft
-// and opens its edit page, where photos can be added.
+// The new package page (T270, T330): the package form with nothing filled in, under a header that
+// links back to the list. Saving creates the draft and opens its page, where photos can be added.
 import { PackageForm } from "@/features/listing-package/PackageForm";
+import { PageHeader } from "@/features/shell/PageHeader";
 
 export default function NewPackagePage() {
   return (
-    <div className="flex max-w-3xl flex-col gap-stack-lg">
-      <h1 className="font-heading text-heading-lg">New package</h1>
-      <PackageForm />
-    </div>
+    <>
+      <PageHeader
+        title="New listing package"
+        back={{ href: "/agent", label: "Listing packages" }}
+      />
+      <div className="lg:w-3/4">
+        <PackageForm />
+      </div>
+    </>
   );
 }

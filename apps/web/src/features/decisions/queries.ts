@@ -18,5 +18,10 @@ export function useComparison(id: string, sort: ComparisonSort) {
 }
 
 export function useDeal(id: string) {
-  return useQuery({ queryKey: dealKey(id), queryFn: () => listingPackages.deal(id) });
+  // Before an offer is accepted there is no deal: the api's 404 is a state the page shows.
+  return useQuery({
+    queryKey: dealKey(id),
+    queryFn: () => listingPackages.deal(id),
+    throwOnError: false,
+  });
 }

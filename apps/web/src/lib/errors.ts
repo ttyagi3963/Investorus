@@ -19,3 +19,12 @@ export function errorText(err: unknown, fallback: string): string {
       : describeError(err, fallback);
   return requestId ? `${message} (request ID ${requestId})` : message;
 }
+
+/**
+ * True when the api says the thing no longer exists (404). React Query keeps the last good data when
+ * a refetch fails, which is right for an outage but wrong for a deleted record, so a page checks this
+ * before showing data it remembered.
+ */
+export function isGone(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404;
+}

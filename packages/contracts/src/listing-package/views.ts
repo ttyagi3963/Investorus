@@ -57,6 +57,8 @@ export type AgentPackageSummary = {
   priceExpectationMax: number;
   offerDeadline: string | null;
   photoCount: number;
+  /** The first photo's address, for the list's thumbnail; null without photos. */
+  photoUrl: string | null;
   matchedCount: number;
   updatedAt: string;
 };
@@ -109,8 +111,9 @@ export function toAgentPackageView(parts: AgentPackagePartsWithUrls): AgentPacka
   };
 }
 
-export function toAgentPackageSummary(parts: AgentPackageParts): AgentPackageSummary {
+export function toAgentPackageSummary(parts: AgentPackagePartsWithUrls): AgentPackageSummary {
   const { package: pkg, property } = parts;
+  const first = [...parts.photos].sort((a, b) => a.position - b.position)[0];
   return {
     id: pkg.id,
     status: pkg.status,
@@ -123,6 +126,7 @@ export function toAgentPackageSummary(parts: AgentPackageParts): AgentPackageSum
     priceExpectationMax: pkg.priceExpectationMax,
     offerDeadline: pkg.offerDeadline?.toISOString() ?? null,
     photoCount: parts.photos.length,
+    photoUrl: first?.url ?? null,
     matchedCount: parts.matchedCount,
     updatedAt: pkg.updatedAt.toISOString(),
   };

@@ -1,6 +1,7 @@
 "use client";
-// The in-app inbox in the investor and agent headers (T300, T315): a button with the unread count opens a panel
-// (Escape or a click outside closes it) with the notifications, newest first; opening one marks it
+// The in-app inbox in the investor and agent headers (T300, T315, T329): a button with the unread count opens a panel
+// (Escape or a click outside closes it) with the notifications, newest first, each marked New until
+// read and showing when it arrived; opening one marks it
 // read and goes to its package. The list refreshes every 15 seconds, and a polite live region
 // announces when the unread count goes up, so a new match reaches screen reader users too.
 import { PopoverPanel } from "@clever/ui";
@@ -12,6 +13,8 @@ import { notifications } from "@/lib/bff-client";
 import { describeError } from "@/lib/errors";
 
 const inboxKey = ["notifications"] as const;
+const formatTime = (iso: string) =>
+  new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 
 /** `packagesPath` is where this role's package pages live, for example `/agent/packages`. */
 export function NotificationInbox({ packagesPath }: { packagesPath: string }) {
@@ -51,27 +54,43 @@ export function NotificationInbox({ packagesPath }: { packagesPath: string }) {
             {isError && (
               <ErrorNotice error={describeError(error, "Notifications could not be loaded.")} />
             )}
-            {data?.length === 0 && <p className="text-muted">No notifications yet.</p>}
-            <ul className="flex flex-col gap-stack-sm">
+            <h2 className="font-heading text-heading-xs text-heading">Notifications</h2>
+            {data?.length === 0 && <p className="text-body text-muted">No notifications yet.</p>}
+            <ul className="flex flex-col">
               {data?.map((n) => (
-                <li key={n.id} className="flex flex-col gap-stack-sm">
-                  <span className={n.read ? "text-label text-muted" : "text-label font-heading"}>
-                    {n.read ? "" : "New: "}
-                    {n.title}
+                <li
+                  key={n.id}
+                  className="flex flex-col gap-stack-xs border-b border-subtle py-inset-sm last:border-b-0"
+                >
+                  <span className="flex items-center gap-inline-sm">
+                    {!n.read && (
+                      <>
+                        <span aria-hidden="true" className="size-2 shrink-0 rounded-pill bg-action-primary" />
+                        <span className="text-caption font-semibold text-link">New</span>
+                      </>
+                    )}
+                    <span className={`text-body ${n.read ? "text-muted" : "font-semibold text-heading"}`}>
+                      {n.title}
+                    </span>
                   </span>
-                  <span className="text-label">{n.body}</span>
-                  {n.packageId && (
-                    <Link
-                      href={`${packagesPath}/${n.packageId}`}
-                      className="text-label text-link underline"
-                      onClick={() => {
-                        if (!n.read) markRead.mutate(n.id);
-                        close();
-                      }}
-                    >
-                      Open it
-                    </Link>
-                  )}
+                  <span className="text-body">{n.body}</span>
+                  <span className="flex flex-wrap items-center justify-between gap-inline-md">
+                    <time dateTime={n.createdAt} className="text-helper text-muted">
+                      {formatTime(n.createdAt)}
+                    </time>
+                    {n.packageId && (
+                      <Link
+                        href={`${packagesPath}/${n.packageId}`}
+                        className="inline-flex min-h-touch items-center text-label text-link hover:text-link-hover"
+                        onClick={() => {
+                          if (!n.read) markRead.mutate(n.id);
+                          close();
+                        }}
+                      >
+                        Open it
+                      </Link>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>

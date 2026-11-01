@@ -1,9 +1,12 @@
+"use client";
 // A button that opens a small form in a modal dialog (T315), on React Aria's DialogTrigger: focus
 // moves into the dialog and returns to the button when it closes, Escape cancels, and the form's
 // own required fields block an empty submit. Used where a choice needs a few words or terms first.
 import type { FormEvent, ReactNode } from "react";
 import { Dialog, DialogTrigger, Heading, Modal, ModalOverlay } from "react-aria-components";
+import type { ButtonVariant } from "./button-classes.js";
 import { Button } from "./Button.js";
+import { MODAL_OVERLAY, MODAL_PANEL } from "./styles.js";
 
 export type FormDialogProps = {
   /** The button that opens the dialog. */
@@ -16,7 +19,7 @@ export type FormDialogProps = {
   /** The form's fields, each named so `onSubmit` can read it. */
   children: ReactNode;
   isDisabled?: boolean;
-  triggerVariant?: "primary" | "secondary";
+  triggerVariant?: ButtonVariant;
 };
 
 export function FormDialog({
@@ -36,9 +39,9 @@ export function FormDialog({
       </Button>
       <ModalOverlay
         isDismissable
-        className="fixed inset-0 flex items-center justify-center p-inset-lg"
+        className={MODAL_OVERLAY}
       >
-        <Modal className="w-full max-w-md rounded-card border border-default bg-card p-inset-lg shadow-card">
+        <Modal className={MODAL_PANEL}>
           <Dialog className="outline-none">
             {({ close }) => (
               <form
@@ -50,7 +53,7 @@ export function FormDialog({
                   onSubmit(values);
                 }}
               >
-                <Heading slot="title" className="font-heading text-heading-sm">
+                <Heading slot="title" className="font-heading text-heading-sm text-heading">
                   {title}
                 </Heading>
                 {children}

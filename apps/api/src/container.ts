@@ -8,6 +8,7 @@ import {
   DealLifecycleWorkflow,
   DecisionWorkflow,
   InvestorImportWorkflow,
+  MatchDigestWorkflow,
   InvestorPackageQueryService,
   ListingPackageService,
   NotificationService,
@@ -22,6 +23,7 @@ import {
   type IErrorReporter,
   type IIdempotencyStore,
   type IInvestorImportWorkflow,
+  type IMatchDigestWorkflow,
   type IInvestorPackageQueryService,
   type IListingPackageService,
   type INotificationService,
@@ -65,6 +67,7 @@ export type AppContainer = Readonly<{
   notifications: INotificationService;
   buyBoxes: IBuyBoxService;
   investorImports: IInvestorImportWorkflow;
+  digests: Pick<IMatchDigestWorkflow, "sendNow">;
   /** A package's view, with each photo's public address. */
   presentPackage: (parts: AgentPackageParts) => AgentPackageView;
   /** A package's list row, with its first photo's public address. */
@@ -124,6 +127,7 @@ export function createContainer(env: ApiEnv): AppContainer {
     notifications: new NotificationService(uow, { clock }),
     buyBoxes: new BuyBoxService(uow, { geo }),
     investorImports: new InvestorImportWorkflow(uow, { storage, geo, clock }),
+    digests: new MatchDigestWorkflow(uow, { clock }),
     presentPackage: (parts) => toAgentPackageView({ ...parts, photos: addPhotoUrls(parts.photos) }),
     presentSummary: (parts) =>
       toAgentPackageSummary({ ...parts, photos: addPhotoUrls(parts.photos) }),

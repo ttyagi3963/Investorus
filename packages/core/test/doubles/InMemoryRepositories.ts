@@ -359,6 +359,13 @@ export class InMemoryMatchRepository implements IMatchRepository {
   async countByPackage(packageId: string, round: number) {
     return (await this.listByPackage(packageId, round)).length;
   }
+  readonly digestedAt = new Map<string, Date>();
+  async listUndigested() {
+    return this.rows.filter((r) => r.trigger === "BUY_BOX_CHANGE" && !this.digestedAt.has(r.id));
+  }
+  async markDigested(ids: string[], at: Date) {
+    for (const id of ids) if (!this.digestedAt.has(id)) this.digestedAt.set(id, at);
+  }
 }
 
 export class InMemoryNotificationRepository implements INotificationRepository {

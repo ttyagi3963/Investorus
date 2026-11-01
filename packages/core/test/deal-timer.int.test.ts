@@ -34,6 +34,7 @@ function boot(now: () => Date) {
     offerRound: new OfferRoundWorkflow(uow),
     deals,
     imports: { run: () => Promise.reject(new Error("No imports in this test")) },
+    digests: { send: () => Promise.reject(new Error("No digests in this test")) },
   });
   return { uow, deals, handlers };
 }

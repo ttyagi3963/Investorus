@@ -14,6 +14,7 @@ import { createDealsRouter } from "./routes/deals.router.js";
 import { createDecisionsRouter } from "./routes/decisions.router.js";
 import { createHealthRouter } from "./routes/health.router.js";
 import { createInvestorImportsRouter } from "./routes/investor-imports.router.js";
+import { createMatchDigestsRouter } from "./routes/match-digests.router.js";
 import { createInvestorRouter } from "./routes/investor.router.js";
 import { createListingPackagesRouter } from "./routes/listing-packages.router.js";
 import { createNotificationsRouter } from "./routes/notifications.router.js";
@@ -43,6 +44,7 @@ export function createApp(c: AppContainer): Express {
   v1.use(createNotificationsRouter(c.notifications));
   v1.use(createBuyBoxesRouter(c.buyBoxes));
   v1.use(createInvestorImportsRouter(c.investorImports));
+  v1.use(createMatchDigestsRouter(c.digests));
   app.use("/api/v1", v1);
 
   app.use(notFound);

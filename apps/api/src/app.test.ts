@@ -55,6 +55,7 @@ const container: AppContainer = {
   notifications: { listMine: unused, markRead: unused },
   buyBoxes: { list: unused, get: unused, create: unused, update: unused },
   investorImports: { requestUpload: unused, start: unused, run: unused, getBatch: unused },
+  digests: { sendNow: unused },
   checkDatabase: async () => {},
   idempotency: { claim: unused, complete: unused, release: unused },
   logger: pino({ level: "silent" }),

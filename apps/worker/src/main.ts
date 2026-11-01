@@ -15,6 +15,8 @@ const DELIVERY_CONCURRENCY = 5;
 
 const env = parseEnv(process.env);
 const container = await createContainer(env);
+// The daily match digest keeps itself scheduled; this queues the first run (keyed, so once).
+await container.digests.ensureScheduled();
 const stopHeartbeat = startHeartbeat(
   () => writeFileSync(env.WORKER_HEARTBEAT_FILE, String(Date.now())),
   10_000,

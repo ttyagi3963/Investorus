@@ -6,6 +6,7 @@
 import {
   DealLifecycleWorkflow,
   DeliveryDispatcher,
+  MatchDigestWorkflow,
   OutboxRelay,
   readConfig,
   type IDeliveryConsumer,
@@ -42,6 +43,7 @@ export type WorkerContainer = Readonly<{
   reporter: IErrorReporter;
   clock: IClock;
   relay: OutboxRelay;
+  digests: MatchDigestWorkflow;
   dispatcher: DeliveryDispatcher;
   deliveries: IDeliveryConsumer;
   dispose: () => Promise<void>;
@@ -67,6 +69,7 @@ export async function createContainer(env: WorkerEnv): Promise<WorkerContainer> 
   const retry = await db.uow.run((repos) => readConfig(repos.config, "deliveryRetry"));
   const queue = new BullMqDeliveryQueueImpl({ redisUrl: env.REDIS_URL, retry });
   const sandbox = { internalUrl: env.SANDBOX_URL, internalToken: env.SANDBOX_INTERNAL_TOKEN };
+  const digests = new MatchDigestWorkflow(db.uow, { clock });
   return Object.freeze({
     uow: db.uow,
     handlers: createJobHandlers({
@@ -78,11 +81,13 @@ export async function createContainer(env: WorkerEnv): Promise<WorkerContainer> 
         geo: new StaticGeoProviderImpl(),
         clock,
       }),
+      digests,
     }),
     logger,
     reporter: new LogErrorReporterImpl(logger),
     clock,
     relay: new OutboxRelay(db.uow, { queue, clock }),
+    digests,
     dispatcher: new DeliveryDispatcher(db.uow, {
       crm: new SandboxCrmProviderImpl(sandbox),
       messaging: new SandboxMessagingProviderImpl(sandbox),

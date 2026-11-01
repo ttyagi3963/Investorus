@@ -23,12 +23,15 @@ const DEMO_INVESTORS: {
   email: string;
   companyName: string;
   contactName: string;
+  /** A demo number, so a match notice also shows up as a text in the sandbox (T339). */
+  phone?: string;
   boxes: DemoBox[];
 }[] = [
   {
     email: "summit@example.com",
     companyName: "Summit Home Buyers",
     contactName: "Sam Summit",
+    phone: "+15125550100",
     // Both boxes match the sample listing: Austin 78704, single family, Fair, $250k–$300k.
     boxes: [
       {
@@ -134,13 +137,14 @@ export async function seedDemoAccounts(prisma: PrismaClient): Promise<void> {
     update: {},
   });
 
-  for (const { email, companyName, contactName, boxes } of DEMO_INVESTORS) {
+  for (const { email, companyName, contactName, phone, boxes } of DEMO_INVESTORS) {
     const investor = await prisma.investor.upsert({
       where: { email },
       create: {
         email,
         companyName,
         contactName,
+        phone: phone ?? null,
         investorType: "DIRECT_BUYER",
         proofOfFundsExpiresAt: new Date(Date.now() + YEAR),
       },

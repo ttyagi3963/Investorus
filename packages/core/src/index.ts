@@ -84,3 +84,7 @@ export {
 export { OutboxRelay, type RelayResult } from "./outbox/OutboxRelay.js";
 export { readConfig } from "./repositories/config/read-config.js";
 export type { IDeliveryConsumer, IDeliveryQueue } from "./providers/delivery-queue/IDeliveryQueue.js";
+export {
+  MatchDigestWorkflow,
+  type IMatchDigestWorkflow,
+} from "./workflows/match-digest/MatchDigestWorkflow.js";

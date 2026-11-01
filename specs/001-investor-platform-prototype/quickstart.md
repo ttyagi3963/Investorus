@@ -94,25 +94,12 @@ unchanged (FR-003).
 
 1. As `harbor@example.com`, set Min Price above Max Price. The save is refused, and the field is
    named. Clear every property type: the save is refused ("leave it blank for any").
-2. As `harbor@example.com`, add a second buy box whose ZIP code covers a seeded package that is
-   still accepting offers and that harbor's first box does not fit. Within 1 minute the package
-   appears on harbor's dashboard and in the in-app inbox, with no email or SMS in the sandbox.
-   As `morgan@example.com` → **Deliveries** → **Send digests now** (or wait for the daily run): one
-   digest email to harbor lists it (FR-023). Before the Deliveries page exists (it arrives
-   with Story 6), trigger the same run from the API:
-
-   ```bash
-   TOKEN=$(curl -s -X POST http://localhost:4000/api/v1/sessions \
-     -H "Content-Type: application/json" \
-     -H "Idempotency-Key: $(cat /proc/sys/kernel/random/uuid)" \
-     -d '{"email":"morgan@example.com","password":"demo1234"}' \
-     | sed -E 's/.*"token":"([^"]+)".*/\1/')
-   curl -s -X POST http://localhost:4000/api/v1/ops/match-digests \
-     -H "Authorization: Bearer $TOKEN" \
-     -H "Idempotency-Key: $(cat /proc/sys/kernel/random/uuid)"
-   # → 202 {"jobId": "..."}; the digest email appears in the sandbox at http://localhost:4100
-   ```
-3. Pause that second box, then publish a package only it would fit. Harbor is not matched.
+2. As `ridge@example.com`, add a second buy box with ZIP code 78745, which covers Blake's seeded
+   package (still accepting offers) that ridge's narrow first box does not fit. Within 1 minute
+   the package appears on ridge's dashboard and in the in-app inbox, with no email or SMS in the
+   sandbox. The daily digest email (FR-023) arrives with the outbox in Story 6 (see plan.md
+   Complexity Tracking).
+3. Pause that second box, then publish a package only it would fit. Ridge is not matched.
 4. As `morgan@example.com` → **Import investors** → upload `seed/legacy-investors.csv`. The summary
    shows 26 imported and 4 rejected, each with a row reason. Each imported investor has one
    buy box named "Legacy Import", marked default. Import the file again: 0 imported, 26

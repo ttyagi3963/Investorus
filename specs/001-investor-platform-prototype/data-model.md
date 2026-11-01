@@ -390,7 +390,7 @@ visible only to that investor.
 | type | `ACCEPT` \| `COUNTER` \| `DECLINE_ALL` | |
 | offerId | cuid? | required for ACCEPT and COUNTER |
 | actorUserId | cuid | the agent or ops user |
-| note | string? | |
+| note | string? 🔒 | free text the agent writes, so it may hold seller details; encrypted like the seller columns and shown only to the agent |
 
 ### Deal
 | Field | Type | Rules |
@@ -399,7 +399,7 @@ visible only to that investor.
 | packageId | cuid → ListingPackage | |
 | offerId | cuid → Offer | unique |
 | status | DealStatus | see below |
-| fellThroughReason | string? | required when FELL_THROUGH |
+| fellThroughReason | string? 🔒 | required when FELL_THROUGH; free text, so encrypted like the seller columns and shown only to the agent |
 | promotedFromBackup | boolean | |
 | reconfirmBy | timestamptz? | set while PENDING_RECONFIRMATION (now + 48 h, config) |
 | version | int | |

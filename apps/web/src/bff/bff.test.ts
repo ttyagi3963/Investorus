@@ -2,7 +2,8 @@
 // Guards the BFF's rules (T262, research R12): a state-changing request from another origin is
 // refused before it reaches the api (CSRF); the session token travels only in an HTTP-only cookie
 // and is forwarded as a bearer token; the api's answer comes back unchanged; and every call to the
-// api carries one trace ID, the caller's when its `traceparent` is valid (T283).
+// api carries one trace ID, the caller's when its `traceparent` is valid (T283), and the caller's
+// Idempotency-Key (T285).
 import { describe, expect, it, vi } from "vitest";
 import { forwardToApi } from "./proxy";
 import { signIn, signOut } from "./session";
@@ -61,6 +62,23 @@ describe("forwardToApi", () => {
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer tok123");
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Package not found", code: "NOT_FOUND" });
+  });
+});
+
+describe("forwarding", () => {
+  it("passes the caller's Idempotency-Key to the api", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "p1" }, 201));
+    await forwardToApi(
+      fromSite("/bff/listing-packages", {
+        method: "POST",
+        headers: { "Idempotency-Key": "action-1", "Content-Type": "application/json" },
+        body: "{}",
+      }),
+      ["listing-packages"],
+      { apiUrl: API, fetch },
+    );
+    const [, init] = fetch.mock.calls[0] as [string, RequestInit];
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("action-1");
   });
 });
 

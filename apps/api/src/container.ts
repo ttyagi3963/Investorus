@@ -8,6 +8,7 @@ import {
   PhotoService,
   type IAuthService,
   type IErrorReporter,
+  type IIdempotencyStore,
   type IListingPackageService,
   type IPhotoService,
 } from "@clever/core";
@@ -37,6 +38,8 @@ export type AppContainer = Readonly<{
   /** A package's view, with each photo's short-lived read link signed. */
   presentPackage: (parts: AgentPackageParts) => Promise<AgentPackageView>;
   checkDatabase: () => Promise<void>;
+  /** The Idempotency-Key store every POST and PATCH goes through (T285). */
+  idempotency: IIdempotencyStore;
   logger: Logger;
   reporter: IErrorReporter;
   dispose: () => Promise<void>;
@@ -84,6 +87,7 @@ export function createContainer(env: ApiEnv): AppContainer {
         ),
       }),
     checkDatabase: () => db.check(),
+    idempotency: db.idempotency,
     logger,
     reporter: new LogErrorReporterImpl(logger),
     dispose: () => db.dispose(),

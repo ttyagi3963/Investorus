@@ -24,19 +24,20 @@ enum Role {
 // A login account, signed in to by email (stored lowercase). CHECK User_role_link_check
 // (migration): an AGENT has agentId only, an INVESTOR has investorId only, OPS has neither.
 model User {
-  id            String         @id @default(cuid())
-  email         String         @unique
-  passwordHash  String
-  role          Role
-  displayName   String
-  agentId       String?        @unique
-  agent         Agent?         @relation(fields: [agentId], references: [id])
-  investorId    String?        @unique
-  investor      Investor?      @relation(fields: [investorId], references: [id])
-  active        Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  notifications Notification[]
+  id              String           @id @default(cuid())
+  email           String           @unique
+  passwordHash    String
+  role            Role
+  displayName     String
+  agentId         String?          @unique
+  agent           Agent?           @relation(fields: [agentId], references: [id])
+  investorId      String?          @unique
+  investor        Investor?        @relation(fields: [investorId], references: [id])
+  active          Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  notifications   Notification[]
+  idempotencyKeys IdempotencyKey[]
 }
 
 // The person behind an AGENT login; owns listing packages. Email is how the seed and ops find them.
@@ -476,4 +477,29 @@ model AuditLog {
   details       Json           @default("{}")
 
   @@index([entityType, entityId, occurredAt])
+}
+
+enum IdempotencyStatus {
+  IN_PROGRESS
+  DONE
+}
+
+// One Idempotency-Key a user sent with a POST or PATCH (T285; constitution XX.2), stored in
+// Postgres instead of Redis (plan.md Complexity Tracking). The first request claims the key
+// (IN_PROGRESS); its answer is stored (DONE) and replayed for a retry with the same body. A key
+// older than 24 hours is ignored and claimed again.
+model IdempotencyKey {
+  id             String            @id @default(cuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key            String
+  method         String
+  path           String
+  bodyHash       String
+  status         IdempotencyStatus @default(IN_PROGRESS)
+  responseStatus Int?
+  responseBody   Json?
+  createdAt      DateTime          @default(now())
+
+  @@unique([userId, key])
 }

@@ -1,7 +1,7 @@
 // The BFF proxy (T263): the browser calls `/bff/<path>`, and this forwards to the api's
 // `/api/v1/<path>` with the cookie's session token as a bearer token, so the token never reaches
 // browser code. A state-changing request from another origin is refused before the api sees it.
-// Each call carries the request's `traceparent` (T283).
+// Each call carries the request's `traceparent` (T283) and the caller's Idempotency-Key (T285).
 import { forbidden, passBackHeaders, sameOrigin, sessionToken, traceparentFor } from "./shared";
 
 export async function forwardToApi(
@@ -13,8 +13,10 @@ export async function forwardToApi(
   const send = deps.fetch ?? globalThis.fetch;
   const token = sessionToken(request);
   const headers = new Headers({ traceparent: traceparentFor(request) });
-  const contentType = request.headers.get("content-type");
-  if (contentType) headers.set("Content-Type", contentType);
+  for (const name of ["Content-Type", "Idempotency-Key"]) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   const target = `${deps.apiUrl}/api/v1/${path.map(encodeURIComponent).join("/")}${new URL(request.url).search}`;

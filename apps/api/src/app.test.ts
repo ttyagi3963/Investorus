@@ -24,6 +24,7 @@ const container: AppContainer = {
   photos: { requestUpload: unused, attach: unused, remove: unused },
   presentPackage: unused,
   checkDatabase: async () => {},
+  idempotency: { claim: unused, complete: unused, release: unused },
   logger: pino({ level: "silent" }),
   reporter: { report: () => {} },
   dispose: async () => {},

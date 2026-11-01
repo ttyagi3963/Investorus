@@ -1,12 +1,13 @@
 // The api app (T255): a fixed middleware order (the trace context, security headers, request
-// logging with tokens redacted, a 1 MB JSON limit, the session check), the routers at /api/v1, then
-// the 404 and the error translator. It takes a container, so tests can pass fakes.
+// logging with tokens redacted, a 1 MB JSON limit, the session check, idempotency), the routers at
+// /api/v1, then the 404 and the error translator. It takes a container, so tests can pass fakes.
 import express, { Router, type Express } from "express";
 import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import type { AppContainer } from "./container.js";
 import { authenticate } from "./middleware/authenticate.js";
 import { errorTranslator, notFound } from "./middleware/errors.js";
+import { idempotency } from "./middleware/idempotency.js";
 import { trace } from "./middleware/trace.js";
 import { createHealthRouter } from "./routes/health.router.js";
 import { createListingPackagesRouter } from "./routes/listing-packages.router.js";
@@ -21,6 +22,7 @@ export function createApp(c: AppContainer): Express {
   app.use(pinoHttp({ logger: c.logger, genReqId: (_req, res) => res.locals.traceId }));
   app.use(express.json({ limit: "1mb" }));
   app.use(authenticate(c.auth));
+  app.use(idempotency(c.idempotency, c.reporter));
 
   const v1 = Router();
   v1.use(createHealthRouter(c.checkDatabase));

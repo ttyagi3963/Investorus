@@ -66,12 +66,21 @@ importers:
       '@clever/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@testcontainers/postgresql':
+        specifier: ^12.2.1
+        version: 12.2.1
       '@types/express':
         specifier: ^5.0.6
         version: 5.0.6
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
       '@types/supertest':
         specifier: ^7.2.1
         version: 7.2.1
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
       supertest:
         specifier: ^7.3.1
         version: 7.3.1

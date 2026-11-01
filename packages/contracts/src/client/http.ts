@@ -1,6 +1,8 @@
 // The typed REST client base (T264): JSON in and out, and every non-2xx answer as an ApiError that
 // carries the api's code and the fields it named, so forms can show each error on its field. The
-// browser points it at the BFF (`/bff`), so browser code never handles the session token.
+// browser points it at the BFF (`/bff`), so browser code never handles the session token. Every
+// POST and PATCH carries an Idempotency-Key (T285): a fresh one per call, or the caller's, so the
+// retries of one action share a key.
 
 export type FieldError = { field: string; message: string };
 
@@ -23,9 +25,24 @@ export class ApiError extends Error {
   }
 }
 
+export type RequestOptions = { idempotencyKey?: string };
+
 export type ApiClient = {
-  request<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T>;
+  request<T>(
+    method: "GET" | "POST" | "PATCH" | "DELETE",
+    path: string,
+    body?: unknown,
+    options?: RequestOptions,
+  ): Promise<T>;
 };
+
+const KEYED_METHODS = new Set(["POST", "PATCH"]);
+
+/** 128 random bits as hex; Web Crypto, which browsers also offer on plain-HTTP pages. */
+const newIdempotencyKey = () =>
+  Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
+    b.toString(16).padStart(2, "0"),
+  ).join("");
 
 /** The api's `{ error, code, details }`, or nothing when a failed answer is not JSON (an outage). */
 function errorBody(text: string): ConstructorParameters<typeof ApiError>[1] {
@@ -42,10 +59,19 @@ export function createApiClient(options: {
 }): ApiClient {
   const send = options.fetch ?? globalThis.fetch;
   return {
-    async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    async request<T>(
+      method: string,
+      path: string,
+      body?: unknown,
+      { idempotencyKey }: RequestOptions = {},
+    ): Promise<T> {
+      const headers: Record<string, string> = {};
+      if (body !== undefined) headers["Content-Type"] = "application/json";
+      if (KEYED_METHODS.has(method))
+        headers["Idempotency-Key"] = idempotencyKey ?? newIdempotencyKey();
       const res = await send(`${options.baseUrl}${path}`, {
         method,
-        headers: body === undefined ? {} : { "Content-Type": "application/json" },
+        headers,
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       const text = await res.text();

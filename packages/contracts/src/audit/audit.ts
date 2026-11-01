@@ -26,6 +26,7 @@ export const AUDIT_ACTIONS = [
   "BACKUP_RECONFIRMED",
   "RECONFIRMATION_DECLINED",
   "PII_ACCESSED",
+  "BUY_BOX_SAVED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

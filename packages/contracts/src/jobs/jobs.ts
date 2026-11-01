@@ -6,6 +6,7 @@ import { MATCH_TRIGGERS } from "../match/match.js";
 
 export const JOB_TYPES = [
   "MATCH_PACKAGE",
+  "MATCH_BUY_BOX",
   "CLOSE_OFFER_ROUND",
   "EXPIRE_OFFER",
   "EXPIRE_RECONFIRMATION",
@@ -39,6 +40,13 @@ export const matchPackagePayloadSchema = z.object({
   trigger: z.enum(MATCH_TRIGGERS),
 });
 export type MatchPackagePayload = z.infer<typeof matchPackagePayloadSchema>;
+
+/** MATCH_BUY_BOX: match one saved version of a buy box against every package taking offers. */
+export const matchBuyBoxPayloadSchema = z.object({
+  buyBoxId: z.string().min(1),
+  version: z.number().int().positive(),
+});
+export type MatchBuyBoxPayload = z.infer<typeof matchBuyBoxPayloadSchema>;
 
 /** CLOSE_OFFER_ROUND: end a round's offers at its deadline (the deadline names which one). */
 export const closeOfferRoundPayloadSchema = z.object({

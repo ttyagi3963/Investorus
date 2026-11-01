@@ -36,6 +36,8 @@ export interface IListingPackageRepository {
   /** For the system (matching), never for a request: it does not check the agent. */
   findById(id: string): Promise<ListingPackage | null>;
   listByAgent(agentId: string): Promise<ListingPackage[]>;
+  /** For the system (matching a saved buy box): packages taking offers whose deadline is after `now`. */
+  listOpenForOffers(now: Date): Promise<ListingPackage[]>;
   /**
    * The active package that already has this address, whichever agent owns it (the FR-013
    * block). A withdrawn package does not count.

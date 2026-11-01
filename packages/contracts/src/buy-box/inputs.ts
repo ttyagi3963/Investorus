@@ -38,3 +38,8 @@ export const buyBoxInputSchema = z
     }
   });
 export type BuyBoxInput = z.infer<typeof buyBoxInputSchema>;
+
+/** PUT /investor/buy-boxes/:id: the whole box again, naming the version the investor read. */
+export const updateBuyBoxInputSchema = buyBoxInputSchema.and(
+  z.object({ version: z.number().int().positive() }),
+);

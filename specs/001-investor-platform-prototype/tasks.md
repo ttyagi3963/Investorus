@@ -336,7 +336,7 @@ personal details are encrypted in the database, and nothing goes out to investor
 
 ### PR: seed
 
-- [ ] T260 Seed the demo agent: seed/fixtures/agents.json (Avery Agent, `avery@example.com`, a brokerage), packages/core/prisma/seed/index.ts and baseline.ts (upsert the Agent and its AGENT user by email, password `demo1234` hashed with bcryptjs), registered as `migrations.seed` in packages/core/prisma.config.ts, and the seed step back in packages/core/scripts/migrate-and-seed.mjs; plus an integration test that runs the seed twice and finds one agent and one user that can sign in (from T096, T098, and T099; the other fixtures stay there)
+- [X] T260 Seed the demo agent: `seedDemoAccounts` in packages/core/src/infra/seed/seed.ts upserts the Agent and its AGENT user by email (Avery Agent, `avery@example.com`, Demo Realty; password `demo1234`, stored as a bcrypt hash), and packages/core/src/infra/seed/run.ts runs it against `DATABASE_URL`. It is compiled with core (the migrate image has no TypeScript runner), so packages/core/scripts/migrate-and-seed.mjs runs `node dist/infra/seed/run.js` after the migrations, and `pnpm db:seed` runs it locally. Plus an integration test that seeds twice, finds one agent and one user, and signs in through AuthService (from T096, T098, and T099; the other fixtures, `seed/fixtures/`, and the modular seed stay there)
 
 ### PR: api (apps/api)
 
@@ -460,6 +460,8 @@ rehearsal on `main`).
 - [ ] T065 Write the provider tests in packages/core/src/providers/sandbox-http.test.ts (mocked fetch): a call over 5 s → InfrastructureError; a malformed body → InfrastructureError; a 503 → InfrastructureError with retryable=true; CRM 409 `{ code: "STALE" }` → `{ result: "STALE" }`; every request sends `Idempotency-Key` (Sprint 1 part split out as T251)
 - [ ] T066 Implement the shared `sandboxRequest()` helper (5 s AbortSignal timeout, Zod-validated response, InfrastructureError mapping) in packages/core/src/providers/sandbox-http.ts, then `SandboxCrmProviderImpl`, `SandboxCrmMirrorReaderImpl`, `SandboxMessagingProviderImpl`, `SandboxStorageProviderImpl` (`createUpload` returns `{ url: PUBLIC_SANDBOX_URL/storage/objects/:key?sig=&exp=, method: "PUT", headers: { "Content-Type" }, expiresAt }`, signed with HMAC-SHA256; `exists`, `read`, and `put` use `SANDBOX_INTERNAL_TOKEN`), and `SandboxSimulationProviderImpl` in their port folders under packages/core/src/providers/ (depends on T065) (Sprint 1 part split out as T251)
 - [ ] T068 Fill the barrels: packages/core/src/index.ts (ports, services, workflows, domain types, errors, `redactPii`, translators — no `*Impl`) and packages/core/src/adapters.ts (every `*Impl`, `createPrismaClient`, `createRedisClient`, `createLogger`)
+
+- [ ] T274 [P] Add `S3StorageProviderImpl` in packages/core/src/providers/storage/ (owner: after Sprint 1, decided 2026-11-01): `createUpload` → a presigned `PUT` with `Content-Type` and `Content-Length` signed in; `getReadUrl` → a presigned `GET`; `stat` → `HeadObject` (null on 404); selected by `STORAGE_PROVIDER=s3` in the api container, with `S3_BUCKET` and `S3_REGION` checked only then; credentials from the environment, never in the committed `.env`; a unit test with a mocked S3 client, so CI needs no AWS; and a README note on switching
 
 ### Sandbox app (apps/sandbox, port 4100)
 

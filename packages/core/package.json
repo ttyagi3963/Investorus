@@ -27,7 +27,8 @@
     "test": "vitest run",
     "test:integration": "prisma generate && vitest run --config vitest.integration.config.ts",
     "db:check": "node scripts/prisma-check.mjs",
-    "generate": "prisma generate"
+    "generate": "prisma generate",
+    "db:seed": "node dist/infra/seed/run.js"
   },
   "dependencies": {
     "@clever/contracts": "workspace:*",

@@ -1,0 +1,25 @@
+{
+  "about": "T299: the sample listing the demo agent publishes, and which seeded buy boxes match it. The seed test checks the seed against this file; the reviewer walkthrough uses the same listing.",
+  "today": "2026-11-01",
+  "listing": {
+    "zip": "78704",
+    "state": "TX",
+    "propertyType": "SINGLE_FAMILY",
+    "priceExpectationMax": 300000,
+    "yearBuilt": 1985,
+    "beds": 3,
+    "baths": 2,
+    "sqft": 1600,
+    "units": null,
+    "condition": "FAIR",
+    "repairEstimate": 25000,
+    "closingWindowStart": "2026-11-20",
+    "closingWindowEnd": "2026-12-15",
+    "currentlyListed": false,
+    "eligiblePrograms": ["CASH_OFFER"]
+  },
+  "matches": {
+    "summit@example.com": ["Austin flips", "Texas rentals"],
+    "harbor@example.com": ["Anywhere"]
+  }
+}

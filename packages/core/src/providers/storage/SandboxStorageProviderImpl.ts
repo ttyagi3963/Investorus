@@ -1,6 +1,7 @@
 // Storage on the sandbox (T251). Links are HMAC-SHA256 signed with STORAGE_SIGNING_KEY over
-// "<METHOD>\n<key>\n<contentType>\n<maxBytes>\n<exp>" (contracts/providers.md), the same string
-// the sandbox checks, so a link cannot be reused for another object, type, size, or time.
+// "<METHOD>\n<key>\n<contentType>\n<sizeBytes>\n<exp>" (contracts/providers.md), the same string
+// the sandbox checks, so a link cannot be reused for another object, type, size, or time; the sandbox
+// accepts exactly that many bytes, as S3 does.
 import { createHmac } from "node:crypto";
 import type { UploadInstruction } from "@clever/contracts/photo";
 import { z } from "zod";
@@ -35,18 +36,22 @@ export class SandboxStorageProviderImpl implements IStorageProvider {
     this.fetch = options.fetch ?? globalThis.fetch;
   }
 
-  createUpload(key: string, contentType: string, maxBytes: number): UploadInstruction {
+  async createUpload(
+    key: string,
+    contentType: string,
+    sizeBytes: number,
+  ): Promise<UploadInstruction> {
     const exp = this.expiry(UPLOAD_SECONDS);
-    const sig = this.sign("PUT", key, contentType, maxBytes, exp);
+    const sig = this.sign("PUT", key, contentType, sizeBytes, exp);
     return {
-      url: `${this.objectUrl(key)}?max=${maxBytes}&exp=${exp}&sig=${sig}`,
+      url: `${this.objectUrl(key)}?size=${sizeBytes}&exp=${exp}&sig=${sig}`,
       method: "PUT",
       headers: { "Content-Type": contentType },
       expiresAt: new Date(exp * 1000).toISOString(),
     };
   }
 
-  getReadUrl(key: string): string {
+  async getReadUrl(key: string): Promise<string> {
     const exp = this.expiry(READ_SECONDS);
     return `${this.objectUrl(key)}?exp=${exp}&sig=${this.sign("GET", key, "", 0, exp)}`;
   }
@@ -77,9 +82,9 @@ export class SandboxStorageProviderImpl implements IStorageProvider {
     return Math.floor(this.options.clock.now().getTime() / 1000) + seconds;
   }
 
-  private sign(method: string, key: string, contentType: string, maxBytes: number, exp: number) {
+  private sign(method: string, key: string, contentType: string, sizeBytes: number, exp: number) {
     return createHmac("sha256", this.options.signingKey)
-      .update(`${method}\n${key}\n${contentType}\n${maxBytes}\n${exp}`)
+      .update(`${method}\n${key}\n${contentType}\n${sizeBytes}\n${exp}`)
       .digest("hex");
   }
 }

@@ -60,7 +60,12 @@ services:
       context: .
       target: api
     image: investor-platform-api:local
-    env_file: .env
+    # .env.local is optional and never committed: it can switch storage to S3 with your own bucket
+    # and AWS keys (README, "Using S3"). Without it, everything runs on the sandbox.
+    env_file:
+      - .env
+      - path: .env.local
+        required: false
     depends_on:
       migrate:
         condition: service_completed_successfully

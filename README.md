@@ -43,10 +43,33 @@ Every demo account uses the password **`demo1234`**. The seed creates them autom
 | Investor | `ridge@example.com` | A deliberately narrow buy box (often not matched) |
 | Operations | `morgan@example.com` | Timelines, deliveries, and recovery from outages |
 
-> **Status:** the startup above works today. Sprint 1 adds the sign-in screen (pre-filled with
-> the demo agent) and the agent's listing packages; the other accounts arrive with their
-> features (see the Sprint 1 section of
-> [tasks.md](specs/001-investor-platform-prototype/tasks.md)).
+> **Status:** Sprint 1 is in. Open <http://localhost:3000/login>; it is pre-filled with the demo
+> agent. Sign in, then build, edit, and add photos to draft listing packages. The other accounts
+> arrive with their features (see [tasks.md](specs/001-investor-platform-prototype/tasks.md)).
+
+## Using S3 (optional)
+
+Photos go to the sandbox's storage by default. To use your own S3 bucket instead, create
+`.env.local` next to `.env`. Git and Docker builds ignore it, so your keys stay on your machine.
+
+```sh
+STORAGE_PROVIDER=s3
+S3_BUCKET=<your bucket>
+S3_REGION=<its region, for example us-west-1>
+AWS_ACCESS_KEY_ID=<your key id>
+AWS_SECRET_ACCESS_KEY=<your secret>
+```
+
+The bucket needs:
+
+- **Block all public access** turned on. Every link the app hands out is signed and expires.
+- **A CORS rule** that allows `PUT` and `GET` from `http://localhost:3000` with the
+  `Content-Type` header, because the browser uploads straight to the bucket.
+- **An IAM user** with `s3:PutObject` and `s3:GetObject` on `<bucket>/*`, and `s3:ListBucket`
+  on the bucket. Without `s3:ListBucket`, S3 answers 403 instead of 404 for an object that was
+  never uploaded.
+
+Run `docker compose up --build`. Delete `.env.local` to go back to the sandbox.
 
 ## Development
 

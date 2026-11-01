@@ -13,4 +13,5 @@ export {
   type AgentPackageParts,
   type AgentPackageSummary,
   type AgentPackageView,
+  type SignedAgentPackageParts,
 } from "./views.js";

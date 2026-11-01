@@ -14,6 +14,11 @@ export type AgentPackageParts = {
   photos: Photo[];
 };
 
+/** The parts with each photo's read link already signed (signing is async; this mapper is not). */
+export type SignedAgentPackageParts = Omit<AgentPackageParts, "photos"> & {
+  photos: (Photo & { url: string })[];
+};
+
 export type AgentPackageView = {
   id: string;
   status: PackageStatus;
@@ -40,10 +45,7 @@ export type AgentPackageSummary = {
   updatedAt: string;
 };
 
-export function toAgentPackageView(
-  parts: AgentPackageParts,
-  photoUrl: (storageKey: string) => string,
-): AgentPackageView {
+export function toAgentPackageView(parts: SignedAgentPackageParts): AgentPackageView {
   const { package: pkg, seller, property: p, photos } = parts;
   return {
     id: pkg.id,
@@ -75,7 +77,7 @@ export function toAgentPackageView(
         position: photo.position,
         contentType: photo.contentType,
         sizeBytes: photo.sizeBytes,
-        url: photoUrl(photo.storageKey),
+        url: photo.url,
       })),
     createdAt: pkg.createdAt.toISOString(),
     updatedAt: pkg.updatedAt.toISOString(),

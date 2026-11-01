@@ -11,6 +11,8 @@ export interface IBuyBoxRepository {
   /** The investor's boxes, the default first, then oldest first. */
   listForInvestor(investorId: string): Promise<BuyBox[]>;
   findById(id: string): Promise<BuyBox | null>;
+  /** The investor's default box, the one the legacy import keeps, or null. */
+  findDefault(investorId: string): Promise<BuyBox | null>;
   /**
    * The box at exactly this version, if it can match now: ACTIVE, of an ACTIVE investor whose
    * proof of funds runs past `now`. Otherwise null.

@@ -1,7 +1,7 @@
 // The stand-in object storage (T252; contracts/providers.md). The browser uploads and reads with
 // links signed by core's SandboxStorageProviderImpl over "<METHOD>\n<key>\n<type>\n<size>\n<exp>",
 // and an upload must be exactly <size> bytes, as with a presigned S3 PUT. The api checks an
-// upload on the internal route with the shared token. Objects are files on the
+// upload, and the worker reads an uploaded file, on the internal routes with the shared token. Objects are files on the
 // SANDBOX_STORAGE_DIR volume, named by a hash of the key so no key can reach outside it.
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
@@ -86,6 +86,19 @@ export function storageRoutes(config: StorageConfig): Router {
     const key = String(req.params.key);
     const meta = await readMeta(key);
     if (!meta) return void res.status(404).json({ error: "Not found" });
+    res
+      .status(200)
+      .type(meta.contentType)
+      .send(await readFile(file(key)));
+  });
+
+  router.get("/internal/storage/objects/:key", async (req, res) => {
+    if (!sameSecret(String(req.headers["x-sandbox-token"] ?? ""), config.internalToken)) {
+      return void res.status(401).end();
+    }
+    const key = String(req.params.key);
+    const meta = await readMeta(key);
+    if (!meta) return void res.status(404).end();
     res
       .status(200)
       .type(meta.contentType)

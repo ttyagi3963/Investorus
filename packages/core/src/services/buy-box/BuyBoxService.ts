@@ -6,17 +6,15 @@
 import type { Actor } from "@clever/contracts/auth";
 import {
   buyBoxInputSchema,
-  CRITERIA,
-  CRITERION_KEYS,
   updateBuyBoxInputSchema,
   type BuyBox,
   type BuyBoxInput,
 } from "@clever/contracts/buy-box";
-import type { MatchBuyBoxPayload } from "@clever/contracts/jobs";
 import { ForbiddenError, NotFoundError } from "@clever/contracts/common";
 import type { IGeoProvider } from "../../providers/geo/IGeoProvider.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { checkZips } from "./check-zips.js";
+import { keepVersionAndMatch, matchingTermsOf } from "./keep-version.js";
 
 export interface IBuyBoxService {
   list(actor: Actor): Promise<BuyBox[]>;
@@ -26,16 +24,6 @@ export interface IBuyBoxService {
 }
 
 const NOT_FOUND = "Buy box not found";
-
-/** Every field a criterion owns, from the registry, so a new criterion is compared too. */
-const CRITERION_FIELDS = CRITERION_KEYS.flatMap((key) => Object.keys(CRITERIA[key].fields));
-
-function criteriaOf(box: BuyBox): string {
-  const values = Object.fromEntries(
-    CRITERION_FIELDS.map((field) => [field, box[field as keyof BuyBox]]),
-  );
-  return JSON.stringify({ ...values, geography: [...box.geography].sort() });
-}
 
 function investorOf(actor: Actor): string {
   if (actor.role !== "INVESTOR") throw new ForbiddenError("Only investors manage buy boxes");
@@ -75,8 +63,7 @@ export class BuyBoxService implements IBuyBoxService {
     return this.uow.run(async (repos) => {
       const before = await this.own(repos, investorId, id);
       const after = await repos.buyBoxes.update(id, version, box);
-      const changed = after.status !== before.status || criteriaOf(after) !== criteriaOf(before);
-      await this.saved(repos, actor, after, changed);
+      await this.saved(repos, actor, after, matchingTermsOf(after) !== matchingTermsOf(before));
       return after;
     });
   }
@@ -94,16 +81,7 @@ export class BuyBoxService implements IBuyBoxService {
 
   /** The new version's snapshot and audit entry, and matching when it can find something new. */
   private async saved(repos: UnitOfWorkRepositories, actor: Actor, box: BuyBox, changed: boolean) {
-    await repos.buyBoxes.appendVersion(box, actor.userId);
-    const match = changed && box.status === "ACTIVE";
-    if (match) {
-      const payload: MatchBuyBoxPayload = { buyBoxId: box.id, version: box.version };
-      await repos.jobs.enqueue({
-        type: "MATCH_BUY_BOX",
-        dedupeKey: `MATCH_BUY_BOX:${box.id}:${box.version}`,
-        payload,
-      });
-    }
+    const match = await keepVersionAndMatch(repos, box, { changed, createdBy: actor.userId });
     await repos.audit.append({
       actorType: "USER",
       actorId: actor.userId,

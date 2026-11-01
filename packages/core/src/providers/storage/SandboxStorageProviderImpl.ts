@@ -57,8 +57,7 @@ export class SandboxStorageProviderImpl implements IStorageProvider {
   }
 
   async stat(key: string): Promise<StoredObject | null> {
-    const url = `${this.options.internalUrl}/internal/storage/objects/${encodeURIComponent(key)}`;
-    const res = await sandboxRequest(this.fetch, url, {
+    const res = await sandboxRequest(this.fetch, this.internalObjectUrl(key), {
       method: "HEAD",
       headers: { "x-sandbox-token": this.options.internalToken },
     });
@@ -72,6 +71,21 @@ export class SandboxStorageProviderImpl implements IStorageProvider {
     if (!parsed.success)
       throw new InfrastructureError("The sandbox sent a malformed storage check", 502);
     return parsed.data;
+  }
+
+  async read(key: string): Promise<Buffer | null> {
+    const res = await sandboxRequest(this.fetch, this.internalObjectUrl(key), {
+      method: "GET",
+      headers: { "x-sandbox-token": this.options.internalToken },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok)
+      throw new InfrastructureError(`The sandbox refused a storage read (${res.status})`, 502);
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  private internalObjectUrl(key: string): string {
+    return `${this.options.internalUrl}/internal/storage/objects/${encodeURIComponent(key)}`;
   }
 
   private objectUrl(key: string): string {

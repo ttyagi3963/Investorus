@@ -70,6 +70,7 @@ describe("publish and match", () => {
       matching: new MatchingWorkflow(uow, { clock }),
       offerRound: new OfferRoundWorkflow(uow),
       deals: new DealLifecycleWorkflow(uow, { clock }),
+      imports: { run: () => Promise.reject(new Error("No imports in this test")) },
     });
     const inDays = (days: number) =>
       new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);

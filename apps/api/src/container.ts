@@ -4,8 +4,10 @@
 // IDatabase, T276), and STORAGE_PROVIDER picks the sandbox or S3 behind the storage port (T275).
 import {
   AuthService,
+  BuyBoxService,
   DealLifecycleWorkflow,
   DecisionWorkflow,
+  InvestorImportWorkflow,
   InvestorPackageQueryService,
   ListingPackageService,
   NotificationService,
@@ -14,10 +16,12 @@ import {
   PhotoService,
   PublicationWorkflow,
   type IAuthService,
+  type IBuyBoxService,
   type IDealLifecycleWorkflow,
   type IDecisionWorkflow,
   type IErrorReporter,
   type IIdempotencyStore,
+  type IInvestorImportWorkflow,
   type IInvestorPackageQueryService,
   type IListingPackageService,
   type INotificationService,
@@ -57,6 +61,8 @@ export type AppContainer = Readonly<{
   decisions: IDecisionWorkflow;
   deals: IDealLifecycleWorkflow;
   notifications: INotificationService;
+  buyBoxes: IBuyBoxService;
+  investorImports: IInvestorImportWorkflow;
   /** A package's view, with each photo's short-lived read link signed. */
   presentPackage: (parts: AgentPackageParts) => Promise<AgentPackageView>;
   /** Each photo with its short-lived read link signed. */
@@ -92,6 +98,8 @@ export function createContainer(env: ApiEnv): AppContainer {
           clock,
         });
 
+  const geo = new StaticGeoProviderImpl();
+
   const signPhotos: SignPhotos = (photos) =>
     Promise.all(
       photos.map(async (photo) => ({ ...photo, url: await storage.getReadUrl(photo.storageKey) })),
@@ -100,7 +108,7 @@ export function createContainer(env: ApiEnv): AppContainer {
   return Object.freeze({
     auth: new AuthService(uow, { jwtSecret: env.JWT_SECRET, clock }),
     packages: new ListingPackageService(uow, {
-      geo: new StaticGeoProviderImpl(),
+      geo,
       addressHash: createAddressHasher(env.ADDRESS_HASH_KEY),
       clock,
     }),
@@ -112,6 +120,8 @@ export function createContainer(env: ApiEnv): AppContainer {
     decisions: new DecisionWorkflow(uow, { clock }),
     deals: new DealLifecycleWorkflow(uow, { clock }),
     notifications: new NotificationService(uow, { clock }),
+    buyBoxes: new BuyBoxService(uow, { geo }),
+    investorImports: new InvestorImportWorkflow(uow, { storage, geo, clock }),
     presentPackage: async (parts) =>
       toAgentPackageView({ ...parts, photos: await signPhotos(parts.photos) }),
     signPhotos,

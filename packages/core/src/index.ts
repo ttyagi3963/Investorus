@@ -47,6 +47,7 @@ export {
   type InvestorPackage,
 } from "./services/investor-package/InvestorPackageQueryService.js";
 export { OfferService, type IOfferService } from "./services/offer/OfferService.js";
+export { BuyBoxService, type IBuyBoxService } from "./services/buy-box/BuyBoxService.js";
 export {
   OfferComparisonService,
   type ComparisonEntry,

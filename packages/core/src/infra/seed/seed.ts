@@ -1,9 +1,11 @@
-// The demo data the reviewer signs in with (T260, T299, T314): two agents, five investors with their
-// buy boxes, and a login for each, upserted by email (boxes by investor and name), so running it on
-// every `docker compose up` adds nothing. Blake's deal demo is in deal-demo.ts. The password is a demo value listed in the README; it is
+// The demo data the reviewer signs in with (T260, T299, T314, T323): two agents, five investors with
+// their buy boxes, an operations login, and a login for each, upserted by email (boxes by investor
+// and name), so running it on every `docker compose up` adds nothing. Each seeded box gets its
+// version snapshot, as a save would write. Blake's deal demo is in deal-demo.ts. The password is a demo value listed in the README; it is
 // stored only as a bcrypt hash. expected-matches.json records which boxes match the sample listing.
 import bcrypt from "bcryptjs";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
+import { toBuyBox } from "../../repositories/buy-box/buy-box.mapper.js";
 
 export const DEMO_PASSWORD = "demo1234";
 
@@ -101,6 +103,8 @@ const DEMO_INVESTORS: {
   },
 ];
 
+const DEMO_OPS = { email: "morgan@example.com", displayName: "Morgan Ops" } as const;
+
 const YEAR = 365 * 24 * 60 * 60 * 1_000;
 
 export async function seedDemoAccounts(prisma: PrismaClient): Promise<void> {
@@ -123,6 +127,12 @@ export async function seedDemoAccounts(prisma: PrismaClient): Promise<void> {
       update: {},
     });
   }
+
+  await prisma.user.upsert({
+    where: { email: DEMO_OPS.email },
+    create: { ...DEMO_OPS, passwordHash, role: "OPS" },
+    update: {},
+  });
 
   for (const { email, companyName, contactName, boxes } of DEMO_INVESTORS) {
     const investor = await prisma.investor.upsert({
@@ -166,4 +176,16 @@ export async function seedDemoAccounts(prisma: PrismaClient): Promise<void> {
       }
     }
   }
+}
+
+/** Every seeded box's current version as a snapshot, once (the deal demo's boxes included). */
+export async function seedBuyBoxVersions(prisma: PrismaClient): Promise<void> {
+  const rows = await prisma.buyBox.findMany({ include: { geography: true } });
+  await prisma.buyBoxVersion.createMany({
+    data: rows.map((row) => {
+      const { id, investorId: _investorId, version, ...snapshot } = toBuyBox(row);
+      return { buyBoxId: id, version, snapshot };
+    }),
+    skipDuplicates: true,
+  });
 }

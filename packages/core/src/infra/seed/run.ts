@@ -7,7 +7,7 @@ import { AesGcmPiiCipherImpl } from "../../providers/pii-cipher/AesGcmPiiCipherI
 import { createAddressHasher } from "../../providers/pii-cipher/address-hasher.js";
 import { createPrismaClient } from "../prisma-client.js";
 import { seedConfig, seedDealDemo } from "./deal-demo.js";
-import { seedDemoAccounts } from "./seed.js";
+import { seedBuyBoxVersions, seedDemoAccounts } from "./seed.js";
 
 const env = z
   .object({
@@ -30,6 +30,7 @@ try {
     cipher: new AesGcmPiiCipherImpl(env.data.PII_ENCRYPTION_KEY),
     addressHash: createAddressHasher(env.data.ADDRESS_HASH_KEY),
   });
+  await seedBuyBoxVersions(prisma);
   process.stdout.write("seed: demo accounts, config, and the deal demo ready\n");
 } finally {
   await prisma.$disconnect();

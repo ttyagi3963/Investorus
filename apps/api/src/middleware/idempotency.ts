@@ -1,4 +1,4 @@
-// Idempotency for every POST and PATCH a signed-in user sends (T285; constitution XX.2): the first
+// Idempotency for every POST, PUT, and PATCH a signed-in user sends (T285, T323; XX.2): the first
 // request with a key runs and its answer is stored; a retry with the same key and body gets that
 // answer back (`Idempotent-Replay: true`) without running the change again. A duplicate sent while
 // the first still runs gets 409 (`Retry-After: 1`), the key with another body 422, and a key store
@@ -9,7 +9,7 @@ import { BusinessRuleError, DomainError, ValidationError } from "@clever/contrac
 import { InfrastructureError, type IErrorReporter, type IIdempotencyStore } from "@clever/core";
 import type { RequestHandler } from "express";
 
-const COVERED_METHODS = new Set(["POST", "PATCH"]);
+const COVERED_METHODS = new Set(["POST", "PUT", "PATCH"]);
 const MAX_KEY_LENGTH = 255;
 
 /** 422: the key was already used for a different request. */
@@ -25,7 +25,7 @@ export function idempotency(store: IIdempotencyStore, reporter: IErrorReporter):
     if (!key || key.length > MAX_KEY_LENGTH) {
       return next(
         new ValidationError(
-          `Send an Idempotency-Key header (up to ${MAX_KEY_LENGTH} characters) with every POST and PATCH`,
+          `Send an Idempotency-Key header (up to ${MAX_KEY_LENGTH} characters) with every POST, PUT, and PATCH`,
         ),
       );
     }

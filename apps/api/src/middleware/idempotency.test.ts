@@ -1,6 +1,7 @@
 // Pins how the idempotency middleware settles a claimed key (T285, XX.2): every way a route answers,
-// a 204 included, completes the key; and when storing the answer fails, the answer is still sent,
-// because the change already ran, and the failure is reported.
+// a 204 included, completes the key; when storing the answer fails, the answer is still sent,
+// because the change already ran, and the failure is reported; and a PUT is covered like a POST, so
+// a retried buy box save replays its answer instead of saving again (T323).
 import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
@@ -21,6 +22,29 @@ function appWith(complete: (...args: unknown[]) => Promise<void>, report: () => 
 }
 
 describe("idempotency middleware", () => {
+  it("replays a retried PUT without running the route again", async () => {
+    const save = vi.fn((_req: express.Request, res: express.Response) => void res.json({ v: 2 }));
+    const app = express();
+    app.use(express.json());
+    app.use((_req, res, next) => {
+      res.locals.actor = { userId: "user-r", role: "INVESTOR", investorId: "investor-r" };
+      next();
+    });
+    const store = {
+      claim: async () => ({ kind: "replay" as const, status: 200, body: JSON.stringify({ v: 2 }) }),
+      complete: vi.fn(),
+      release: vi.fn(),
+    };
+    app.use(idempotency(store, { report: vi.fn() }));
+    app.put("/buy-boxes/b1", save);
+
+    await request(app).put("/buy-boxes/b1").send({}).expect(400);
+    const res = await request(app).put("/buy-boxes/b1").set("Idempotency-Key", "k4").send({});
+    expect(res.status).toBe(200);
+    expect(res.headers["idempotent-replay"]).toBe("true");
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it("completes the key for a JSON answer and for an empty one", async () => {
     const complete = vi.fn().mockResolvedValue(undefined);
     const app = appWith(complete, vi.fn());

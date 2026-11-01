@@ -8,7 +8,7 @@ import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPrismaClient, type PrismaClient } from "../src/infra/prisma-client.js";
 import { seedConfig, seedDealDemo } from "../src/infra/seed/deal-demo.js";
-import { DEMO_PASSWORD, seedDemoAccounts } from "../src/infra/seed/seed.js";
+import { DEMO_PASSWORD, seedBuyBoxVersions, seedDemoAccounts } from "../src/infra/seed/seed.js";
 import { createAddressHasher } from "../src/providers/pii-cipher/address-hasher.js";
 import expected from "../src/infra/seed/expected-matches.json" with { type: "json" };
 import { evaluateBuyBox } from "../src/registry/evaluate-buy-box.js";
@@ -36,12 +36,15 @@ afterAll(async () => {
 describe("seed", () => {
   it("can run twice without duplicates, and the demo agent can sign in", async () => {
     await seedDemoAccounts(prisma);
+    await seedBuyBoxVersions(prisma);
     await seedDemoAccounts(prisma);
+    await seedBuyBoxVersions(prisma);
     const counts = await db.query(
       `SELECT (SELECT count(*) FROM "Agent")::int AS agents, (SELECT count(*) FROM "User")::int AS users,
-              (SELECT count(*) FROM "Investor")::int AS investors, (SELECT count(*) FROM "BuyBox")::int AS boxes`,
+              (SELECT count(*) FROM "Investor")::int AS investors, (SELECT count(*) FROM "BuyBox")::int AS boxes,
+              (SELECT count(*) FROM "BuyBoxVersion")::int AS versions`,
     );
-    expect(counts.rows[0]).toEqual({ agents: 2, users: 7, investors: 5, boxes: 6 });
+    expect(counts.rows[0]).toEqual({ agents: 2, users: 8, investors: 5, boxes: 6, versions: 6 });
 
     const uow = new PrismaUnitOfWorkImpl(
       prisma,

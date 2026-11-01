@@ -9,9 +9,11 @@ import { authenticate } from "./middleware/authenticate.js";
 import { errorTranslator, notFound } from "./middleware/errors.js";
 import { idempotency } from "./middleware/idempotency.js";
 import { trace } from "./middleware/trace.js";
+import { createBuyBoxesRouter } from "./routes/buy-boxes.router.js";
 import { createDealsRouter } from "./routes/deals.router.js";
 import { createDecisionsRouter } from "./routes/decisions.router.js";
 import { createHealthRouter } from "./routes/health.router.js";
+import { createInvestorImportsRouter } from "./routes/investor-imports.router.js";
 import { createInvestorRouter } from "./routes/investor.router.js";
 import { createListingPackagesRouter } from "./routes/listing-packages.router.js";
 import { createNotificationsRouter } from "./routes/notifications.router.js";
@@ -39,6 +41,8 @@ export function createApp(c: AppContainer): Express {
   v1.use(createDecisionsRouter(c.comparison, c.decisions));
   v1.use(createDealsRouter(c.deals));
   v1.use(createNotificationsRouter(c.notifications));
+  v1.use(createBuyBoxesRouter(c.buyBoxes));
+  v1.use(createInvestorImportsRouter(c.investorImports));
   app.use("/api/v1", v1);
 
   app.use(notFound);

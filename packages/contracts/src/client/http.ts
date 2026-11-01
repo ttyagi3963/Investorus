@@ -1,8 +1,8 @@
 // The typed REST client base (T264): JSON in and out, and every non-2xx answer as an ApiError that
 // carries the api's code and the fields it named, so forms can show each error on its field. The
 // browser points it at the BFF (`/bff`), so browser code never handles the session token. Every
-// POST and PATCH carries an Idempotency-Key (T285): a fresh one per call, or the caller's, so the
-// retries of one action share a key.
+// POST, PUT, and PATCH carries an Idempotency-Key (T285): a fresh one per call, or the caller's,
+// so the retries of one action share a key.
 
 export type FieldError = { field: string; message: string };
 
@@ -37,14 +37,14 @@ export type RequestOptions = { idempotencyKey?: string };
 
 export type ApiClient = {
   request<T>(
-    method: "GET" | "POST" | "PATCH" | "DELETE",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     body?: unknown,
     options?: RequestOptions,
   ): Promise<T>;
 };
 
-const KEYED_METHODS = new Set(["POST", "PATCH"]);
+const KEYED_METHODS = new Set(["POST", "PUT", "PATCH"]);
 
 /** 128 random bits as hex; Web Crypto, which browsers also offer on plain-HTTP pages. */
 const newIdempotencyKey = () =>

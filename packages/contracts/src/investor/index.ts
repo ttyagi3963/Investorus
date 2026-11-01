@@ -10,6 +10,12 @@ export {
   type ImportRowResult,
 } from "./import.js";
 export {
+  toImportBatchView,
+  type ImportBatchView,
+  type ImportStatus,
+  type ImportUploadView,
+} from "./import-views.js";
+export {
   INVESTOR_STATUSES,
   INVESTOR_TYPES,
   type Investor,

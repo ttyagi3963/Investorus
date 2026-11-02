@@ -27,13 +27,29 @@ const path = {
 };
 
 const pattern = {
-  deep: { group: ["@clever/*/src", "@clever/*/src/**", "@clever/*/dist", "@clever/*/dist/**"], message: msg.deep },
+  deep: {
+    group: ["@clever/*/src", "@clever/*/src/**", "@clever/*/dist", "@clever/*/dist/**"],
+    message: msg.deep,
+  },
   apps: {
-    group: ["@clever/api", "@clever/api/**", "@clever/worker", "@clever/worker/**", "@clever/web", "@clever/web/**", "@clever/sandbox", "@clever/sandbox/**"],
+    group: [
+      "@clever/api",
+      "@clever/api/**",
+      "@clever/worker",
+      "@clever/worker/**",
+      "@clever/web",
+      "@clever/web/**",
+      "@clever/sandbox",
+      "@clever/sandbox/**",
+    ],
     message: msg.apps,
   },
   generated: { group: ["**/generated/prisma", "**/generated/prisma/**"], message: msg.prisma },
-  generatedTypes: { group: ["**/generated/prisma", "**/generated/prisma/**"], message: msg.prisma, allowTypeImports: true },
+  generatedTypes: {
+    group: ["**/generated/prisma", "**/generated/prisma/**"],
+    message: msg.prisma,
+    allowTypeImports: true,
+  },
   coreSubpaths: { group: ["@clever/core/**"], message: msg.core },
   uiSubpaths: { group: ["@clever/ui/**"], message: msg.ui },
 };
@@ -59,7 +75,10 @@ export const boundaryConfigs = [
   {
     name: "clever/boundaries/mappers",
     files: ["packages/core/src/**/*.mapper.ts"],
-    rules: restrict([path.adapters, path.prismaTypes], [pattern.deep, pattern.apps, pattern.generatedTypes]),
+    rules: restrict(
+      [path.adapters, path.prismaTypes],
+      [pattern.deep, pattern.apps, pattern.generatedTypes],
+    ),
   },
   {
     name: "clever/boundaries/composition-roots",

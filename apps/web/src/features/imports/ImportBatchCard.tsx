@@ -26,7 +26,11 @@ export function ImportBatchCard({ batch }: { batch: ImportBatchView }) {
           Started <time dateTime={batch.createdAt}>{formatTime(batch.createdAt)}</time>
         </>
       }
-      actions={<StatusChip tone={IMPORT_STATUS_TONES[batch.status]}>{STATUS_TEXT[batch.status]}</StatusChip>}
+      actions={
+        <StatusChip tone={IMPORT_STATUS_TONES[batch.status]}>
+          {STATUS_TEXT[batch.status]}
+        </StatusChip>
+      }
     >
       <p role="status" aria-live="polite" className="sr-only">
         {STATUS_TEXT[batch.status]}

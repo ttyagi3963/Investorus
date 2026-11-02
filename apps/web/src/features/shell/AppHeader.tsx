@@ -55,7 +55,10 @@ export function AppHeader({ areaLabel, nav, tone = "light", children }: AppHeade
   return (
     <header className={styles.bar}>
       <div className="mx-auto box-content flex min-h-header max-w-content flex-wrap items-center gap-inline-lg px-page-x">
-        <Link href={nav[0]?.href ?? "/"} className="flex items-center gap-inline-md rounded-control">
+        <Link
+          href={nav[0]?.href ?? "/"}
+          className="flex items-center gap-inline-md rounded-control"
+        >
           <img src={brand.logoPath} alt="" width={32} height={32} className="size-8" />
           <span className={`font-heading text-heading-xs font-semibold ${styles.name}`}>
             {brand.displayName}
@@ -72,7 +75,9 @@ export function AppHeader({ areaLabel, nav, tone = "light", children }: AppHeade
                     href={item.href}
                     aria-current={current ? "page" : undefined}
                     className={`flex items-center border-b-2 px-inset-md text-body-lg ${
-                      current ? `${styles.current} font-semibold` : `border-transparent ${styles.link}`
+                      current
+                        ? `${styles.current} font-semibold`
+                        : `border-transparent ${styles.link}`
                     }`}
                   >
                     {item.label}

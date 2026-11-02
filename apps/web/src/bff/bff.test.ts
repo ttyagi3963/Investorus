@@ -67,6 +67,18 @@ describe("forwardToApi", () => {
     expect((await post({})).status).toBe(200);
   });
 
+  it("clears the session cookie when the api says the session has ended (401), so sign-in starts clean (T418)", async () => {
+    const fetch = vi.fn().mockImplementation(async () => json({ error: "Sign in again" }, 401));
+    const res = await forwardToApi(
+      fromSite("/bff/listing-packages", { method: "GET", headers: { Cookie: "session=dead" } }),
+      ["listing-packages"],
+      { apiUrl: API, fetch },
+    );
+
+    expect(res.status).toBe(401);
+    expect(res.headers.get("Set-Cookie")).toMatch(/^session=;.*Max-Age=0/);
+  });
+
   it("forwards a GET with the cookie's token as a bearer token, and returns the api's answer unchanged", async () => {
     const fetch = vi
       .fn()

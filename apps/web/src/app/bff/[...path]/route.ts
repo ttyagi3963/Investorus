@@ -7,7 +7,8 @@ type Context = { params: Promise<{ path: string[] }> };
 
 async function handle(request: Request, { params }: Context): Promise<Response> {
   const { path } = await params;
-  return forwardToApi(request, path, { apiUrl: serverEnv().API_URL });
+  const env = serverEnv();
+  return forwardToApi(request, path, { apiUrl: env.API_URL, cookieSecure: env.COOKIE_SECURE });
 }
 
 export const GET = handle;

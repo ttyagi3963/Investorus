@@ -4,12 +4,15 @@
 // Each call carries the request's `traceparent` (T283) and the caller's Idempotency-Key (T285).
 // It never reaches the api's sign-in, whose answer carries the raw token, or leaves /api/v1 (T374).
 import {
+  cookieIsSecure,
   forbidden,
   notFound,
   passBackHeaders,
   sameOrigin,
+  sessionCookie,
   sessionToken,
   traceparentFor,
+  type CookieSecure,
 } from "./shared";
 
 /**
@@ -30,7 +33,7 @@ function refused(path: string[]): boolean {
 export async function forwardToApi(
   request: Request,
   path: string[],
-  deps: { apiUrl: string; fetch?: typeof globalThis.fetch },
+  deps: { apiUrl: string; fetch?: typeof globalThis.fetch; cookieSecure?: CookieSecure },
 ): Promise<Response> {
   if (refused(path)) return notFound();
   if (!sameOrigin(request)) return forbidden();
@@ -50,8 +53,15 @@ export async function forwardToApi(
     headers,
     body: hasBody ? await request.text() : undefined,
   });
+  const answer = passBackHeaders(upstream);
+  // The api refused the token (expired, banned, or its account reset): drop the dead cookie, so the
+  // tab's next page is sign-in, not pages that keep failing (T418).
+  if (upstream.status === 401) {
+    const secure = cookieIsSecure(deps.cookieSecure ?? "auto", request);
+    answer.append("Set-Cookie", sessionCookie("", 0, secure));
+  }
   return new Response(upstream.status === 204 ? null : await upstream.arrayBuffer(), {
     status: upstream.status,
-    headers: passBackHeaders(upstream),
+    headers: answer,
   });
 }

@@ -25,3 +25,8 @@ export function errorText(err: unknown, fallback: string): string {
 export function isGone(err: unknown): boolean {
   return err instanceof ApiError && err.status === 404;
 }
+
+/** True when the api says the tab's session has ended (401): expired, banned, or its account gone. */
+export function isSignedOut(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}

@@ -12,44 +12,59 @@ You need Docker with Compose v2. Nothing else: no secrets, accounts, or extra co
 docker compose up --build
 ```
 
-Then open **http://localhost:3000**.
+The first start takes a few minutes: it builds the app, creates the database, and loads the demo
+data. It is ready when **http://localhost:3000** opens.
 
-On first start, Compose builds the images, starts PostgreSQL, runs the database
-migrations and the seed data automatically, and then starts the apps. Later starts reuse the
-built images and the stored data, and the seed adds no duplicates. The api and the worker start
-once the sandbox is listening, and the web app once the api is healthy. To fit a 2 GB machine,
-each Node service has a heap cap in [compose.yaml](compose.yaml) (`NODE_OPTIONS`): 384 MB for the
-web app and the worker, 256 MB for the api, and 128 MB for the sandbox.
+## Open it
 
-| Service | URL | What it is |
+Once the containers are up, you can open the prototype as any of the people who use it. On the
+home page, each demo account has a **Sign in** button that signs in with one press (the password
+is `demo1234` for all of them; see [Demo accounts](#demo-accounts)).
+
+1. **As an agent:** open http://localhost:3000 and sign in as Avery or Blake. Agents build and
+   publish listing packages, compare the offers that come in, and track the accepted deal to
+   closing.
+2. **As an investor:** open http://localhost:3000 and sign in as Harbor or another investor.
+   Investors set up their buy boxes, see the listings that match them, and make offers.
+3. **As operations:** open http://localhost:3000 and sign in as Morgan. Operations sees every
+   listing's full history, retries failed deliveries, imports investors, and can switch on
+   simulated outages.
+4. **The sandbox:** open http://localhost:4100 (no sign-in). Here you see the emails, texts, and
+   CRM updates that would have been sent if real email, SMS, and CRM services were connected. They
+   are live: each one appears the moment an action you take in the app triggers it.
+
+A browser window holds one sign-in at a time, so open each role in its own window. For example:
+
+| Window | Open as |
+| --- | --- |
+| Chrome | Agent |
+| Chrome, incognito | Investor |
+| Edge | Operations |
+| Edge, InPrivate | Sandbox |
+
+Then act in one window and watch the others react: publish as the agent, and the match appears
+for the investor and the notice on the sandbox page.
+
+To stop: `Ctrl+C`, or `docker compose down`. To start over with fresh demo data:
+`docker compose down -v`, then `docker compose up --build` again.
+
+### What is running
+
+| Service | Address | What it is |
 | --- | --- | --- |
 | Web app | http://localhost:3000 | The app for agents, investors, and operations |
 | API | http://localhost:4000/api/v1/health | The backend (the web app talks to it for you) |
-| Sandbox | http://localhost:4100 | Stand-ins for the CRM, email/SMS, and file storage, so nothing calls a paid service. Its page shows the CRM's records, every email and text the platform sent, and each service's simulated outage |
+| Sandbox | http://localhost:4100 | Stand-ins for the CRM, email and SMS, and file storage, so nothing calls a paid service |
 
-To stop: `Ctrl+C`, or `docker compose down`. To start over with an empty database:
-`docker compose down -v`.
+On first start, Compose starts PostgreSQL, runs the database migrations and the seed
+automatically, and then starts the apps. Later starts reuse the built images and the stored
+data, and the seed adds no duplicates. The api and the worker start once the sandbox is
+listening, and the web app once the api is healthy. To fit a 2 GB machine, each Node service has
+a heap cap in [compose.yaml](compose.yaml) (`NODE_OPTIONS`): 384 MB for the web app and the
+worker, 256 MB for the api, and 128 MB for the sandbox.
 
 Settings come from the committed [.env](.env) file. It holds demo values only, and they protect
 nothing real.
-
-### Open it from another machine
-
-Signing in works over plain HTTP from any address, for example `http://<server-ip>:3000`. The
-browser uploads photos and CSV files straight to the sandbox, so for uploads from another
-address change these two lines in `.env` (demo values only) to that host's addresses, then run
-`docker compose up --build` again:
-
-```sh
-PUBLIC_SANDBOX_URL=http://<server-ip>:4100
-WEB_ORIGIN=http://<server-ip>:3000,http://localhost:3000
-```
-
-Or keep the defaults, tunnel both ports from your machine, and open http://localhost:3000:
-
-```sh
-ssh -L 3000:localhost:3000 -L 4100:localhost:4100 <server>
-```
 
 ## Demo accounts
 
@@ -65,24 +80,34 @@ matches), one is under contract, and two are drafts. The listings have no photos
 | --- | --- | --- |
 | Agent | `avery@example.com` | Building and publishing a listing package; seven seeded listings, one a draft |
 | Agent | `blake@example.com` | Comparing offers and tracking deals to close; six seeded listings, one with four offers and one under contract |
-| Investor | `summit@example.com` | Two buy boxes that both match the sample listing; has a phone number, so match notices also arrive as texts |
+| Investor | `summit@example.com` | Two buy boxes (two listings match both); the backup offer on Blake's Inglewood deal; has a phone number, so match notices also arrive as texts |
 | Investor | `harbor@example.com` | One broad buy box (any home but land, anywhere) |
 | Investor | `ridge@example.com` | A deliberately narrow buy box (Westside condos: one seeded match); add a second one to see more |
-| Investor | `cobalt@example.com` | An offer on Blake's West Adams listing, and the accepted offer on his Inglewood one |
+| Investor | `cobalt@example.com` | Offers on Blake's West Adams and Van Nuys listings, and the accepted offer on his Inglewood one |
 | Investor | `dune@example.com` | An offer on Blake's West Adams listing |
 | Operations | `morgan@example.com` | The operations console: each package's full history, failed deliveries and retries, simulated outages, the CRM comparison, and the legacy investor import |
 
-> **Status:** Sprints 1–8 are in, and every screen uses the brand's design system (Sprints 5 and 7). Open
-> <http://localhost:3000> and sign in as any account with one press. Avery
-> builds and publishes a package, which is matched to investors who then make offers. Blake's
-> seeded West Adams listing already has four offers: compare them, accept one, and track the deal to closing.
-> If it falls through, promote a backup, then sign in as that investor to reconfirm. Investors
-> manage their own buy boxes under **Buy boxes**, and a new or edited box is matched at once
-> against listings still taking offers. The operations account imports
-> [seed/legacy-investors.csv](seed/legacy-investors.csv) under **Investor imports**: 26 rows are
-> imported and 4 rejected with their reasons, and importing it again duplicates nothing. The other
-> operations console shows each package's history and every email, text, and CRM update with
-> its outcome (see **Try an outage** below).
+## A 15-minute tour
+
+With a window open for each role (see [Open it](#open-it)), follow these steps in order:
+
+1. **An agent publishes.** Sign in as `avery`, open the draft duplex, add a closing window, an
+   offer program, and a photo (any image on your computer), and publish. Matching runs at once.
+2. **Investors hear about it.** The sandbox page shows Harbor's match email (investors with a
+   phone number, such as Summit, also get a text). In the private window, sign in as `harbor`:
+   the listing is in the matched list. Open it, see why it matched, and make an offer. The seller's details are
+   never shown to investors.
+3. **The agent compares and accepts.** Sign in as `blake`. The West Adams listing already has
+   four offers side by side: accept one and move the deal through its milestones to closing. Or
+   mark it fallen through, promote a backup, and sign in as that investor to reconfirm.
+4. **An investor tunes a buy box.** As `ridge`, edit or add a buy box under **Buy boxes**. It is
+   matched at once against every listing still taking offers.
+5. **Operations sees everything.** As `morgan`, open a package's history: every match decision,
+   with the reason, and every delivery. Then try an outage (below), and import
+   [seed/legacy-investors.csv](seed/legacy-investors.csv) under **Investor imports**: 26 rows are
+   imported and 4 rejected with their reasons, and importing it again duplicates nothing.
+6. **A partner brand.** Open **http://partner.localhost:3000**: the same app under a partner's
+   name, colors, and logo (see **Switch brands** below).
 
 ## Try an outage
 
@@ -226,7 +251,7 @@ What the prototype does more simply than production would, and the production ap
 | One login per investor (User ↔ Investor is 1:1) | Several Users per investor company, with offers and audit entries recording the acting user (for example `submittedByUserId`) |
 | No seller access; the agent presents offers | Read-only seller dashboard: a SELLER role and unique `User.sellerId`, magic-link sign-in (so `passwordHash` becomes nullable or moves to a credentials table); Seller data unchanged |
 | Email/password demo auth, 8 h JWT, no refresh or MFA; each request checks in Postgres that the login is not banned, so a ban takes effect at once (T370; an inactive investor keeps access, T398) | SSO for agents and ops (Okta/Google), magic link or passkeys for investors, short-lived tokens with rotation and a revocation list |
-| Sandbox stand-ins for CRM, email/SMS, storage | HubSpot, SendGrid/Twilio, and S3 provider implementations behind the same ports (S3 storage is T274–T275, after Sprint 1) |
+| Sandbox stand-ins for CRM, email/SMS, storage | HubSpot, SendGrid/Twilio, and S3 provider implementations behind the same ports (the S3 storage adapter is already built; see **Using S3**) |
 | Listing photos are public: anyone with a photo's link can open it, and the link never expires (the owner's decision, 2026-11-01, T326). Import files stay private. | A private bucket served through a CDN with signed cookies, or an app address that checks access and redirects to a short-lived link, so a leaked link stops working and access can be withdrawn |
 | Brands live in the database and are chosen per request by cookie, host, or `DEFAULT_BRAND_ID`, but emails and texts always carry the default brand's name, the brand's font must be registered in the web app's code to load, and content and hosts change only through the seed files (Sprint 7, T346–T353) | Each agent and investor belongs to a brand, so messages carry that brand; brand fonts are self-hosted files stored with the brand; content, hosts, and logos are edited in the console with design review; the theme CSS is served as a cached, versioned stylesheet from a CDN |
 | Static ZIP code list: twelve Los Angeles ZIPs for the seeded market, plus five Austin ZIPs the tests use | Address validation and geocoding provider |
@@ -239,7 +264,7 @@ What the prototype does more simply than production would, and the production ap
 | Two brands seeded from JSON files (Clever and a fictional partner) | Brand onboarding through the ops theme API and the content/config layer, with design review |
 | The web app's Content-Security-Policy forbids framing, plugins, and outside form posts, but not inline scripts or styles (T362) | A nonce-based CSP set per request in proxy.ts (`script-src 'nonce-…' 'strict-dynamic'`), with the brand's style element carrying the nonce |
 | No rate limiting. CSRF is covered by a SameSite=Lax cookie plus an `Origin`/`Host` check on every state-changing BFF route (meets XII), but there are no synchronizer tokens. | Edge rate limits and a WAF; add double-submit CSRF tokens if the BFF is ever exposed cross-site |
-| Plain HTTP (no TLS) on localhost and the Compose network (see Complexity Tracking) | TLS at the load balancer or ingress; mTLS between services |
+| Plain HTTP (no TLS) on localhost and the Compose network | TLS at the load balancer or ingress; mTLS between services |
 | No horizontal scaling tests | Multiple worker replicas are already safe (`SKIP LOCKED`, a job lease the running worker renews, unique constraints); load test before launch |
 | "Why not matched?" replays non-matches with the current evaluator and flags `replayedWithNewerRules` when the rules changed since matching ran | Keep every released `EVALUATOR_VERSION` runnable (versioned evaluator modules) so old decisions replay exactly |
 | A buy box save re-matches against every package still accepting offers in one job | Incremental matching by changed criteria |
@@ -275,7 +300,7 @@ pnpm --filter @clever/e2e exec playwright install chromium
 pnpm test:e2e
 ```
 
-They take about 8 minutes: one test waits out the worker's ten delivery attempts during a CRM
+They take about 6 minutes: one test waits out the worker's ten delivery attempts during a CRM
 outage. They add data to the stack they run against, and switch the stand-in services' outage
 modes (always back to up). To run them against another stack, set its addresses:
 `E2E_BASE_URL` (default `http://localhost:3000`), `E2E_PARTNER_URL`
@@ -286,8 +311,8 @@ partner origins (`WEB_ORIGIN`) and the web must name the sandbox's public addres
 test (`pnpm --filter @clever/e2e exec playwright show-trace <trace.zip>`).
 
 They run by hand, not in CI: start the stack, then run `pnpm test:e2e` before changing a user
-journey, or whenever you want the full flows checked. A full run takes about 5 minutes. They are
-not part of `pnpm test`, and the images never contain a browser.
+journey, or whenever you want the full flows checked. They are not part of `pnpm test`, and the
+images never contain a browser.
 
 ### Checking the limits
 

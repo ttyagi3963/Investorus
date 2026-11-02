@@ -244,8 +244,9 @@ below are the planning baseline.
   - The same key with a different body gets `422 Unprocessable Entity`.
   - If Redis is unreachable, the request is rejected with `503` and `Retry-After: 5`
     (fail closed).
-  - The web contract client attaches the key automatically. UI forms create one key when the
-    form opens, so a double-click reuses it.
+  - The web contract client attaches the key automatically and keeps it with the request
+    (method, path, body) until the api settles it, so a retry or a double-click reuses it and a
+    changed body gets a new one (T381).
 - **Rationale**: A literal implementation of XX.2. It sits outside route handlers (II, VI).
   Duplicate offers (FR-045) are also blocked by a unique constraint on (`packageId`,
   `investorId`, `round`) for active offers, giving defense in depth.

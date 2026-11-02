@@ -1,6 +1,6 @@
-// Guards the offer form's rules (T302; XX.2, FR-042): pressing submit twice sends one request; the
-// action carries one Idempotency-Key, which a retry after a lost answer reuses, so the offer is made
-// once; and the api's field errors land on their fields.
+// Guards the offer form's rules (T302; XX.2, FR-042): pressing submit twice sends one request, and
+// the api's field errors land on their fields. The client keeps the Idempotency-Key for a retry
+// (T381; client/http.test.ts).
 import { ApiError } from "@clever/contracts/client";
 import type { CreateOfferInput } from "@clever/contracts/offer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -28,11 +28,9 @@ const terms: CreateOfferInput = {
 };
 const wrapper = ({ children }: { children: ReactNode }) =>
   createElement(QueryClientProvider, { client: new QueryClient() }, children);
-const keyOf = (call: number) =>
-  (makeOffer.mock.calls[call] as [string, unknown, { idempotencyKey: string }])[2].idempotencyKey;
 
 describe("useOfferForm", () => {
-  it("sends one request for a double press, and reuses its key when retrying a lost answer", async () => {
+  it("sends one request for a double press", async () => {
     makeOffer.mockReset();
     let finish: (value: unknown) => void = () => {};
     makeOffer.mockReturnValueOnce(new Promise((_, reject) => (finish = reject)));
@@ -44,12 +42,6 @@ describe("useOfferForm", () => {
       finish(new TypeError("Failed to fetch"));
     });
     expect(makeOffer).toHaveBeenCalledTimes(1);
-
-    makeOffer.mockResolvedValueOnce({ id: "o1" });
-    await act(() => result.current.submit(terms));
-    expect(makeOffer).toHaveBeenCalledTimes(2);
-    expect(keyOf(1)).toBe(keyOf(0));
-    expect(keyOf(0)).toMatch(/^[0-9a-f]{32}$/);
   });
 
   it("puts the api's field errors on their fields", async () => {

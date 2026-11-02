@@ -52,7 +52,7 @@ import type { Photo, PhotoUpload } from "../photo/photo.js";
 import type { CreateSessionInput } from "../auth/auth.js";
 import type { UserView } from "../user/views.js";
 import type { ImportBatchView, ImportUploadView } from "../investor/import-views.js";
-import type { ApiClient, RequestOptions } from "./http.js";
+import type { ApiClient } from "./http.js";
 
 const pkgPath = (id: string) => `/listing-packages/${encodeURIComponent(id)}`;
 const offerPath = (id: string) => `/offers/${encodeURIComponent(id)}`;
@@ -108,10 +108,10 @@ export const investorClient = (api: ApiClient) => ({
       "GET",
       `/investor/packages/${encodeURIComponent(id)}`,
     ),
-  makeOffer: (packageId: string, input: CreateOfferInput, options?: RequestOptions) =>
-    api.request<OfferView>("POST", `${pkgPath(packageId)}/offers`, input, options),
-  reviseOffer: (offerId: string, input: ReviseOfferInput, options?: RequestOptions) =>
-    api.request<OfferView>("PATCH", `/offers/${encodeURIComponent(offerId)}`, input, options),
+  makeOffer: (packageId: string, input: CreateOfferInput) =>
+    api.request<OfferView>("POST", `${pkgPath(packageId)}/offers`, input),
+  reviseOffer: (offerId: string, input: ReviseOfferInput) =>
+    api.request<OfferView>("PATCH", `/offers/${encodeURIComponent(offerId)}`, input),
   withdrawOffer: (offerId: string, input: WithdrawOfferInput) =>
     api.request<OfferView>("POST", `${offerPath(offerId)}/withdrawal`, input),
   respondToCounter: (offerId: string, input: CounterResponseInput) =>
@@ -124,10 +124,9 @@ export const investorClient = (api: ApiClient) => ({
 export const buyBoxesClient = (api: ApiClient) => ({
   list: () => api.request<BuyBoxView[]>("GET", "/investor/buy-boxes"),
   get: (id: string) => api.request<BuyBoxView>("GET", `/investor/buy-boxes/${id}`),
-  create: (input: BuyBoxInput, options?: RequestOptions) =>
-    api.request<BuyBoxView>("POST", "/investor/buy-boxes", input, options),
-  save: (id: string, input: BuyBoxInput & { version: number }, options?: RequestOptions) =>
-    api.request<BuyBoxView>("PUT", `/investor/buy-boxes/${id}`, input, options),
+  create: (input: BuyBoxInput) => api.request<BuyBoxView>("POST", "/investor/buy-boxes", input),
+  save: (id: string, input: BuyBoxInput & { version: number }) =>
+    api.request<BuyBoxView>("PUT", `/investor/buy-boxes/${id}`, input),
 });
 
 /** Operations' legacy investor import (T323): get an upload link, start, then follow the batch. */

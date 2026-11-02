@@ -3,9 +3,9 @@
 // refused before it reaches the api (CSRF); the session token travels only in an HTTP-only cookie
 // and is forwarded as a bearer token; the api's answer comes back unchanged; and every call to the
 // api carries one trace ID, the caller's when its `traceparent` is valid (T283), and the caller's
-// Idempotency-Key (T285). The cookie is Secure when the browser came over HTTPS (T372). The proxy
-// never forwards to the api's sign-in, whose answer carries the raw token, nor a dot segment that
-// would leave /api/v1 (T374).
+// Idempotency-Key (T285), and the api's retry and replay headers come back (T381). The cookie is
+// Secure when the browser came over HTTPS (T372). The proxy never forwards to the api's sign-in,
+// whose answer carries the raw token, nor a dot segment that would leave /api/v1 (T374).
 import { describe, expect, it, vi } from "vitest";
 import { forwardToApi } from "./proxy";
 import { signIn, signOut } from "./session";
@@ -98,6 +98,26 @@ describe("forwarding", () => {
     );
     const [, init] = fetch.mock.calls[0] as [string, RequestInit];
     expect(new Headers(init.headers).get("Idempotency-Key")).toBe("action-1");
+  });
+
+  it("passes back the api's Retry-After and Idempotent-Replay headers", async () => {
+    const answers = [
+      new Response("{}", { status: 409, headers: { "Retry-After": "1" } }),
+      new Response("{}", { status: 201, headers: { "Idempotent-Replay": "true" } }),
+    ];
+    const fetch = vi.fn(async () => answers.shift()!);
+    const send = () =>
+      forwardToApi(
+        fromSite("/bff/listing-packages", {
+          method: "POST",
+          headers: { "Idempotency-Key": "action-1" },
+        }),
+        ["listing-packages"],
+        { apiUrl: API, fetch },
+      );
+
+    expect((await send()).headers.get("Retry-After")).toBe("1");
+    expect((await send()).headers.get("Idempotent-Replay")).toBe("true");
   });
 });
 

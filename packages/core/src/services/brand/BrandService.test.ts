@@ -1,7 +1,8 @@
 // Guards the brand rules (T348, T353; FR-093, FR-095): only operations change a brand's theme; a
 // token set the validator refuses saves nothing and comes back with each failure as a field error; a
 // saved theme bumps the brand's version, so caches replace it, and is audited; a save over a version
-// another operator already replaced is refused.
+// another operator already replaced is refused. The saved theme is answered from the saving
+// transaction, so a failure after the commit cannot turn an applied save into an error (T381).
 import { readFileSync } from "node:fs";
 import type { Actor } from "@clever/contracts/auth";
 import { ConflictError, ForbiddenError, ValidationError } from "@clever/contracts/common";
@@ -66,5 +67,18 @@ describe("BrandService.updateTheme", () => {
         details: { tokenVersion: 2 },
       }),
     ]);
+  });
+
+  it("answers with the saved theme from the transaction that saved it", async () => {
+    const { uow, tokens, brands } = setup();
+    // The database goes away right after the save commits.
+    const run = uow.run.bind(uow);
+    let transactions = 0;
+    uow.run = (work) =>
+      ++transactions === 1 ? run(work) : Promise.reject(new Error("connection lost"));
+
+    const theme = await brands.updateTheme(ops, "test", { tokens, tokenVersion: 1 });
+
+    expect(theme).toMatchObject({ brandId: "test", tokenVersion: 2 });
   });
 });

@@ -68,9 +68,14 @@ export class OutsideServicesService implements IOutsideServicesService {
     const known = SIMULATION_SERVICES.find((s) => s === service);
     if (!known) throw new NotFoundError("No such outside service");
     const { mode } = simulationInputSchema.parse(input);
-    // The audit entry commits only if the sandbox took the change, so no switch goes unrecorded.
-    return this.uow.run(async (repos) => {
-      await repos.audit.append({
+    // The sandbox switches first, outside any transaction (T381), so no transaction waits on an
+    // outside call and a refused switch is never audited. If the audit then fails to commit, the
+    // answer is a 5xx, which frees the idempotency key: a retry sets the same mode again and
+    // records it. Auditing first was rejected: that commit would mark the key applied, so a switch
+    // the sandbox then refused could not be retried under its key.
+    const modes = await this.deps.simulation.set(known, mode);
+    await this.uow.run((repos) =>
+      repos.audit.append({
         actorType: "USER",
         actorId: actor.userId,
         action: "SIMULATION_CHANGED",
@@ -78,8 +83,8 @@ export class OutsideServicesService implements IOutsideServicesService {
         entityId: known,
         outcome: "SUCCESS",
         details: { mode },
-      });
-      return this.deps.simulation.set(known, mode);
-    });
+      }),
+    );
+    return modes;
   }
 }

@@ -14,7 +14,11 @@ Entity fields are defined in [../data-model.md](../data-model.md).
   `Idempotency-Key` header (up to 255 characters). Keys are per user,
   stored in Postgres (plan.md Complexity Tracking), and expire after 24 hours. Sign-in
   (`POST /sessions`) has no user yet and is exempt, so a session token is never stored. The
-  typed client sends a fresh key with each call unless it is given one, and the BFF forwards it.
+  typed client keeps a request's key, by method, path, and body, until the api settles it: a lost
+  answer, a `5xx`, or a `409` about the key sends the same key again, an identical request sent
+  before the first is answered shares its answer, and a success, any other refusal, or a changed
+  body starts a new key (T381). The BFF forwards the key and passes back `Retry-After` and
+  `Idempotent-Replay`.
   - Missing key → `400`.
   - Same key and same body → the stored response, with the header `Idempotent-Replay: true`.
   - Same key while the first request is still running (its 30-second lease) → `409` with

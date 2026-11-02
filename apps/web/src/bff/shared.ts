@@ -1,7 +1,7 @@
 // What the BFF's routes share: the CSRF check (a state-changing request must come from this site's
 // own pages, research R12), reading and writing the session cookie, whether a cookie is Secure
-// (T372), and the trace headers (T283). Pure functions over the standard Request, so they can be
-// tested without Next.
+// (T372), and the trace and idempotency headers (T283, T381). Pure functions over the standard
+// Request, so they can be tested without Next.
 import { newTraceId, toTraceparent, traceIdFrom } from "@clever/contracts/common";
 
 export const SESSION_COOKIE = "session";
@@ -74,10 +74,14 @@ export function traceparentFor(request: Request): string {
   return toTraceparent(traceIdFrom(request.headers.get("traceparent")) ?? newTraceId());
 }
 
-/** The api's answer headers the browser gets: its content type and the request's trace ID. */
+/**
+ * The api's answer headers the browser gets: its content type, the request's trace ID, and its
+ * idempotency headers (contracts/api.md): when to retry a 409 or 503, and that an answer is a
+ * replay.
+ */
 export function passBackHeaders(upstream: Response): Headers {
   const headers = new Headers();
-  for (const name of ["Content-Type", "X-Request-Id"]) {
+  for (const name of ["Content-Type", "X-Request-Id", "Retry-After", "Idempotent-Replay"]) {
     const value = upstream.headers.get(name);
     if (value) headers.set(name, value);
   }

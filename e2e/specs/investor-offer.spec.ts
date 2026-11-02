@@ -35,7 +35,6 @@ test("an investor makes one offer, revises it, and withdraws it", async ({ signe
     await page.getByLabel("Offer price").fill("255000");
     await page.getByLabel("Closing date").fill(isoDate(30));
     await page.getByRole("button", { name: "Send offer" }).dblclick();
-    // "Your offer was sent." only flashes (see the fixme below); the revision line stays.
     await expect(page.getByText("You are on revision 1.")).toBeVisible();
     const made = await offers();
     expect(made).toHaveLength(1);
@@ -60,11 +59,9 @@ test("an investor makes one offer, revises it, and withdraws it", async ({ signe
   });
 });
 
-// Product bug found by this suite: "Your offer was sent." disappears as soon as it appears.
-// useOfferForm sets it and then refetches the package, whose offer now has a new version; the
-// package page keys OfferForm on that version (apps/web/src/app/(investor)/investor/packages/[id]/
-// page.tsx), so the form remounts and the confirmation is lost. The offer itself is saved.
-test.fixme("an investor who sends an offer is told it was sent", async ({ signedIn }) => {
+// "Your offer was sent." must survive the refetch, whose new offer version reloads the form's fields
+// (T414).
+test("an investor who sends an offer is told it was sent", async ({ signedIn }) => {
   const tag = uniqueTag();
   const agent = await signedIn("agent");
   const { page, bff } = await signedIn("investor");

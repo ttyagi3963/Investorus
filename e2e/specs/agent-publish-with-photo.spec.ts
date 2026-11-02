@@ -76,8 +76,6 @@ for (const [host, origin] of [
       await choose(page, "Is the home listed for sale now?", "No");
       await tick(page, "Cash offer");
       await page.getByRole("button", { name: "Save changes" }).click();
-      // The "Saved." notice is lost when the form reloads (see the fixme below), so the activity
-      // card is where the save shows.
       await expect(
         page.getByRole("region", { name: "Activity" }).getByText("Edited", { exact: true }),
       ).toBeVisible();
@@ -91,11 +89,9 @@ for (const [host, origin] of [
   });
 }
 
-// Product bug found by this suite: saving a draft's changes never shows "Saved.". useSavePackage sets
-// the notice after the package query refetches, but the refetched package has a new version, and
-// the package page keys PackageForm on it (apps/web/src/app/(agent)/agent/packages/[id]/page.tsx),
-// so the form remounts and the notice is lost. The save itself succeeds.
-test.fixme("an agent who saves changes to a draft is told it saved", async ({ signedIn }) => {
+// "Saved." comes after the refetch, whose new version reloads the form's fields; the notice must
+// survive that reload (T414).
+test("an agent who saves changes to a draft is told it saved", async ({ signedIn }) => {
   const { page, bff } = await signedIn("agent");
   const draft = await bff.createPackage(packageInput(uniqueTag(), 250_000));
   await page.goto(`/agent/packages/${draft.id}`);

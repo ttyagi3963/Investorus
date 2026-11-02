@@ -1,7 +1,9 @@
 // Making or revising an offer (T302; XX.2, FR-042): one request at a time. The client keeps the
 // Idempotency-Key of the same terms until the api settles them (T381), so a retry after a lost
 // answer is a replay, never a second offer; changed terms are a new action with a new key. The
-// api's field errors are keyed by field name, which is each input's name.
+// api's field errors are keyed by field name, which is each input's name. "Sent" belongs to the
+// offer as the api answered it: it shows once the page holds that version and goes when the offer
+// changes again (a counter, a withdrawal).
 import type { OfferView } from "@clever/contracts/offer";
 import type { CreateOfferInput } from "@clever/contracts/offer";
 import { ApiError } from "@clever/contracts/client";
@@ -17,7 +19,7 @@ export function useOfferForm(packageId: string, myOffer: OfferView | null) {
   const [isPending, setPending] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<ErrorInfo | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [sent, setSent] = useState<OfferView | null>(null);
 
   async function submit(terms: CreateOfferInput): Promise<void> {
     if (inFlight.current) return;
@@ -25,14 +27,13 @@ export function useOfferForm(packageId: string, myOffer: OfferView | null) {
     setPending(true);
     setFieldErrors({});
     setError(null);
-    setSaved(false);
+    setSent(null);
     try {
-      if (myOffer?.status === "ACTIVE" || myOffer?.status === "COUNTERED") {
-        await investor.reviseOffer(myOffer.id, { ...terms, version: myOffer.version });
-      } else {
-        await investor.makeOffer(packageId, terms);
-      }
-      setSaved(true);
+      setSent(
+        myOffer?.status === "ACTIVE" || myOffer?.status === "COUNTERED"
+          ? await investor.reviseOffer(myOffer.id, { ...terms, version: myOffer.version })
+          : await investor.makeOffer(packageId, terms),
+      );
       await queryClient.invalidateQueries({ queryKey: investorKeys.all });
     } catch (err) {
       if (err instanceof ApiError) {
@@ -45,5 +46,6 @@ export function useOfferForm(packageId: string, myOffer: OfferView | null) {
     }
   }
 
+  const saved = sent !== null && sent.id === myOffer?.id && sent.version === myOffer.version;
   return { submit, isPending, fieldErrors, error, saved };
 }

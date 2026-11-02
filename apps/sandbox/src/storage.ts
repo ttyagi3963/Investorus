@@ -5,8 +5,8 @@
 // an upload, and the worker reads an uploaded file, on the internal routes with the shared token.
 // Objects are files on the SANDBOX_STORAGE_DIR volume, named by a hash of the key so no key can
 // reach outside it, each written whole through a rename (T392). An outage mode for storage is
-// applied in front of these routes (simulation.ts); the internal answers name their object
-// (x-object-key), so core can tell a garbled one (T384).
+// applied in front of these routes (simulation.ts), behind the CORS headers; the internal answers
+// name their object (x-object-key), so core can tell a garbled one (T384).
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -40,6 +40,25 @@ async function writeWhole(path: string, data: string | Buffer): Promise<void> {
   await rename(temp, path);
 }
 
+/**
+ * The browser uploads cross-origin (port 3000 to 4100), so only a listed web origin (WEB_ORIGIN)
+ * gets CORS headers, naming that origin; the answer varies by Origin, so caches must not share it.
+ * It runs before the outage gate, so the browser can read an outage's answer too (T414).
+ */
+export function storageCors(webOrigins: readonly string[]): Router {
+  return Router().use("/storage/objects", (req, res, next) => {
+    res.vary("Origin");
+    const origin = req.headers.origin;
+    if (origin !== undefined && webOrigins.includes(origin)) {
+      res.set("Access-Control-Allow-Origin", origin);
+      res.set("Access-Control-Allow-Methods", "PUT, GET, OPTIONS");
+      res.set("Access-Control-Allow-Headers", "Content-Type");
+    }
+    if (req.method === "OPTIONS") return void res.status(204).end();
+    next();
+  });
+}
+
 export function storageRoutes(config: StorageConfig): Router {
   const router = Router();
   const file = (key: string) =>
@@ -65,20 +84,6 @@ export function storageRoutes(config: StorageConfig): Router {
       .digest("hex");
     return sameSecret(sig, expected);
   };
-
-  // The browser uploads cross-origin (port 3000 to 4100), so only a listed web origin (WEB_ORIGIN)
-  // gets CORS headers, naming that origin; the answer varies by Origin, so caches must not share it.
-  router.use("/storage/objects", (req, res, next) => {
-    res.vary("Origin");
-    const origin = req.headers.origin;
-    if (origin !== undefined && config.webOrigins.includes(origin)) {
-      res.set("Access-Control-Allow-Origin", origin);
-      res.set("Access-Control-Allow-Methods", "PUT, GET, OPTIONS");
-      res.set("Access-Control-Allow-Headers", "Content-Type");
-    }
-    if (req.method === "OPTIONS") return void res.status(204).end();
-    next();
-  });
 
   router.put("/storage/objects/:key", async (req, res: Response) => {
     const expected = Number(req.query.size);

@@ -1,7 +1,8 @@
 // The operations console (T411; FR-071 to FR-078): a package's trace explains, criterion by
 // criterion, why one investor matched and another did not; the CRM comparison lists the package;
 // and a CRM outage leaves a delivery that needs attention, which operations retry once the CRM is
-// back, until the CRM agrees with the platform. Every outage mode is set back to up afterwards.
+// back (the trace says what it queued), until the CRM agrees with the platform. Every outage mode is
+// set back to up afterwards.
 import type { Page } from "@playwright/test";
 import { buyBoxInput, packageInput, street, uniqueTag } from "../support/data.js";
 import {
@@ -142,8 +143,9 @@ test("a delivery the CRM outage set aside is retried from the console and the CR
     await page.goto(`/ops/packages/${pkg.id}`);
     const retry = page.getByRole("button", { name: "Retry failed deliveries" });
     await retry.click();
-    // Nothing is set aside any more, so the button (and its confirmation, see the fixme) goes.
+    // Nothing is set aside any more, so the button goes, but what it queued stays in view (T414).
     await expect(retry).toBeHidden();
+    await expect(page.getByRole("status").filter({ hasText: /queued to retry/ })).toBeVisible();
     await page.goto("/ops/crm");
     const row = page.getByRole("row").filter({ hasText: street(tag) });
     await eventually(async () => {
@@ -157,18 +159,4 @@ test("a delivery the CRM outage set aside is retried from the console and the CR
       .filter({ hasText: "CRM" });
     await expect(sent.first()).toContainText("Sent");
   });
-});
-
-// Product bug found by this suite: on a package's trace, "Retry failed deliveries" never shows its
-// confirmation ("N deliveries queued to retry."). The confirmation lives inside BulkActions, which
-// the trace page renders only while stats.needsAttention > 0
-// (apps/web/src/app/(ops)/ops/packages/[id]/page.tsx); the retry resets those deliveries, the
-// refetched trace has none set aside, and the component unmounts with its message. The retry
-// itself works (the test above). The deliveries page keeps its "Retry all" mounted and is fine.
-test.fixme("a retry from a package's trace confirms what it queued", async ({ signedIn }) => {
-  test.setTimeout(10 * 60_000);
-  const { page } = await signedIn("ops");
-  await packageWithSetAsideCrmUpdate(signedIn, page);
-  await page.getByRole("button", { name: "Retry failed deliveries" }).click();
-  await expect(page.getByRole("status").filter({ hasText: /queued to retry/ })).toBeVisible();
 });

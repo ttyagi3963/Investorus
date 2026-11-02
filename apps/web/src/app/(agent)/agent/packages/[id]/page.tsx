@@ -39,12 +39,7 @@ export default function EditPackagePage() {
       <div className="grid items-start gap-stack-lg lg:grid-cols-3">
         <div className="flex flex-col gap-stack-lg lg:col-span-2">
           <PhotoSection pkg={pkg} editable={editable} />
-          {editable ? (
-            /* The key reloads the form after a publish or an edit, so it shows the saved values. */
-            <PackageForm key={pkg.version} existing={pkg} />
-          ) : (
-            <PackageDetails pkg={pkg} />
-          )}
+          {editable ? <PackageForm existing={pkg} /> : <PackageDetails pkg={pkg} />}
         </div>
         <div className="flex flex-col gap-stack-lg">
           <MatchingCard pkg={pkg} />

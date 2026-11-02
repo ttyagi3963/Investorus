@@ -277,8 +277,23 @@ function CriteriaSection({
   );
 }
 
+/**
+ * The fields are keyed on the box's version, so a save reloads them with the saved values and
+ * version. The save itself lives out here, outside the key, so its notice survives that reload.
+ */
 export function BuyBoxForm({ existing }: { existing?: BuyBoxView }) {
-  const { submit, isPending, fieldErrors, error, saved } = useBuyBoxForm(existing);
+  const saving = useBuyBoxForm(existing);
+  return <BuyBoxFields key={existing?.version} existing={existing} saving={saving} />;
+}
+
+function BuyBoxFields({
+  existing,
+  saving,
+}: {
+  existing?: BuyBoxView;
+  saving: ReturnType<typeof useBuyBoxForm>;
+}) {
+  const { submit, isPending, fieldErrors, error, saved } = saving;
   const fieldError = (name: string) => fieldErrors[name];
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {

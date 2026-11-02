@@ -52,13 +52,9 @@ test("a photo upload during a storage outage reports an outage, not a bad file",
   });
 });
 
-// Product bug found by this suite: during a storage outage the page says only "Failed to fetch".
-// The sandbox's outage gate answers before its CORS headers are set (apps/sandbox/src/app.ts), so
-// the browser cannot read the answer and fetch throws a TypeError; usePhotoUpload shows any thrown
-// Error's own message (apps/web/src/features/listing-package/usePhotoUpload.ts, errorText), which
-// for a network failure is the browser's raw text instead of "front.jpg could not be uploaded. Try
-// again."
-test.fixme("a storage outage tells the agent to try the upload again", async ({ signedIn }) => {
+// The page says what to do, never the browser's "Failed to fetch": the outage's answer carries the
+// storage's CORS headers, and any upload failure reads as one to try again (T414).
+test("a storage outage tells the agent to try the upload again", async ({ signedIn }) => {
   const ops = await signedIn("ops");
   const agent = await signedIn("agent");
   const draft = await agent.bff.createPackage(packageInput(uniqueTag(), 250_000));

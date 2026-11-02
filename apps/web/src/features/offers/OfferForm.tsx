@@ -11,16 +11,25 @@ import { toLocalInput } from "@/lib/local-time";
 import { useOfferForm } from "./useOfferForm";
 
 const USD = { style: "currency", currency: "USD", maximumFractionDigits: 0 } as const;
-export function OfferForm({
-  packageId,
+
+type OfferFormProps = { packageId: string; myOffer: OfferView | null; deadline: string | null };
+
+/**
+ * The fields are keyed on the offer's version, so a send, a counter, or a withdrawal reloads them
+ * with the offer's terms. The sending lives out here, outside the key, so "Your offer was sent."
+ * survives that reload.
+ */
+export function OfferForm(props: OfferFormProps) {
+  const sending = useOfferForm(props.packageId, props.myOffer);
+  return <OfferFields key={props.myOffer?.version ?? 0} {...props} sending={sending} />;
+}
+
+function OfferFields({
   myOffer,
   deadline,
-}: {
-  packageId: string;
-  myOffer: OfferView | null;
-  deadline: string | null;
-}) {
-  const { submit, isPending, fieldErrors, error, saved } = useOfferForm(packageId, myOffer);
+  sending,
+}: OfferFormProps & { sending: ReturnType<typeof useOfferForm> }) {
+  const { submit, isPending, fieldErrors, error, saved } = sending;
   const [paymentType, setPaymentType] = useState<string>(myOffer?.paymentType ?? "CASH");
   // A countered offer is revised too: the revision replaces the counter (FR-052).
   const revising = myOffer?.status === "ACTIVE" || myOffer?.status === "COUNTERED";

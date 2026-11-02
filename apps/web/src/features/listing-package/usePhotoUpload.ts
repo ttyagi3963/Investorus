@@ -1,6 +1,7 @@
 // Adds and removes a package's photos (T270). Each file is checked for type and size first, then
 // uploaded straight to storage with the signed instruction the api issues (never through the BFF),
-// then attached at the first free position. The api checks everything again.
+// then attached at the first free position. The api checks everything again. A failure always
+// reads as something to try again, never as the browser's own error text.
 import { MAX_PHOTO_BYTES, PHOTO_CONTENT_TYPES } from "@clever/contracts/photo";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -36,17 +37,18 @@ export function usePhotoUpload(packageId: string, existing: readonly { position:
       for (const file of files) {
         const position = [...Array(MAX_PHOTOS).keys()].find((i) => !taken.has(i));
         if (position === undefined)
-          throw new Error(`A package holds at most ${MAX_PHOTOS} photos.`);
+          return setError(`A package holds at most ${MAX_PHOTOS} photos.`);
         const { storageKey, upload } = await photosApi.requestUpload(packageId, {
           contentType: file.type as (typeof PHOTO_CONTENT_TYPES)[number],
           sizeBytes: file.size,
         });
+        // A storage outage can also surface as a network error, which the browser words as it likes.
         const stored = await fetch(upload.url, {
           method: upload.method,
           headers: upload.headers,
           body: file,
-        });
-        if (!stored.ok) throw new Error(`${file.name} could not be uploaded. Try again.`);
+        }).catch(() => null);
+        if (!stored?.ok) return setError(`${file.name} could not be uploaded. Try again.`);
         await photosApi.attach(packageId, { storageKey, position });
         taken.add(position);
       }

@@ -4,6 +4,7 @@ export { InfrastructureError } from "./errors/InfrastructureError.js";
 export { redactPii, scrubPiiText } from "./errors/redact-pii.js";
 export { translateError, type ErrorBody } from "./errors/http-error-translator.js";
 export { currentTraceId, runWithTrace } from "./infra/trace-context.js";
+export { runWithIdempotencyClaim } from "./infra/idempotency-context.js";
 export type { IErrorReporter } from "./providers/error-reporter/IErrorReporter.js";
 export type { AddressHasher, IPiiCipher } from "./providers/pii-cipher/IPiiCipher.js";
 export type { IClock } from "./providers/clock/IClock.js";

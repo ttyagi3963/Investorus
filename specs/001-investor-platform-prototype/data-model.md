@@ -492,7 +492,10 @@ One `Idempotency-Key` a user sent with a POST or PATCH, stored in Postgres inste
 | method / path | string | a retry must match them |
 | bodyHash | string | SHA-256 of the JSON body; a retry must match it |
 | status | `IN_PROGRESS` \| `DONE` | |
-| responseStatus / responseBody | int? / text? | set when DONE; a 5xx is never stored (the row is deleted). The body can hold seller details (a package view), so it is the JSON encrypted with the PII cipher (XII). A replay returns it as first sent; the screens re-read the package after a save |
+| claimToken | string | the claim holding the key; only its holder can complete, release, or commit under it (T367) |
+| lockedUntil | timestamp | the claim's 30-second lease; past it, a retry takes the key over if nothing committed |
+| committedAt | timestamp? | set in the same transaction as the request's first write, only while the lease holds; a request that outlived its lease is rolled back |
+| responseStatus / responseBody | int? / text? | set when DONE; a 5xx is never stored (the row is deleted if nothing committed; if something did, a retry is told it was applied). The body can hold seller details (a package view), so it is the JSON encrypted with the PII cipher (XII). A replay returns it as first sent; the screens re-read the package after a save |
 | createdAt | timestamp | a key older than 24 hours is ignored and claimed again |
 
 ### ImportBatch / ImportRowResult

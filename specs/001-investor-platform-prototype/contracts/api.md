@@ -15,7 +15,11 @@ Entity fields are defined in [../data-model.md](../data-model.md).
   typed client sends a fresh key with each call unless it is given one, and the BFF forwards it.
   - Missing key → `400`.
   - Same key and same body → the stored response, with the header `Idempotent-Replay: true`.
-  - Same key while the first request is still running → `409` with `Retry-After: 1`.
+  - Same key while the first request is still running (its 30-second lease) → `409` with
+    `Retry-After: 1`.
+  - Same key after the first request's process died: if nothing committed, the request runs;
+    if its change committed but the answer was lost → `409` (`IDEMPOTENCY_ALREADY_APPLIED`);
+    the change never runs twice (T367).
   - Same key with a different body → `422` (`IDEMPOTENCY_KEY_REUSED`).
   - A `5xx` answer is not stored, so a retry runs the change again.
   - Key store unavailable → `503` with `Retry-After: 5`.

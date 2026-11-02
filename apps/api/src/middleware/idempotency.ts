@@ -2,11 +2,19 @@
 // request with a key runs and its answer is stored; a retry with the same key and body gets that
 // answer back (`Idempotent-Replay: true`) without running the change again. A duplicate sent while
 // the first still runs gets 409 (`Retry-After: 1`), the key with another body 422, and a key store
-// outage 503 (`Retry-After: 5`), so a change never runs unprotected. A 5xx is not stored.
+// outage 503 (`Retry-After: 5`), so a change never runs unprotected. A 5xx is not stored. The
+// request runs under its claim (T367), so its writes mark the claim committed in their own
+// transaction: after a crash, a retry runs the change only if nothing committed, and is otherwise
+// told it was already applied (409 IDEMPOTENCY_ALREADY_APPLIED); it is never run twice.
 // Sign-in has no user yet and is not covered, so a session token is never stored.
 import { createHash } from "node:crypto";
 import { BusinessRuleError, DomainError, ValidationError } from "@clever/contracts/common";
-import { InfrastructureError, type IErrorReporter, type IIdempotencyStore } from "@clever/core";
+import {
+  InfrastructureError,
+  runWithIdempotencyClaim,
+  type IErrorReporter,
+  type IIdempotencyStore,
+} from "@clever/core";
 import type { RequestHandler } from "express";
 
 const COVERED_METHODS = new Set(["POST", "PUT", "PATCH"]);
@@ -66,6 +74,13 @@ export function idempotency(store: IIdempotencyStore, reporter: IErrorReporter):
             "IDEMPOTENCY_IN_PROGRESS",
           ),
         );
+      case "applied":
+        return next(
+          new BusinessRuleError(
+            "This request was already applied, but its answer was lost. Reload to see the result.",
+            "IDEMPOTENCY_ALREADY_APPLIED",
+          ),
+        );
       case "mismatch":
         return next(
           new IdempotencyKeyReusedError(
@@ -73,6 +88,7 @@ export function idempotency(store: IIdempotencyStore, reporter: IErrorReporter):
           ),
         );
     }
+    const { token } = claim;
 
     // Every answer leaves through res.end, so the key is settled there, before the answer is sent:
     // a retry after the answer arrives is always a replay. If storing fails, the answer is still
@@ -84,11 +100,11 @@ export function idempotency(store: IIdempotencyStore, reporter: IErrorReporter):
         typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) ? chunk.toString("utf8") : null;
       const settled =
         res.statusCode >= 500
-          ? store.release(userId, key)
-          : store.complete(userId, key, res.statusCode, body);
+          ? store.release(userId, key, token)
+          : store.complete(userId, key, token, res.statusCode, body);
       void settled.catch((err: unknown) => reporter.report(err)).finally(() => end(...args));
       return res;
     }) as typeof res.end;
-    next();
+    runWithIdempotencyClaim({ userId, key, token }, () => next());
   };
 }

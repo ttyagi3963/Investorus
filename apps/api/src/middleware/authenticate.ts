@@ -15,7 +15,8 @@ const PUBLIC: readonly [method: string, path: RegExp][] = [
 
 export function authenticate(auth: { verify(token: string): Promise<Actor> }): RequestHandler {
   return async (req, res, next) => {
-    if (PUBLIC.some(([method, path]) => req.method === method && path.test(req.path))) return next();
+    if (PUBLIC.some(([method, path]) => req.method === method && path.test(req.path)))
+      return next();
     const header = req.headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
     if (!token) return next(new UnauthenticatedError("Sign in first"));

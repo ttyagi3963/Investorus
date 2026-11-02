@@ -1392,6 +1392,7 @@ merged by Claude when every check is green.
 
 - [X] T365 A promoted backup that is withdrawn or expires is released and can never be reconfirmed (tests first): reconfirm locks the package, re-reads the offer, and requires a live, unexpired BACKUP; withdrawal and offer expiry decline the promoted backup's pending deal in the same transaction and tell the agent, who can promote another at once; a Postgres test races reconfirm against withdrawal (FR-043, FR-054, FR-057, FR-059)
 - [X] T366 After a material edit, tell an investor matched before only when a field their buy boxes check changed since the version they were last told about, including when the listing no longer fits them; newly matched investors get the match notice; a replay of the same version sends nothing (tests first; FR-022)
+- [X] T367 Recoverable idempotency claims (tests first): a claim is a 30-second lease with its own token; the request's first write marks the claim committed in that write's own transaction, and only while the lease holds (a request that outlives it is rolled back); after a crash a retry runs the change if nothing committed and otherwise gets 409 IDEMPOTENCY_ALREADY_APPLIED; a 5xx after a commit no longer frees the key; migration adds claimToken, lockedUntil, committedAt (XX.2)
 
 **Checkpoint**: every fix has a test that fails without it; all checks green.
 

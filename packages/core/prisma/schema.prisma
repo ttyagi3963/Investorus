@@ -679,6 +679,12 @@ model IdempotencyKey {
   responseStatus Int?
   responseBody   String?
   createdAt      DateTime          @default(now())
+  /// The claim that holds the key: a request may commit only while it holds it (T367).
+  claimToken     String            @default(dbgenerated("(gen_random_uuid())::text"))
+  /// The claim's lease: past it, a retry may take the key over if nothing committed.
+  lockedUntil    DateTime          @default(now())
+  /// Set in the same transaction as the request's first write, so a retry knows it already ran.
+  committedAt    DateTime?
 
   @@unique([userId, key])
 }

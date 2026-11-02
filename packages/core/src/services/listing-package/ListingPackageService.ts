@@ -3,6 +3,7 @@
 // address (FR-013), keeps agents to their own packages (FR-080), checks an edit on the merged
 // result, because some rules span the stored row and the change, and audits each change (XII).
 // Edits stop once an offer is accepted, and a published package stays publishable (T375).
+// Operations read any package, and each such read of the seller is audited (T386).
 import type { AuditAction, AuditEntry } from "@clever/contracts/audit";
 import type { Actor } from "@clever/contracts/auth";
 import {
@@ -30,7 +31,7 @@ import { snapshotAndQueueMatching } from "../../workflows/matching/queue-matchin
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { matchSummaryOf } from "./match-summary.js";
 import { assertEditable, missingToPublish } from "./publish-rules.js";
-import type { MatchSummary } from "@clever/contracts/listing-package";
+import type { AgentPackageSummaryParts, MatchSummary } from "@clever/contracts/listing-package";
 
 /** A package with everything its agent sees: the seller, the property, the photos, how many
  * investors it matched in its current round, and how the last matching run went, as counts. */
@@ -45,8 +46,10 @@ export type AgentPackage = {
 
 export interface IListingPackageService {
   create(actor: Actor, input: unknown): Promise<AgentPackage>;
+  /** The package for its agent, or any package for operations (FR-080). */
   get(actor: Actor, id: string): Promise<AgentPackage>;
-  list(actor: Actor): Promise<AgentPackage[]>;
+  /** The agent's own packages; operations list every package in the console (/ops/listing-packages). */
+  list(actor: Actor): Promise<AgentPackageSummaryParts[]>;
   update(actor: Actor, id: string, input: unknown): Promise<AgentPackage>;
   /** What happened to the package, newest first, for its agent (T297). */
   timeline(actor: Actor, id: string): Promise<AuditEntry[]>;
@@ -139,6 +142,7 @@ export class ListingPackageService implements IListingPackageService {
   }
 
   async get(actor: Actor, id: string): Promise<AgentPackage> {
+    if (actor.role === "OPS") return this.getForOps(actor, id);
     const agentId = this.agentOf(actor);
     return this.uow.run(async (repos) => {
       const pkg = await repos.packages.findForAgent(agentId, id);
@@ -147,11 +151,37 @@ export class ListingPackageService implements IListingPackageService {
     });
   }
 
-  async list(actor: Actor): Promise<AgentPackage[]> {
+  async list(actor: Actor): Promise<AgentPackageSummaryParts[]> {
     const agentId = this.agentOf(actor);
     return this.uow.run(async (repos) => {
       const pkgs = await repos.packages.listByAgent(agentId);
-      return Promise.all(pkgs.map((pkg) => this.load(repos, pkg)));
+      // A list row shows no seller and no match summary, and the properties come in one query.
+      const properties = await repos.properties.findByIds(pkgs.map((pkg) => pkg.propertyId));
+      return Promise.all(
+        pkgs.map(async (pkg) => {
+          const property = properties.get(pkg.propertyId);
+          if (!property) throw new NotFoundError(NOT_FOUND);
+          const [photos, matchedCount] = await Promise.all([
+            repos.photos.listByPackage(pkg.id),
+            repos.matches.countByPackage(pkg.id, pkg.round),
+          ]);
+          return { package: pkg, property, photos, matchedCount };
+        }),
+      );
+    });
+  }
+
+  /** Operations see every package, read-only (FR-080); each read of its seller is audited (XII). */
+  private getForOps(actor: Actor, id: string): Promise<AgentPackage> {
+    return this.uow.run(async (repos) => {
+      const pkg = await repos.packages.findById(id);
+      if (!pkg) throw new NotFoundError(NOT_FOUND);
+      const found = await this.load(repos, pkg);
+      await repos.audit.append({
+        ...this.auditEntry(actor, id, "PII_ACCESSED"),
+        details: { purpose: "OPS_CONSOLE", view: "package", fields: ["seller", "streetLine"] },
+      });
+      return found;
     });
   }
 

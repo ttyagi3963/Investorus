@@ -5,8 +5,8 @@
 // offer until it is accepted, even after the deadline. A refusal says why (the deadline passed, the
 // package was withdrawn, an offer already exists). The investor answers an agent's counter by
 // taking its terms or keeping their own (T310), and can push out a backup offer's expiry, even after
-// the deadline, but change nothing else. Only the package's agent lists its offers. Every change is
-// audited.
+// the deadline, but change nothing else. Only the package's agent and operations (read-only, FR-080)
+// list its offers. Every change is audited.
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -43,7 +43,8 @@ export interface IOfferService {
   revise(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
   withdraw(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
   respondToCounter(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
-  /** The agent's offers, each with whether operations deactivated its investor (T370). */
+  /** A package's offers for its agent or operations (T386), each with whether operations
+   * deactivated its investor (T370). */
   listForPackage(
     actor: Actor,
     packageId: string,
@@ -239,10 +240,15 @@ export class OfferService implements IOfferService {
     actor: Actor,
     packageId: string,
   ): Promise<{ offer: Offer; investorActive: boolean }[]> {
-    if (actor.role !== "AGENT")
-      throw new ForbiddenError("Only the package's agent sees its offers");
+    if (actor.role === "INVESTOR") {
+      throw new ForbiddenError("Only the package's agent and operations see its offers");
+    }
     return this.uow.run(async (repos) => {
-      const pkg = await repos.packages.findForAgent(actor.agentId, packageId);
+      // Operations see every package's offers, read-only (FR-080).
+      const pkg =
+        actor.role === "OPS"
+          ? await repos.packages.findById(packageId)
+          : await repos.packages.findForAgent(actor.agentId, packageId);
       if (!pkg) throw new NotFoundError(NOT_FOUND);
       const offers = await repos.offers.listByPackage(packageId, pkg.round);
       const inactive = await repos.investors.findInactive(offers.map((o) => o.investorId));

@@ -1,8 +1,8 @@
 // Guards the draft package rules (T258): an unknown ZIP or future year is refused on its field, city and state
 // come from the ZIP, one active package per address across all agents, a closed or withdrawn one
-// freeing it (FR-013, T369), an agent only reaches their
-// own packages (FR-080), a stale edit is refused, an edit is checked on the merged result, and each
-// change is audited without seller PII (T282, XII). Edits stop once an offer is accepted, and an
+// freeing it (FR-013, T369), an agent only reaches their own packages while operations read any,
+// each read of the seller audited (FR-080, T386), a stale edit is refused, an edit is checked on
+// the merged result, and each change is audited without seller PII (T282, XII). Edits stop once an offer is accepted, and an
 // edit cannot leave a published package unpublishable (T375).
 import type { Actor } from "@clever/contracts/auth";
 import {
@@ -130,6 +130,24 @@ describe("ListingPackageService", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
     const ops: Actor = { userId: "user-o", role: "OPS", agentId: null };
     await expect(s.create(ops, draft)).rejects.toMatchObject({ status: 403 });
+    await expect(
+      s.update(ops, pkg.id, { version: 1, priceExpectationMax: 1 }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("lets operations read any package, auditing each read of the seller (FR-080, XII)", async () => {
+    const uow = new InMemoryUnitOfWork();
+    const s = service(uow);
+    const { package: pkg } = await s.create(avery, draft);
+    const ops: Actor = { userId: "user-o", role: "OPS", agentId: null };
+
+    expect((await s.get(ops, pkg.id)).seller.fullName).toBe("Maria Lopez");
+    expect(uow.repos.audit.entries.at(-1)).toMatchObject({
+      actorId: "user-o",
+      action: "PII_ACCESSED",
+      entityType: "ListingPackage",
+      entityId: pkg.id,
+    });
   });
 
   it("refuses an edit based on a stale version", async () => {

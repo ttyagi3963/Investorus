@@ -1,11 +1,13 @@
-// The agent's packages (T256, T298, T313, contracts/api.md): list, create (201), read, edit, publish,
-// withdraw, reopen, extend the deadline, and the timeline of what happened. Each route makes one service call and maps the
+// The agent's packages (T256, T298, T313, contracts/api.md): list, create (201), read (operations
+// too, T386), edit, publish, withdraw, reopen, extend the deadline, and the timeline of what
+// happened. Each route makes one service call and maps the
 // result to its view; `presentPackage` and `presentSummary` (built in the container) add the
 // photos' public addresses on the way.
 import { toTimelineEntryView } from "@clever/contracts/audit";
 import {
   type AgentPackageParts,
   type AgentPackageSummary,
+  type AgentPackageSummaryParts,
   type AgentPackageView,
 } from "@clever/contracts/listing-package";
 import type { IListingPackageService, IPublicationWorkflow } from "@clever/core";
@@ -15,7 +17,7 @@ export function createListingPackagesRouter(
   packages: IListingPackageService,
   publication: IPublicationWorkflow,
   presentPackage: (parts: AgentPackageParts) => AgentPackageView,
-  presentSummary: (parts: AgentPackageParts) => AgentPackageSummary,
+  presentSummary: (parts: AgentPackageSummaryParts) => AgentPackageSummary,
 ): Router {
   const router = Router();
   router.get("/listing-packages", async (_req, res) => {

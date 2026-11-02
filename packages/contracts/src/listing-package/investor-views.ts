@@ -143,7 +143,10 @@ export function toInvestorPackageResponse(
   };
 }
 
-export function toInvestorPackageSummary(parts: InvestorPackageParts): InvestorPackageSummary {
+/** The list row needs no deal or counter terms, so the list does not read them (T386). */
+export function toInvestorPackageSummary(
+  parts: Omit<InvestorPackageParts, "myOwnTerms" | "myDeal">,
+): InvestorPackageSummary {
   const { package: pkg, property: p } = parts;
   const first = [...parts.photos].sort((a, b) => a.position - b.position)[0];
   return {

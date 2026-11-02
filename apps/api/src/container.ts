@@ -57,6 +57,7 @@ import {
   toAgentPackageView,
   type AgentPackageParts,
   type AgentPackageSummary,
+  type AgentPackageSummaryParts,
   type AgentPackageView,
 } from "@clever/contracts/listing-package";
 import type { Logger } from "pino";
@@ -86,7 +87,7 @@ export type AppContainer = Readonly<{
   /** A package's view, with each photo's public address. */
   presentPackage: (parts: AgentPackageParts) => AgentPackageView;
   /** A package's list row, with its first photo's public address. */
-  presentSummary: (parts: AgentPackageParts) => AgentPackageSummary;
+  presentSummary: (parts: AgentPackageSummaryParts) => AgentPackageSummary;
   /** Each photo with its public address. */
   addPhotoUrls: AddPhotoUrls;
   checkDatabase: () => Promise<void>;

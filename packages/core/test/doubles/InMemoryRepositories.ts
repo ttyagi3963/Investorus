@@ -31,6 +31,7 @@ import { withOutboxEvents } from "../../src/outbox/with-outbox-events.js";
 import type {
   Delivery,
   IDeliveryRepository,
+  RetryAllFilter,
 } from "../../src/repositories/delivery/IDeliveryRepository.js";
 import type { DeliveryPlan } from "@clever/contracts/events";
 import type { IOpsQueryRepository } from "../../src/repositories/ops/IOpsQueryRepository.js";
@@ -154,6 +155,14 @@ export class InMemoryPropertyRepository implements IPropertyRepository {
   }
   async findById(id: string) {
     return this.rows.get(id) ?? null;
+  }
+  async findByIds(ids: string[]) {
+    return new Map<string, Property>(
+      ids.flatMap((id) => {
+        const row = this.rows.get(id);
+        return row ? [[id, row] as const] : [];
+      }),
+    );
   }
   async update(id: string, patch: PropertyPatch) {
     const row = apply(this.rows.get(id)!, patch);
@@ -774,6 +783,18 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
       queuedAt: null,
       nextAttemptAt: null,
     });
+  }
+  async resetAllForRetry({ target, packageId }: RetryAllFilter) {
+    let count = 0;
+    for (const row of this.rows) {
+      const event = this.outbox.rows.find((e) => e.id === row.outboxEventId);
+      const chosen =
+        (target === undefined || row.target === target) &&
+        (packageId === undefined ||
+          (event?.aggregateType === "ListingPackage" && event.aggregateId === packageId));
+      if (chosen && (await this.resetForRetry(row.id))) count += 1;
+    }
+    return count;
   }
 }
 

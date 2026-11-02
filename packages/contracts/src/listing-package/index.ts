@@ -25,6 +25,7 @@ export {
   toAgentPackageView,
   type AgentPackageParts,
   type AgentPackageSummary,
+  type AgentPackageSummaryParts,
   type AgentPackageView,
   type MatchSummary,
   type AgentPackagePartsWithUrls,

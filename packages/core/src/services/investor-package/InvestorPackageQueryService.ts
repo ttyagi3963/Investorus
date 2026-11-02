@@ -39,8 +39,11 @@ const REVEALED: DealStatus[] = [
   "CLOSED",
 ];
 
+/** A matched package's row in the investor's list: no deal, no counter terms, no seller. */
+export type InvestorPackageRow = Omit<InvestorPackage, "myOwnTerms" | "myDeal" | "seller">;
+
 export interface IInvestorPackageQueryService {
-  listMatched(actor: Actor): Promise<InvestorPackage[]>;
+  listMatched(actor: Actor): Promise<InvestorPackageRow[]>;
   getForInvestor(actor: Actor, packageId: string): Promise<InvestorPackage>;
 }
 
@@ -54,16 +57,28 @@ export function investorOf(actor: Actor): string {
 export class InvestorPackageQueryService implements IInvestorPackageQueryService {
   constructor(private readonly uow: IUnitOfWork) {}
 
-  async listMatched(actor: Actor): Promise<InvestorPackage[]> {
+  async listMatched(actor: Actor): Promise<InvestorPackageRow[]> {
     const investorId = investorOf(actor);
     return this.uow.run(async (repos) => {
-      const found: InvestorPackage[] = [];
+      const current: { pkg: ListingPackage; match: Match }[] = [];
       for (const match of await repos.matches.listForInvestor(investorId)) {
         const pkg = await repos.packages.findById(match.packageId);
         // A match from an earlier round no longer grants access.
-        if (pkg && pkg.round === match.round) found.push(await load(repos, pkg, match));
+        if (pkg && pkg.round === match.round) current.push({ pkg, match });
       }
-      return found;
+      // A list row needs no deal or counter terms, and the properties come in one query (T386).
+      const properties = await repos.properties.findByIds(current.map(({ pkg }) => pkg.propertyId));
+      return Promise.all(
+        current.map(async ({ pkg, match }) => {
+          const property = properties.get(pkg.propertyId);
+          if (!property) throw new NotFoundError(NOT_FOUND);
+          const [photos, myOffer] = await Promise.all([
+            repos.photos.listByPackage(pkg.id),
+            repos.offers.findLatest(pkg.id, investorId, pkg.round),
+          ]);
+          return { package: pkg, property, photos, myOffer, matchedAt: match.firstMatchedAt };
+        }),
+      );
     });
   }
 

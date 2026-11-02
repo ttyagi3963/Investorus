@@ -1,15 +1,17 @@
 // Guards the offer rules (T296; FR-042, XII): only a matched investor can offer (others get "not
 // found"); no offer after the deadline or on a withdrawn package, and the refusal says why; one
 // active offer per investor and round, so a second points to revise; a revise writes the next
-// revision and needs the version it read; the dates must be ahead; only the package's agent sees
-// its offers; every submit and revise is audited; and an investor can withdraw an offer until it
+// revision and needs the version it read; the dates must be ahead; only the package's agent and
+// operations see its offers; every submit and revise is audited; and an investor can withdraw an offer until it
 // is accepted, even after the deadline (T307, FR-043).
+import type { Actor } from "@clever/contracts/auth";
 import type { ValidationError } from "@clever/contracts/common";
 import { describe, expect, it } from "vitest";
 import { avery, blake, investor, offer, world } from "../../../test/fixtures/published-package.js";
 import { OfferService } from "./OfferService.js";
 
 const summit = investor("summit");
+const ops: Actor = { userId: "user-ops", role: "OPS", agentId: null };
 
 describe("OfferService", () => {
   it("refuses an unmatched investor, a late offer, and an offer on a withdrawn package, saying why", async () => {
@@ -83,13 +85,14 @@ describe("OfferService", () => {
     ]);
   });
 
-  it("shows a package's offers only to its agent", async () => {
+  it("shows a package's offers to its agent and to operations only (FR-080)", async () => {
     const { uow, clock, publish } = world();
     const pkg = await publish();
     const offers = new OfferService(uow, { clock });
     await offers.create(summit, pkg.id, offer());
 
     expect(await offers.listForPackage(avery, pkg.id)).toHaveLength(1);
+    expect(await offers.listForPackage(ops, pkg.id)).toHaveLength(1);
     await expect(offers.listForPackage(blake, pkg.id)).rejects.toMatchObject({ status: 404 });
     await expect(offers.listForPackage(summit, pkg.id)).rejects.toMatchObject({ status: 403 });
   });

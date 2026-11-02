@@ -1,7 +1,8 @@
 // Operations' view of outside deliveries (T341; FR-071): the newest deliveries, optionally by
 // status, each named by its investor's company or "CRM"; a retry of one delivery set aside, or of
-// every one (optionally only one target's or one package's). A retry sends the delivery back to PENDING with no
-// attempts and off the queue; the worker's relay queues it again. Each retry is audited.
+// every one (optionally only one target's or one package's, reset in one statement, T386). A retry
+// sends the delivery back to PENDING with no attempts and off the queue; the worker's relay queues
+// it again. Each retry is audited.
 import type { Actor } from "@clever/contracts/auth";
 import { BusinessRuleError, NotFoundError } from "@clever/contracts/common";
 import {
@@ -67,18 +68,8 @@ export class DeliveryOpsService implements IDeliveryOpsService {
     assertOps(actor);
     const { target, packageId } = retryAllInputSchema.parse(input);
     return this.uow.run(async (repos) => {
-      // In pages, until no delivery that needs attention is left: a reset one leaves the list.
-      let count = 0;
-      for (;;) {
-        const setAside = await repos.opsQuery.listDeliveries(
-          { status: "NEEDS_ATTENTION", target, packageId },
-          LIST_LIMIT,
-        );
-        if (setAside.length === 0) break;
-        for (const delivery of setAside) {
-          if (await repos.deliveries.resetForRetry(delivery.id)) count += 1;
-        }
-      }
+      // One statement, so a backlog of any size resets well inside the transaction's time limit.
+      const count = await repos.deliveries.resetAllForRetry({ target, packageId });
       if (count > 0) {
         await this.audit(repos, actor, packageId ?? "all", {
           deliveries: count,

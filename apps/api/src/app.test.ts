@@ -3,7 +3,8 @@
 // they learn nothing about the routes). Every answer names the request's trace ID, and code behind
 // the JSON body parser still runs inside that trace (T283). An investor's package goes out as the
 // investor view, without the seller or the street (T298, SC-006). A brand's theme is public and
-// cached by its version: a caller holding the current version gets a 304 (T348).
+// cached by its version: a caller holding the current version gets a 304 (T348), however its
+// If-None-Match names it (T386).
 import { UnauthenticatedError } from "@clever/contracts/common";
 import { currentTraceId } from "@clever/core";
 import { pino } from "pino";
@@ -140,10 +141,14 @@ describe("brand routes", () => {
 
     const first = await request(app).get("/api/v1/brands/test/theme").expect(200);
     expect(first.headers.etag).toBe('"test-v3"');
+    // If-None-Match compares weakly and may list several tags (RFC 9110 13.1.2).
+    for (const held of ['"test-v3"', 'W/"test-v3"', '"test-v2", W/"test-v3"']) {
+      await request(app).get("/api/v1/brands/test/theme").set("If-None-Match", held).expect(304);
+    }
     await request(app)
       .get("/api/v1/brands/test/theme")
-      .set("If-None-Match", '"test-v3"')
-      .expect(304);
+      .set("If-None-Match", '"test-v2"')
+      .expect(200);
     await request(app).put("/api/v1/ops/brands/test/theme").send({}).expect(401);
   });
 });

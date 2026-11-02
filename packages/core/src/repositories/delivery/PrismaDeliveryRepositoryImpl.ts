@@ -5,7 +5,11 @@
 import type { DeliveryPlan } from "@clever/contracts/events";
 import { scrubPiiText } from "../../errors/redact-pii.js";
 import type { Prisma } from "../../generated/prisma/client.js";
-import type { DeliveryWithEvent, IDeliveryRepository } from "./IDeliveryRepository.js";
+import type {
+  DeliveryWithEvent,
+  IDeliveryRepository,
+  RetryAllFilter,
+} from "./IDeliveryRepository.js";
 
 const redacted = (error: string) => scrubPiiText(error).slice(0, 500);
 
@@ -102,6 +106,20 @@ export class PrismaDeliveryRepositoryImpl implements IDeliveryRepository {
       data: { status: "PENDING", attempts: 0, queuedAt: null, nextAttemptAt: null },
     });
     return count === 1;
+  }
+
+  async resetAllForRetry({ target, packageId }: RetryAllFilter): Promise<number> {
+    // The console's delivery list selects the same way: a package's deliveries are its events'.
+    const t = target ?? null;
+    const p = packageId ?? null;
+    return this.db.$executeRaw`
+      UPDATE "Delivery" d
+      SET status = 'PENDING', attempts = 0, "queuedAt" = NULL, "nextAttemptAt" = NULL,
+          "updatedAt" = CURRENT_TIMESTAMP
+      FROM "OutboxEvent" e
+      WHERE e.id = d."outboxEventId" AND d.status = 'NEEDS_ATTENTION'
+        AND (${t}::text IS NULL OR d.target = ${t}::"DeliveryTarget")
+        AND (${p}::text IS NULL OR (e."aggregateType" = 'ListingPackage' AND e."aggregateId" = ${p}))`;
   }
 
   async markNeedsAttention(id: string, attempt: number, error: string): Promise<boolean> {

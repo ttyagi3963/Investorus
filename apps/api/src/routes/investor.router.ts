@@ -5,10 +5,9 @@
 import {
   toInvestorPackageSummary,
   toInvestorPackageResponse,
-  type InvestorPackageParts,
 } from "@clever/contracts/listing-package";
 import type { Photo } from "@clever/contracts/photo";
-import type { IInvestorPackageQueryService, InvestorPackage } from "@clever/core";
+import type { IInvestorPackageQueryService } from "@clever/core";
 import { Router } from "express";
 
 export type AddPhotoUrls = (photos: Photo[]) => (Photo & { url: string })[];
@@ -17,7 +16,7 @@ export function createInvestorRouter(
   investorPackages: IInvestorPackageQueryService,
   addPhotoUrls: AddPhotoUrls,
 ): Router {
-  const withUrls = (found: InvestorPackage): InvestorPackageParts => ({
+  const withUrls = <T extends { photos: Photo[] }>(found: T) => ({
     ...found,
     photos: addPhotoUrls(found.photos),
   });

@@ -4,6 +4,10 @@
 // outcome is recorded only by the run that started it (T379), so a run that lost its claim cannot.
 import type { DeliveryPlan, DeliveryStatus, DeliveryTarget } from "@clever/contracts/events";
 
+/** Which deliveries set aside an operator's "retry all" takes back: optionally only one target's,
+ * and optionally only those about one package. */
+export type RetryAllFilter = { target?: DeliveryTarget; packageId?: string };
+
 export type Delivery = {
   id: string;
   outboxEventId: string;
@@ -61,4 +65,9 @@ export interface IDeliveryRepository {
    * off the queue, so the relay queues it again. False when it was not set aside.
    */
   resetForRetry(id: string): Promise<boolean>;
+  /**
+   * resetForRetry for every delivery set aside that the filter selects, in one statement however
+   * many there are (T386). Returns how many.
+   */
+  resetAllForRetry(filter: RetryAllFilter): Promise<number>;
 }

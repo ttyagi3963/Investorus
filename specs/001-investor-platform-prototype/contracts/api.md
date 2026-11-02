@@ -44,7 +44,10 @@ Entity fields are defined in [../data-model.md](../data-model.md).
     request. 503: idempotency store down.
   - 500: unexpected, with a generic message.
 - **Pagination**: `?cursor=&limit=` (default 25, max 100) on list routes. Responses use
-  `{ items, nextCursor }`.
+  `{ items, nextCursor }`. **Not built in the prototype** (open task T016; plan.md Prototype
+  Shortcuts): list routes return a plain array, and the delivery list is capped at the newest 200.
+- **Not built in the prototype** (T386; plan.md Prototype Shortcuts): rows marked "Not built"
+  below are part of the design but have no route yet, so they answer 404.
 
 ## Sessions
 
@@ -60,10 +63,10 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 
 | Method | Path | Role | Body / Response | Spec |
 | --- | --- | --- | --- | --- |
-| GET | `/listing-packages` | AGENT (own), OPS (all) | `?status=` → `AgentPackageSummary[]` (each with `matchedCount`) | Story 2 |
+| GET | `/listing-packages` | AGENT (own) | → `AgentPackageSummary[]` (each with `matchedCount`) | Story 2. Operations list every package with `GET /ops/listing-packages` (FR-080; T386). Not built: the `?status=` filter |
 | POST | `/listing-packages` | AGENT | `CreatePackageInput` (seller, property, expectations) → 201 `AgentPackageView` (DRAFT); an address with an active package (any agent) → 409 `DUPLICATE_ACTIVE_LISTING`, with `details.existingPackageId` only if the caller owns it (the same check runs when an edit changes the address) | FR-010, FR-013 |
-| GET | `/listing-packages/:id` | AGENT (own), OPS | → `AgentPackageView` (full, with PII, and `matchedCount`: investors matched in the current round) | |
-| PATCH | `/listing-packages/:id` | AGENT (own) | `UpdatePackageInput` (partial; `undefined` = unchanged) + `version` → 200 | 202 with a re-match job if a material field changed after publish. Only in DRAFT, ACCEPTING_OFFERS, or NO_OFFERS_RECEIVED, else 409 `PACKAGE_LOCKED`; after publish, 400 names each field publishing needs that the edit would empty (T375) |
+| GET | `/listing-packages/:id` | AGENT (own), OPS | → `AgentPackageView` (full, with PII, and `matchedCount`: investors matched in the current round) | FR-080: operations read any package, read-only; each operations read is audited PII_ACCESSED (T386) |
+| PATCH | `/listing-packages/:id` | AGENT (own) | `UpdatePackageInput` (partial; `undefined` = unchanged) + `version` → 200 | A material field changed after publish queues the re-match job in the same change and still answers 200 (not built: the 202 with `{ jobId, statusUrl }`). Only in DRAFT, ACCEPTING_OFFERS, or NO_OFFERS_RECEIVED, else 409 `PACKAGE_LOCKED`; after publish, 400 names each field publishing needs that the edit would empty (T375) |
 | POST | `/listing-packages/:id/publication` | AGENT (own) | `{ offerDeadline?, version }` → 200 `AgentPackageView` (now ACCEPTING_OFFERS; the MATCH_PACKAGE job is queued in the same change and runs in the worker) | 400 lists invalid fields (FR-012) |
 | POST | `/listing-packages/:id/withdrawal` | AGENT (own) | `{ version }` → 200 `AgentPackageView` | |
 | GET | `/listing-packages/:id/timeline` | AGENT (own) | → `TimelineEntryView[]` (the package's audit entries, newest first, without per-investor match decisions) | Sprint 2 (T297) |
@@ -72,8 +75,8 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | POST | `/listing-packages/:id/photo-uploads` | AGENT (own) | `{ contentType, sizeBytes }` → 201 `{ storageKey, upload: UploadInstruction }` | Vendor-neutral `{ url, method, headers, expiresAt }` ([providers.md](./providers.md)); the browser uploads directly (XIV) |
 | POST | `/listing-packages/:id/photos` | AGENT (own) | `{ storageKey, position }` → 201 `Photo` | Verifies the object exists. Photo uploads and changes only while the package is editable, else 409 `PACKAGE_LOCKED` (T375) |
 | DELETE | `/listing-packages/:id/photos/:photoId` | AGENT (own) | → 204 | 409 `PHOTO_REQUIRED` for a published package's last photo (T375) |
-| GET | `/package-form` | AGENT | → `packageFormSteps` config (ordered steps, field keys, required flags) | IX: the package form is config-driven |
-| GET | `/listing-packages/:id/matches` | AGENT (own): counts only; OPS: full | → `{ matchedCount, topExclusionReasons[] }` (from the latest `ListingVersion`) or `MatchView[]` (positive matches with `matchedBuyBoxes[]` and their `clauseResults`) | FR-020; edge case "no matches" |
+| GET | `/package-form` | AGENT | → `packageFormSteps` config (ordered steps, field keys, required flags) | IX: the package form is config-driven. **Not built** (open tasks T130, T134): the form's steps are in the web app's code |
+| GET | `/listing-packages/:id/matches` | AGENT (own): counts only; OPS: full | → `{ matchedCount, topExclusionReasons[] }` (from the latest `ListingVersion`) or `MatchView[]` (positive matches with `matchedBuyBoxes[]` and their `clauseResults`) | FR-020; edge case "no matches". **Not built** (T386): the agent gets the counts as `matchedCount` and `matchSummary` on `AgentPackageView`, and operations get each match from the trace and `/ops/listing-packages/:id/matches/:investorId` |
 
 ## Investor views
 
@@ -85,19 +88,19 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | POST | `/investor/buy-boxes` | INVESTOR | `CreateBuyBoxInput` (name, strategy?, criteria) → 201 `BuyBoxView` (version 1); enqueues MATCH_BUY_BOX | FR-060, FR-023 |
 | GET | `/investor/buy-boxes/:id` | INVESTOR (owner) | → `BuyBoxView` | FR-060 |
 | PUT | `/investor/buy-boxes/:id` | INVESTOR (owner) | `UpdateBuyBoxInput` (full criteria, status, name, strategy?) + `version` → 200 `BuyBoxView` (new version); enqueues MATCH_BUY_BOX if criteria or status changed | FR-060, FR-023; pause and resume are a `status` change |
-| GET | `/investor/buy-boxes/:id/near-misses` | INVESTOR (owner) | → `NearMissSummary` (`[{ criterionKey, label, count }]`, only groups with `count` ≥ 5; no package IDs or addresses) | FR-062 |
+| GET | `/investor/buy-boxes/:id/near-misses` | INVESTOR (owner) | → `NearMissSummary` (`[{ criterionKey, label, count }]`, only groups with `count` ≥ 5; no package IDs or addresses) | FR-062 (a SHOULD). **Not built** (open task T223) |
 
 ## Offers
 
 | Method | Path | Role | Body / Response | Spec |
 | --- | --- | --- | --- | --- |
 | POST | `/listing-packages/:id/offers` | INVESTOR (matched) | `CreateOfferInput` → 201 `OfferView` | FR-041, FR-044, FR-045 |
-| GET | `/listing-packages/:id/offers` | AGENT (own), OPS | → `OfferView[]` (latest revision per investor; `investorActive` flag) | Story 3, scenario 2; edge case "investor deactivated" |
+| GET | `/listing-packages/:id/offers` | AGENT (own), OPS | → `OfferView[]` (latest revision per investor; `investorActive` flag) | Story 3, scenario 2; edge case "investor deactivated"; operations read any package's offers (FR-080; T386) |
 | PATCH | `/offers/:offerId` | INVESTOR (owner) | `ReviseOfferInput` + `version` → 200 (new revision). For a BACKUP offer, only `expiresAt` may change, and that is allowed after the deadline | FR-042, FR-044; edge case "backup offer expires". After the deadline only a COUNTERED offer may be revised (while the package is ACCEPTING_OFFERS, T377); any other revision is refused `OFFER_DEADLINE_PASSED` |
 | POST | `/offers/:offerId/withdrawal` | INVESTOR (owner) | `{ version }` → 200 `OfferView` (ACTIVE, COUNTERED, or BACKUP; allowed after the deadline) | FR-043, FR-054 |
 | POST | `/offers/:offerId/counter-response` | INVESTOR (owner) | `{ action: "ACCEPT" \| "DECLINE", version }` → 200 `OfferView`; a revision goes through `PATCH /offers/:offerId` | Story 4, scenario 3 |
 | POST | `/offers/:offerId/reconfirmation` | INVESTOR (owner) | `{ action: "CONFIRM" \| "DECLINE" }` → 200 `OfferView` | FR-057 |
-| GET | `/offers/:offerId/revisions` | INVESTOR (owner), AGENT (package owner), OPS | → `OfferRevision[]` | |
+| GET | `/offers/:offerId/revisions` | INVESTOR (owner), AGENT (package owner), OPS | → `OfferRevision[]` | FR-042. **Not built** (open task T150): every revision is stored (OfferRevision) and audited, but no route reads the history; the investor's own last terms come as `myOwnTerms` |
 
 ## Comparison, decisions, deals (agent)
 
@@ -127,10 +130,10 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | POST | `/ops/investor-imports` | OPS | `{ storageKey, fileName }` (CSV uploaded by the browser with the `UploadInstruction`) → 202 `{ jobId, batchId }` | FR-061 |
 | POST | `/ops/investor-imports/uploads` | OPS | `{ sizeBytes }` → 201 `{ storageKey, upload: UploadInstruction }` | Same instruction shape as photo uploads |
 | GET | `/ops/investor-imports/:batchId` | OPS | → `ImportBatch & { rows: ImportRowResult[] }` | |
-| GET | `/ops/config` / PUT `/ops/config/:key` | OPS | `ConfigEntry` (value validated by the per-key schema) | FR-051, IX |
+| GET | `/ops/config` / PUT `/ops/config/:key` | OPS | `ConfigEntry` (value validated by the per-key schema) | FR-051, IX. **Not built** (T386): the fee assumptions are the `netProceeds` Config row, read and validated on every comparison, so they change without a release, but only in the database (the seed sets them) |
 | GET | `/ops/brands/:brandId/tokens` | OPS | → `{ brandId, tokenVersion, tokens }` (the DTCG file the editor shows) | FR-093 |
 | PUT | `/ops/brands/:brandId/theme` | OPS | `{ tokens, tokenVersion }` (the version the editor loaded) → 200 `BrandThemeView` at `tokenVersion + 1`, audited `BRAND_THEME_UPDATED`; 400 with each failure in `details.fields` (`{ field, message }`: the missing variable, `tokens` for an unsafe value or broken alias, or the pair such as `text-muted on background-surface` with its ratio); 409 if the brand changed since that version | FR-093, FR-095 |
-| GET | `/jobs/:jobId` | owner, OPS | → `{ status, progress, error? }` | II.7 handle |
+| GET | `/jobs/:jobId` | owner, OPS | → `{ status, progress, error? }` | II.7 handle. **Not built** (open task T189): the import page follows `GET /ops/investor-imports/:batchId`, and the other jobs are internal |
 
 ## Notifications
 

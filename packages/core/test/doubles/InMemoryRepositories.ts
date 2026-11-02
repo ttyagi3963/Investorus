@@ -1,7 +1,7 @@
 // In-memory stand-ins for the repositories and the unit of work, so service tests run offline
 // (constitution XV). They copy the behavior the services rely on: agent-filtered reads, the stale
 // version refusal, one package per address, stage 1 of matching, one match per investor and
-// round, and one live job per dedupe key. `run` does not roll back.
+// round, and one live job per dedupe key. `run` rolls back on a throw, as a transaction does.
 import type { BuyBox, BuyBoxInput } from "@clever/contracts/buy-box";
 import type { AuditAction, AuditEntry } from "@clever/contracts/audit";
 import { BusinessRuleError, ConflictError, ValidationError } from "@clever/contracts/common";
@@ -292,7 +292,10 @@ export class InMemoryAuditRepository implements IAuditRepository {
   }
 }
 
-/** Stage 1 as the SQL does it: the hard cuts and geography. Investors default to ACTIVE, funded. */
+/**
+ * Stage 1 as the SQL does it: the hard cuts and geography. Like the SQL join, a box whose investor
+ * is not in `investors` never matches; the unit of work seeds one per investor login it is given.
+ */
 export class InMemoryBuyBoxRepository implements IBuyBoxRepository {
   readonly boxes: BuyBox[] = [];
   readonly investors = new Map<string, Pick<Investor, "status" | "proofOfFundsExpiresAt">>();
@@ -307,12 +310,10 @@ export class InMemoryBuyBoxRepository implements IBuyBoxRepository {
       return this.canMatch(box, now) && covers;
     });
   }
-  /** Box ACTIVE, investor ACTIVE, proof of funds after `now` (a day ahead unless a test says). */
+  /** Box ACTIVE, its investor seeded and ACTIVE, proof of funds after `now`. */
   private canMatch(box: BuyBox, now: Date) {
-    const investor = this.investors.get(box.investorId) ?? {
-      status: "ACTIVE",
-      proofOfFundsExpiresAt: new Date(now.getTime() + 86_400_000),
-    };
+    const investor = this.investors.get(box.investorId);
+    if (!investor) return false;
     const funded = investor.proofOfFundsExpiresAt !== null && investor.proofOfFundsExpiresAt > now;
     return box.status === "ACTIVE" && investor.status === "ACTIVE" && funded;
   }
@@ -889,6 +890,16 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
   constructor(users: UserCredentials[] = []) {
     const outbox = new InMemoryOutboxRepository();
     const investors = new InMemoryInvestorRepository();
+    // An investor login means an investor row, as in Postgres: ACTIVE, with proof of funds.
+    const buyBoxes = new InMemoryBuyBoxRepository();
+    for (const { user } of users) {
+      if (user.role === "INVESTOR") {
+        buyBoxes.investors.set(user.investorId, {
+          status: "ACTIVE",
+          proofOfFundsExpiresAt: new Date("2100-01-01T00:00:00Z"),
+        });
+      }
+    }
     this.repos = {
       users: new InMemoryUserRepository(users, investors),
       sellers: new InMemorySellerRepository(),
@@ -896,7 +907,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       packages: new InMemoryListingPackageRepository(),
       photos: new InMemoryPhotoRepository(),
       audit: new InMemoryAuditRepository(),
-      buyBoxes: new InMemoryBuyBoxRepository(),
+      buyBoxes,
       listingVersions: new InMemoryListingVersionRepository(),
       matches: new InMemoryMatchRepository(),
       notifications: new InMemoryNotificationRepository(),
@@ -914,7 +925,28 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       effects: new InMemoryEffectMarkerRepository(),
     };
   }
-  run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {
-    return work(withOutboxEvents(this.repos));
+  /** Rolls back like a transaction: if `work` throws, every store is put back as it was. */
+  async run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {
+    const saved = Object.values(this.repos).flatMap((repo) =>
+      Object.values(repo as object)
+        .filter((store) => store instanceof Array || store instanceof Map || store instanceof Set)
+        .map((store) => [store, structuredClone(store)] as const),
+    );
+    try {
+      return await work(withOutboxEvents(this.repos));
+    } catch (err) {
+      // In place, because tests hold the same arrays, maps, and sets.
+      for (const [store, copy] of saved) {
+        if (store instanceof Array) store.splice(0, store.length, ...(copy as unknown[]));
+        else if (store instanceof Map) {
+          store.clear();
+          for (const [key, value] of copy as Map<unknown, unknown>) store.set(key, value);
+        } else {
+          store.clear();
+          for (const value of copy as Set<unknown>) store.add(value);
+        }
+      }
+      throw err;
+    }
   }
 }

@@ -129,7 +129,9 @@ introduce no new violations. Design checks made:
 - The design system keeps brand values in data and gives components semantic utilities only,
   which satisfies X and XVI. An automated contrast check per brand enforces XI.
 - The single-image build keeps the full constitution architecture (including Redis and the
-  separate worker) within the 2 GB limit, so no architecture simplification is needed.
+  separate worker) within the 2 GB limit, so no architecture simplification is needed. At run
+  time each Node service has a V8 heap cap set in compose.yaml from measured use (T391), because
+  Node's default heap grows with the machine and four defaults together exceed 2 GB.
 - XIX re-check after the 6.0.0 amendment: the registry is split across three files only
   because IV (Prisma only in adapters) and XXI (apps/web never imports server code) require
   it. XIX.3 accepts this, because each layer is a record over the same key list and a missing

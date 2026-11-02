@@ -16,7 +16,10 @@ Then open **http://localhost:3000**.
 
 On first start, Compose builds the images, starts PostgreSQL, runs the database
 migrations and the seed data automatically, and then starts the apps. Later starts reuse the
-built images and the stored data, and the seed adds no duplicates.
+built images and the stored data, and the seed adds no duplicates. The api and the worker start
+once the sandbox is listening, and the web app once the api is healthy. To fit a 2 GB machine,
+each Node service has a heap cap in [compose.yaml](compose.yaml) (`NODE_OPTIONS`): 384 MB for the
+web app and the worker, 256 MB for the api, and 128 MB for the sandbox.
 
 | Service | URL | What it is |
 | --- | --- | --- |
@@ -256,8 +259,9 @@ scripts/verify-limits.sh --clean   # --clean empties Docker's build cache first,
 ```
 
 It times the build and the home page's first answer, prints each container's memory and the total,
-and exits 1 if a limit is broken. `scripts/submission/rehearse.sh <zip>` checks the same limits in
-a simulated 2 GB, 2-core machine; CI runs it on every pull request.
+and exits 1 if a limit is broken (for memory, a total over 2,048 MiB).
+`scripts/submission/rehearse.sh <zip>` checks the same limits in a simulated 2 GB, 2-core machine;
+CI runs it on every push to `main` and on pull requests that change code or the build.
 
 The specification, plan, and task list are in
 [specs/001-investor-platform-prototype](specs/001-investor-platform-prototype/).

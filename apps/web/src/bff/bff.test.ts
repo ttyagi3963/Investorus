@@ -1,7 +1,7 @@
 // @vitest-environment node
-// Guards the BFF's rules (T262, research R12): a state-changing request from another origin is
-// refused before it reaches the api (CSRF); the session token travels only in an HTTP-only cookie
-// and is forwarded as a bearer token; the api's answer comes back unchanged; and every call to the
+// Guards the BFF's rules (T262, research R12): a state-changing request from another origin, by
+// scheme or host (T389), is refused before it reaches the api (CSRF); the session token travels
+// only in an HTTP-only cookie and is forwarded as a bearer token; the api's answer comes back unchanged; and every call to the
 // api carries one trace ID, the caller's when its `traceparent` is valid (T283), and the caller's
 // Idempotency-Key (T285), and the api's retry and replay headers come back (T381). The cookie is
 // Secure when the browser came over HTTPS (T372). The proxy never forwards to the api's sign-in,
@@ -46,6 +46,25 @@ describe("forwardToApi", () => {
     );
     expect(noOrigin.status).toBe(403);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("compares the whole origin: plain HTTP is refused for a site reached over HTTPS (T389)", async () => {
+    const fetch = vi.fn().mockImplementation(async () => json({}));
+    const post = (headers: Record<string, string>) =>
+      forwardToApi(
+        fromSite("/bff/listing-packages", { method: "POST", headers }),
+        ["listing-packages"],
+        { apiUrl: API, fetch },
+      );
+
+    const behindTls = { Host: "app.example", "X-Forwarded-Proto": "https" };
+    expect((await post({ ...behindTls, Origin: "http://app.example" })).status).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+    expect((await post({ ...behindTls, Origin: "https://app.example" })).status).toBe(200);
+    // The partner brand's host and the plain-HTTP demo (T372) still pass.
+    const partner = { Host: "partner.localhost:3000", Origin: "http://partner.localhost:3000" };
+    expect((await post(partner)).status).toBe(200);
+    expect((await post({})).status).toBe(200);
   });
 
   it("forwards a GET with the cookie's token as a bearer token, and returns the api's answer unchanged", async () => {
@@ -184,7 +203,7 @@ describe("session", () => {
     expect(await cookieFor(fromSite("/bff/session", post))).not.toMatch(/Secure/);
     const behindTls = fromSite("/bff/session", {
       ...post,
-      headers: { "X-Forwarded-Proto": "https" },
+      headers: { "X-Forwarded-Proto": "https", Origin: "https://localhost:3000" },
     });
     expect(await cookieFor(behindTls)).toMatch(/Secure/);
     const https = new Request("https://app.example/bff/session", {

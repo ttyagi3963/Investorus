@@ -223,7 +223,10 @@ below are the planning baseline.
   request URL or `X-Forwarded-Proto`), so sign-in also works over plain HTTP on a non-localhost
   host, where a browser drops Secure cookies (`COOKIE_SECURE=auto`, the default; `true` or
   `false` force it; T372). State-changing BFF routes reject requests whose `Origin` does not
-  match the host (CSRF, XII). The catch-all `/bff/<path>` proxy refuses `/bff/sessions` (the
+  match the site's own origin, scheme and host, the scheme read as for the cookie (CSRF, XII; T389).
+  Every answer carries a Content-Security-Policy set per request by proxy.ts: everything from this
+  site, except photos, which may also come from and go to the storage origin the settings give;
+  HSTS is sent only over HTTPS (T389). The catch-all `/bff/<path>` proxy refuses `/bff/sessions` (the
   api's sign-in answer carries the token; sign-in goes only through `/bff/session`) and empty,
   `.`, or `..` segments, with 404; the route guard sends an unreadable, unknown-role, or expired
   session cookie to /login and clears it (T374). Demo accounts are seeded; credentials are in the

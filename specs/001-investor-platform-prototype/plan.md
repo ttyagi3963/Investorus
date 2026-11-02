@@ -314,8 +314,8 @@ comparison screen. The full adapter table and migration steps are in
 | Redis without persistence or HA | Managed Redis with AOF; the outbox in PostgreSQL already covers Redis loss |
 | Milestones entered manually by the agent | Title and escrow integrations as events |
 | Two brands seeded from JSON files (Clever and a fictional partner) | Brand onboarding through the ops theme API and the content/config layer, with design review |
-| The web app's Content-Security-Policy forbids framing, plugins, and outside form posts, but not inline scripts or styles (T362) | A nonce-based CSP set per request in proxy.ts (`script-src 'nonce-…' 'strict-dynamic'`), with the brand's style element carrying the nonce |
-| No rate limiting. CSRF is covered by a SameSite=Lax cookie plus an `Origin`/`Host` check on every state-changing BFF route (meets XII), but there are no synchronizer tokens. | Edge rate limits and a WAF; add double-submit CSRF tokens if the BFF is ever exposed cross-site |
+| The web app's Content-Security-Policy limits every page to this site and the photo storage, but allows inline scripts and styles (T362, T389) | A nonce-based CSP set per request in proxy.ts (`script-src 'nonce-…' 'strict-dynamic'`), with the brand's style element carrying the nonce |
+| No rate limiting. CSRF is covered by a SameSite=Lax cookie plus a full-origin check (scheme and `Host`) on every state-changing BFF route (meets XII), but there are no synchronizer tokens. | Edge rate limits and a WAF; add double-submit CSRF tokens if the BFF is ever exposed cross-site |
 | Plain HTTP (no TLS) on localhost and the Compose network (see Complexity Tracking) | TLS at the load balancer or ingress; mTLS between services |
 | No horizontal scaling tests | Multiple worker replicas are already safe (`SKIP LOCKED`, a job lease the running worker renews, unique constraints); load test before launch |
 | "Why not matched?" replays non-matches with the current evaluator and flags `replayedWithNewerRules` when the rules changed since matching ran | Keep every released `EVALUATOR_VERSION` runnable (versioned evaluator modules) so old decisions replay exactly |

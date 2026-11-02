@@ -1,5 +1,5 @@
 // What the BFF's routes share: the CSRF check (a state-changing request must come from this site's
-// own pages, research R12), reading and writing the session cookie, whether a cookie is Secure
+// own pages, scheme and host, research R12), reading and writing the session cookie, whether a cookie is Secure
 // (T372), and the trace and idempotency headers (T283, T381). Pure functions over the standard
 // Request, so they can be tested without Next.
 import { newTraceId, toTraceparent, traceIdFrom } from "@clever/contracts/common";
@@ -9,15 +9,27 @@ export const SESSION_COOKIE = "session";
 const SAFE_METHODS = new Set(["GET", "HEAD"]);
 
 /**
- * True unless a state-changing request lacks an Origin naming this site. The site is the Host
- * header the browser sent, not the request URL: inside the container the server listens on
- * 0.0.0.0, so the URL names that address instead.
+ * True unless a state-changing request lacks an Origin naming this site, scheme and host (T389), so
+ * a plain-HTTP page cannot post to the site served over HTTPS. The host is the Host header the
+ * browser sent, not the request URL: inside the container the server listens on 0.0.0.0, so the URL
+ * names that address instead. The scheme is the one cameOverHttps reads. X-Forwarded-Host is not
+ * trusted: nothing in front of this server sets it.
  */
 export function sameOrigin(request: Request): boolean {
   if (SAFE_METHODS.has(request.method)) return true;
-  const origin = request.headers.get("origin");
+  const origin = URL.parse(request.headers.get("origin") ?? "")?.origin;
   const host = request.headers.get("host");
-  return origin !== null && host !== null && URL.parse(origin)?.host === host;
+  if (!origin || !host) return false;
+  return origin === URL.parse(`${cameOverHttps(request) ? "https" : "http"}://${host}`)?.origin;
+}
+
+/**
+ * Whether the browser reached this site over HTTPS: the request URL says so, or a TLS-terminating
+ * proxy's X-Forwarded-Proto does.
+ */
+export function cameOverHttps(request: { url?: string; headers: Pick<Headers, "get"> }): boolean {
+  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  return forwarded === "https" || URL.parse(request.url ?? "")?.protocol === "https:";
 }
 
 /** COOKIE_SECURE: `auto` follows the request; `true` and `false` force the Secure flag. */
@@ -25,17 +37,15 @@ export type CookieSecure = "auto" | "true" | "false";
 
 /**
  * Whether to mark a cookie Secure. In `auto` it is Secure when the browser reached this site over
- * HTTPS: the request URL says so, or a TLS-terminating proxy's X-Forwarded-Proto does. A Secure
- * cookie set over plain HTTP on any host but localhost is dropped by the browser, so sign-in would
- * never stick there.
+ * HTTPS (cameOverHttps). A Secure cookie set over plain HTTP on any host but localhost is dropped
+ * by the browser, so sign-in would never stick there.
  */
 export function cookieIsSecure(
   setting: CookieSecure,
   request: { url?: string; headers: Pick<Headers, "get"> },
 ): boolean {
   if (setting !== "auto") return setting === "true";
-  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  return forwarded === "https" || URL.parse(request.url ?? "")?.protocol === "https:";
+  return cameOverHttps(request);
 }
 
 /**

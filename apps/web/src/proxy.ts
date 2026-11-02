@@ -2,11 +2,13 @@
 // middleware.ts): a visitor without a usable session is sent to /login before any agent, investor,
 // or operations page renders, and a signed-in user who opens another role's pages is sent to their
 // own home. The token is read without checking its signature: it only chooses a page. The api
-// verifies the token, and the role, on every request.
+// verifies the token, and the role, on every request. Every answer also gets the page policy and,
+// over HTTPS, HSTS (T389), set here because the policy names the storage the settings give.
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, cookieIsSecure, sessionCookie } from "./bff/shared";
-import { serverEnv } from "./env";
+import { SESSION_COOKIE, cameOverHttps, cookieIsSecure, sessionCookie } from "./bff/shared";
+import { serverEnv, storageOrigin } from "./env";
 import { areaRole, ROLE_HOME } from "./features/auth/role-home";
+import { pageSecurityHeaders } from "./security-headers";
 
 /** The token's role, if it can be read, names a known role, and has not expired; else null. */
 function liveRole(token: string): string | null {
@@ -23,6 +25,19 @@ function liveRole(token: string): string | null {
 }
 
 export function proxy(request: NextRequest): NextResponse {
+  const response =
+    areaRole(request.nextUrl.pathname) === null ? NextResponse.next() : guardArea(request);
+  const env = serverEnv();
+  const headers = pageSecurityHeaders({
+    storageOrigin: storageOrigin(env),
+    https: cameOverHttps(request),
+    dev: process.env.NODE_ENV === "development",
+  });
+  for (const [name, value] of Object.entries(headers)) response.headers.set(name, value);
+  return response;
+}
+
+function guardArea(request: NextRequest): NextResponse {
   const token = request.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return NextResponse.redirect(new URL("/login", request.url));
   const role = liveRole(token);
@@ -39,4 +54,5 @@ export function proxy(request: NextRequest): NextResponse {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/agent/:path*", "/investor/:path*", "/ops/:path*"] };
+// Every page and BFF answer, for the page policy; Next's hashed static files need none.
+export const config = { matcher: ["/((?!_next/static|_next/image).*)"] };

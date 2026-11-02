@@ -1,6 +1,7 @@
 // The typed calls the web app makes (T265), one function per route in contracts/api.md. The browser
 // uses them against the BFF: `session` signs in and out through the BFF's cookie route, and the
-// others go through the BFF's proxy to the api with the cookie's token.
+// others go through the BFF's proxy to the api with the cookie's token. Every value put into a path
+// or query is encoded, typed or not, so none can reach another route (T385, T389).
 import type { TimelineEntryView } from "../audit/audit.js";
 import type { BrandSummary, BrandThemeView, BrandTokensView } from "../brand/brand.js";
 import type { BuyBoxInput } from "../buy-box/inputs.js";
@@ -83,7 +84,10 @@ export const listingPackagesClient = (api: ApiClient) => ({
   extendDeadline: (id: string, input: OfferDeadlineInput) =>
     api.request<AgentPackageView>("PATCH", `${pkgPath(id)}/offer-deadline`, input),
   comparison: (id: string, sort: ComparisonSort) =>
-    api.request<OfferComparisonView>("GET", `${pkgPath(id)}/offer-comparison?sort=${sort}`),
+    api.request<OfferComparisonView>(
+      "GET",
+      `${pkgPath(id)}/offer-comparison?sort=${encodeURIComponent(sort)}`,
+    ),
   decide: (id: string, input: CreateDecisionInput) =>
     api.request<DecisionView>("POST", `${pkgPath(id)}/decisions`, input),
   deal: (id: string) => api.request<DealView>("GET", `${pkgPath(id)}/deal`),
@@ -188,7 +192,7 @@ export const opsClient = (api: ApiClient) => ({
   deliveries: (status?: DeliveryStatus) =>
     api.request<DeliveryView[]>(
       "GET",
-      status ? `/ops/deliveries?status=${status}` : "/ops/deliveries",
+      status ? `/ops/deliveries?status=${encodeURIComponent(status)}` : "/ops/deliveries",
     ),
   retryDelivery: (id: string) =>
     api.request<undefined>("POST", `/ops/deliveries/${encodeURIComponent(id)}/retry`),
@@ -198,5 +202,7 @@ export const opsClient = (api: ApiClient) => ({
   crmComparison: () => api.request<CrmComparisonRow[]>("GET", "/ops/crm-comparison"),
   simulations: () => api.request<SimulationModes>("GET", "/ops/simulations"),
   setSimulation: (service: SimulationService, mode: SimulationMode) =>
-    api.request<SimulationModes>("PUT", `/ops/simulations/${service}`, { mode }),
+    api.request<SimulationModes>("PUT", `/ops/simulations/${encodeURIComponent(service)}`, {
+      mode,
+    }),
 });

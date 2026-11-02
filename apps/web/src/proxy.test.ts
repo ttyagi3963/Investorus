@@ -3,6 +3,7 @@
 // /login before any page renders; so is one whose cookie cannot be read, names no known role, or has
 // expired, and that cookie is cleared; a signed-in user who opens another role's pages is sent to
 // their own role's home; with a matching role, the request goes on (the api still checks the token).
+// Every answer carries the page policy naming the storage from the settings (T389).
 import { NextRequest } from "next/server";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { proxy } from "./proxy";
@@ -11,6 +12,7 @@ beforeAll(() => {
   vi.stubEnv("API_URL", "http://api:4000");
   vi.stubEnv("DEFAULT_BRAND_ID", "clever");
   vi.stubEnv("PUBLIC_SANDBOX_URL", "http://localhost:4100");
+  vi.stubEnv("STORAGE_PROVIDER", "sandbox");
 });
 afterAll(() => {
   vi.unstubAllEnvs();
@@ -36,6 +38,14 @@ describe("proxy", () => {
       "http://localhost:3000/investor",
     );
     expect(open("/investor/buy-boxes", investor).headers.get("location")).toBeNull();
+  });
+
+  it("lets a public page through with the policy naming the storage the settings give (T389)", () => {
+    const res = open("/login");
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("content-security-policy")).toContain(
+      "img-src 'self' http://localhost:4100",
+    );
   });
 
   it("sends an unreadable, unknown-role, or expired session to /login and clears the cookie", () => {

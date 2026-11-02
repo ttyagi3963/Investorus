@@ -285,9 +285,9 @@ partner origins (`WEB_ORIGIN`) and the web must name the sandbox's public addres
 (`PUBLIC_SANDBOX_URL`). On failure, `e2e/test-results/` holds a trace, screenshot, and video per
 test (`pnpm --filter @clever/e2e exec playwright show-trace <trace.zip>`).
 
-CI runs them in the `e2e` job on every pull request and push to `main`, against
-`docker compose up --build` on the runner, and uploads the report and traces when a test fails.
-They are not part of `pnpm test`, and the images never contain a browser.
+They run by hand, not in CI: start the stack, then run `pnpm test:e2e` before changing a user
+journey, or whenever you want the full flows checked. A full run takes about 5 minutes. They are
+not part of `pnpm test`, and the images never contain a browser.
 
 ### Checking the limits
 

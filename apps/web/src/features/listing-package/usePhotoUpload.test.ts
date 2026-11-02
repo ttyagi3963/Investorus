@@ -1,6 +1,6 @@
 // Guards the photo upload rules (T271): a file of the wrong type or size is refused before any
 // request, and an accepted file goes straight to storage (never through /bff), then is attached
-// once, at the first free position.
+// once, at the first free position. A storage failure says to try again (T414).
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
@@ -68,5 +68,20 @@ describe("usePhotoUpload", () => {
     expect(attach).toHaveBeenCalledOnce();
     expect(attach).toHaveBeenCalledWith("p1", { storageKey: "k1", position: 1 });
     expect(result.current.error).toBeNull();
+  });
+
+  it("says to try again when storage cannot be reached, not the browser's own error", async () => {
+    attach.mockClear();
+    requestUpload.mockResolvedValue({
+      storageKey: "k1",
+      upload: { url: "http://localhost:4100/objects/k1", method: "PUT", headers: {} },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+    const { result } = renderHook(() => usePhotoUpload("p1", []), { wrapper });
+
+    await act(() => result.current.upload([image("house.jpg", "image/jpeg")]));
+
+    expect(result.current.error).toBe("house.jpg could not be uploaded. Try again.");
+    expect(attach).not.toHaveBeenCalled();
   });
 });

@@ -34,3 +34,19 @@ forgemini.md
 AGENTS.md
 settings.local.json
 .claude/worktrees/
+
+# The owner's private engineering process: kept on this machine, never pushed or packaged
+# (Spec Kit, the constitution, the spec documents and task log, agent instructions and workflows)
+.claude/
+.specify/
+specs/
+CLAUDE.md
+scripts/board/
+.github/workflows/claude.yml
+.github/workflows/claude-review.yml
+.github/pull_request_template.md
+
+# Browser end-to-end test output and the saved demo sign-ins (e2e/)
+playwright-report/
+test-results/
+e2e/.auth/

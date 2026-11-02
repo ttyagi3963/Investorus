@@ -85,8 +85,23 @@ function readForm(form: FormData, empty: undefined | null) {
   };
 }
 
+/**
+ * The fields are keyed on the package's version, so a save reloads them with the saved values. The
+ * save itself lives out here, outside the key, so its "Saved." notice survives that reload.
+ */
 export function PackageForm({ existing }: { existing?: AgentPackageView }) {
-  const { save, isSaving, fieldErrors, notice } = useSavePackage();
+  const saving = useSavePackage();
+  return <PackageFields key={existing?.version} existing={existing} saving={saving} />;
+}
+
+function PackageFields({
+  existing,
+  saving,
+}: {
+  existing?: AgentPackageView;
+  saving: ReturnType<typeof useSavePackage>;
+}) {
+  const { save, isSaving, fieldErrors, notice } = saving;
   const [propertyType, setPropertyType] = useState<string | null>(
     existing?.property.propertyType ?? null,
   );

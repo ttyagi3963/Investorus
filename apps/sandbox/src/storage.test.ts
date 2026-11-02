@@ -10,7 +10,7 @@ import { join } from "node:path";
 import express from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { storageRoutes } from "./storage.js";
+import { storageCors, storageRoutes } from "./storage.js";
 
 const NOW = new Date("2026-11-01T12:00:00Z");
 const config = {
@@ -21,7 +21,7 @@ const config = {
   now: () => NOW,
 };
 // The storage routes alone: the outage gate in front of them needs the database (app.int.test.ts).
-const app = express().use(storageRoutes(config));
+const app = express().use(storageCors(config.webOrigins), storageRoutes(config));
 
 /** A signed upload path, as SandboxStorageProviderImpl builds it. */
 function uploadPath(

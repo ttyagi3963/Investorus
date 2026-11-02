@@ -1,8 +1,9 @@
-// The demo data the reviewer signs in with (T260, T299, T314, T323): two agents, five investors with
-// their buy boxes, an operations login, and a login for each, upserted by email (boxes by investor
-// and name), so running it on every `docker compose up` adds nothing. Each seeded box gets its
-// version snapshot, as a save would write. Blake's deal demo is in deal-demo.ts. The password is a demo value listed in the README; it is
-// stored only as a bcrypt hash. expected-matches.json records which boxes match the sample listing.
+// The demo data the reviewer signs in with (T260, T299, T314, T323, T409): two agents, five
+// investors with Los Angeles buy boxes, an operations login, and a login for each, upserted by email
+// (boxes by investor and name), so running it on every `docker compose up` adds nothing. Each seeded
+// box gets its version snapshot, as a save would write. The listings are in listings.ts. The
+// password is a demo value listed in the README, stored only as a bcrypt hash.
+// expected-matches.json records which boxes match the sample listing and each seeded listing.
 import bcrypt from "bcryptjs";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 import { toBuyBox } from "../../repositories/buy-box/buy-box.mapper.js";
@@ -31,24 +32,24 @@ const DEMO_INVESTORS: {
     email: "summit@example.com",
     companyName: "Summit Home Buyers",
     contactName: "Sam Summit",
-    phone: "+15125550100",
-    // Both boxes match the sample listing: Austin 78704, single family, Fair, $250k–$300k.
+    phone: "+12135550100",
+    // Both boxes match the sample listing: Highland Park 90042, single family, Fair, up to $1.05M.
     boxes: [
       {
-        name: "Austin flips",
+        name: "Eastside flips",
         strategy: "FIX_FLIP",
-        places: { kind: "ZIP", values: ["78704", "78745"] },
+        places: { kind: "ZIP", values: ["90026", "90042", "90065"] },
         propertyTypes: ["SINGLE_FAMILY"],
-        priceMin: 250_000,
-        priceMax: 300_000,
+        priceMin: 700_000,
+        priceMax: 1_150_000,
         conditionsAccepted: ["FAIR", "POOR"],
       },
       {
-        name: "Texas rentals",
+        name: "California rentals",
         strategy: "BUY_HOLD",
-        places: { kind: "STATE", values: ["TX"] },
+        places: { kind: "STATE", values: ["CA"] },
         propertyTypes: ["SINGLE_FAMILY", "TOWNHOME"],
-        priceMax: 350_000,
+        priceMax: 1_200_000,
         bedsMin: 2,
       },
     ],
@@ -57,35 +58,51 @@ const DEMO_INVESTORS: {
     email: "harbor@example.com",
     companyName: "Harbor Capital",
     contactName: "Hal Harbor",
-    boxes: [{ name: "Anywhere", strategy: "WHOLESALE" }],
+    // Broad, but not land: the seeded lot in Van Nuys is the listing nobody matches.
+    boxes: [
+      {
+        name: "Anywhere",
+        strategy: "WHOLESALE",
+        propertyTypes: ["SINGLE_FAMILY", "CONDO", "TOWNHOME", "MULTI_FAMILY"],
+      },
+    ],
   },
   {
     email: "ridge@example.com",
     companyName: "Ridge Investments",
     contactName: "Rae Ridge",
-    // Narrow on purpose: it does not match the sample listing.
+    // Narrow on purpose: Westside condos only, so of the seeded listings it fits just the Mar Vista
+    // condo, and it does not match the sample listing.
     boxes: [
       {
-        name: "Dallas condos",
-        places: { kind: "ZIP", values: ["75201", "75204"] },
+        name: "Westside condos",
+        places: { kind: "ZIP", values: ["90066", "90291"] },
         propertyTypes: ["CONDO"],
-        priceMax: 200_000,
+        priceMax: 850_000,
       },
     ],
   },
-  // Cobalt and Dune complete Blake's deal demo (T314): both boxes fit its 78745 listing, and
-  // neither covers the sample listing's 78704, so expected-matches.json is unchanged.
+  // Cobalt and Dune complete Blake's deal demo (T314): their boxes fit its West Adams listing, and
+  // neither covers the sample listing's 90042.
   {
     email: "cobalt@example.com",
     companyName: "Cobalt Property Group",
     contactName: "Cam Cobalt",
     boxes: [
       {
-        name: "Austin starter homes",
+        name: "South LA rentals",
         strategy: "BUY_HOLD",
-        places: { kind: "ZIP", values: ["78744", "78745"] },
+        places: { kind: "ZIP", values: ["90016", "90301"] },
         propertyTypes: ["SINGLE_FAMILY"],
-        priceMax: 320_000,
+        priceMax: 950_000,
+      },
+      {
+        name: "Valley multifamily",
+        strategy: "BUY_HOLD",
+        places: { kind: "ZIP", values: ["91406"] },
+        propertyTypes: ["MULTI_FAMILY"],
+        priceMax: 1_600_000,
+        unitsMin: 2,
       },
     ],
   },
@@ -95,11 +112,11 @@ const DEMO_INVESTORS: {
     contactName: "Dee Dune",
     boxes: [
       {
-        name: "South Austin flips",
+        name: "Central LA flips",
         strategy: "FIX_FLIP",
-        places: { kind: "ZIP", values: ["78745", "78748", "78749"] },
-        priceMin: 200_000,
-        priceMax: 350_000,
+        places: { kind: "ZIP", values: ["90016", "90019", "90065"] },
+        priceMin: 650_000,
+        priceMax: 1_100_000,
         conditionsAccepted: ["FAIR", "POOR", "DISTRESSED"],
       },
     ],

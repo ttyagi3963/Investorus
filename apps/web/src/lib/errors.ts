@@ -13,10 +13,7 @@ export function describeError(err: unknown, fallback: string): ErrorInfo {
 
 /** The same as one line of text, for a message that is a plain string. */
 export function errorText(err: unknown, fallback: string): string {
-  const { message, requestId } =
-    err instanceof Error && !(err instanceof ApiError)
-      ? { message: err.message, requestId: undefined }
-      : describeError(err, fallback);
+  const { message, requestId } = describeError(err, fallback);
   return requestId ? `${message} (request ID ${requestId})` : message;
 }
 

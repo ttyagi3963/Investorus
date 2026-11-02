@@ -56,21 +56,26 @@ ssh -L 3000:localhost:3000 -L 4100:localhost:4100 <server>
 Every demo account uses the password **`demo1234`**. The seed creates them automatically. On the
 home page and the sign-in page, each account's **Sign in** button signs in with one press.
 
+The seed also creates a small Los Angeles market: 13 listing packages with made-up addresses in
+real LA ZIP codes (Highland Park, Echo Park, West Adams, Inglewood, Van Nuys, Venice, and more),
+priced around each ZIP's typical home value. Eleven are taking offers (one is a lot no investor
+matches), one is under contract, and two are drafts. The listings have no photos yet.
+
 | Role | Email | Shows |
 | --- | --- | --- |
-| Agent | `avery@example.com` | Building and publishing a listing package |
-| Agent | `blake@example.com` | Comparing offers and tracking deals to close |
+| Agent | `avery@example.com` | Building and publishing a listing package; seven seeded listings, one a draft |
+| Agent | `blake@example.com` | Comparing offers and tracking deals to close; six seeded listings, one with four offers and one under contract |
 | Investor | `summit@example.com` | Two buy boxes that both match the sample listing; has a phone number, so match notices also arrive as texts |
-| Investor | `harbor@example.com` | One broad buy box |
-| Investor | `ridge@example.com` | A deliberately narrow buy box (often not matched); add a second one to see it matched |
-| Investor | `cobalt@example.com` | An offer on Blake's seeded listing |
-| Investor | `dune@example.com` | An offer on Blake's seeded listing |
+| Investor | `harbor@example.com` | One broad buy box (any home but land, anywhere) |
+| Investor | `ridge@example.com` | A deliberately narrow buy box (Westside condos: one seeded match); add a second one to see more |
+| Investor | `cobalt@example.com` | An offer on Blake's West Adams listing, and the accepted offer on his Inglewood one |
+| Investor | `dune@example.com` | An offer on Blake's West Adams listing |
 | Operations | `morgan@example.com` | The operations console: each package's full history, failed deliveries and retries, simulated outages, the CRM comparison, and the legacy investor import |
 
 > **Status:** Sprints 1–8 are in, and every screen uses the brand's design system (Sprints 5 and 7). Open
 > <http://localhost:3000> and sign in as any account with one press. Avery
 > builds and publishes a package, which is matched to investors who then make offers. Blake's
-> seeded listing already has four offers: compare them, accept one, and track the deal to closing.
+> seeded West Adams listing already has four offers: compare them, accept one, and track the deal to closing.
 > If it falls through, promote a backup, then sign in as that investor to reconfirm. Investors
 > manage their own buy boxes under **Buy boxes**, and a new or edited box is matched at once
 > against listings still taking offers. The operations account imports
@@ -113,8 +118,8 @@ in the database. Two brands are seeded, Clever Offers and a fictional partner, L
   changes every page at once.
 
 A new brand is a folder in [seed/brands/](seed/brands/) (`tokens.json`, `content.json`,
-`hosts.json`) and a logo in `apps/web/public/brands/<id>/`; see
-[the design token contract](specs/001-investor-platform-prototype/contracts/design-tokens.md).
+`hosts.json`) and a logo in `apps/web/public/brands/<id>/`. Each brand's tokens are checked when
+the brand is loaded (required variables, contrast, safe logo paths), so a broken brand is refused.
 
 ## Using S3 (optional)
 
@@ -210,8 +215,7 @@ Every answer carries an `X-Request-Id`, which also appears in the logs and in er
 
 ## Prototype Shortcuts
 
-What the prototype does more simply than production would, and the production approach. The same
-table is in [plan.md](specs/001-investor-platform-prototype/plan.md).
+What the prototype does more simply than production would, and the production approach.
 
 | Shortcut | Production approach |
 | --- | --- |
@@ -225,7 +229,8 @@ table is in [plan.md](specs/001-investor-platform-prototype/plan.md).
 | Sandbox stand-ins for CRM, email/SMS, storage | HubSpot, SendGrid/Twilio, and S3 provider implementations behind the same ports (S3 storage is T274–T275, after Sprint 1) |
 | Listing photos are public: anyone with a photo's link can open it, and the link never expires (the owner's decision, 2026-11-01, T326). Import files stay private. | A private bucket served through a CDN with signed cookies, or an app address that checks access and redirects to a short-lived link, so a leaked link stops working and access can be withdrawn |
 | Brands live in the database and are chosen per request by cookie, host, or `DEFAULT_BRAND_ID`, but emails and texts always carry the default brand's name, the brand's font must be registered in the web app's code to load, and content and hosts change only through the seed files (Sprint 7, T346–T353) | Each agent and investor belongs to a brand, so messages carry that brand; brand fonts are self-hosted files stored with the brand; content, hosts, and logos are edited in the console with design review; the theme CSS is served as a cached, versioned stylesheet from a CDN |
-| Static ZIP code list for the seeded markets | Address validation and geocoding provider |
+| Static ZIP code list: twelve Los Angeles ZIPs for the seeded market, plus five Austin ZIPs the tests use | Address validation and geocoding provider |
+| The seeded listings have no photos: the seed writes them straight to Accepting offers, past the publish rule that asks for one (T409; the images are still to come). Every package an agent publishes still needs a photo | Demo photos stored with their Photo rows at seed time, so seeded listings meet the same publish rule |
 | `LogErrorReporterImpl` instead of Sentry | Sentry provider plus alert routing for needs-attention deliveries |
 | Tracing is a W3C `traceparent` trace ID carried in an `AsyncLocalStorage` request context and written as `trace_id` on every log line, with no spans, metrics, or dashboards | The OpenTelemetry SDK with HTTP, Express, and Postgres instrumentation reading the same context and header, exporting traces to a collector (Jaeger or Tempo); Prometheus metrics (request latency and errors, job queue depth and age, failed jobs, match run time) with Grafana dashboards and alerts |
 | Single PostgreSQL instance; the sandbox shares the server (separate schema) | Managed PostgreSQL with backups, read replica, and PITR; the sandbox does not exist in production |
@@ -256,6 +261,34 @@ pnpm test               # unit tests, offline
 pnpm test:integration   # needs Docker (Testcontainers)
 ```
 
+### End-to-end tests
+
+Browser tests of the critical journeys (sign-in and route guards, publishing with a photo, buy box
+matching, offers, the deal from deadline to reconfirmed backup, the operations console and its
+outages, white-label, and accessibility with axe) live in `e2e/` and use Playwright with Chromium.
+They drive a running stack and create their own packages and buy boxes, so they need only the
+demo accounts. Start the stack, install Chromium once, then run them:
+
+```sh
+docker compose up --build -d
+pnpm --filter @clever/e2e exec playwright install chromium
+pnpm test:e2e
+```
+
+They take about 8 minutes: one test waits out the worker's ten delivery attempts during a CRM
+outage. They add data to the stack they run against, and switch the stand-in services' outage
+modes (always back to up). To run them against another stack, set its addresses:
+`E2E_BASE_URL` (default `http://localhost:3000`), `E2E_PARTNER_URL`
+(`http://partner.localhost:3000`), `E2E_API_URL` (`http://localhost:4000`), and
+`E2E_SANDBOX_URL` (`http://localhost:4100`). The sandbox must accept uploads from the web and
+partner origins (`WEB_ORIGIN`) and the web must name the sandbox's public address
+(`PUBLIC_SANDBOX_URL`). On failure, `e2e/test-results/` holds a trace, screenshot, and video per
+test (`pnpm --filter @clever/e2e exec playwright show-trace <trace.zip>`).
+
+They run by hand, not in CI: start the stack, then run `pnpm test:e2e` before changing a user
+journey, or whenever you want the full flows checked. A full run takes about 5 minutes. They are
+not part of `pnpm test`, and the images never contain a browser.
+
 ### Checking the limits
 
 The prototype must build within 20 minutes and show the home page within 5 minutes on a 2 GB
@@ -271,5 +304,10 @@ and exits 1 if a limit is broken (for memory, a total over 2,048 MiB).
 `scripts/submission/rehearse.sh <zip>` checks the same limits in a simulated 2 GB, 2-core machine;
 CI runs it on every push to `main` and on pull requests that change code or the build.
 
-The specification, plan, and task list are in
-[specs/001-investor-platform-prototype](specs/001-investor-platform-prototype/).
+### How it was built
+
+The project was built spec-first with GitHub Spec Kit (specification, plan, task list) under a
+written engineering constitution, by an engineering lead directing AI agents. The key decisions,
+their alternatives, and their trade-offs are in [docs/adr](docs/adr/). The spec documents, task
+log, and constitution are kept private and are available on request. Comments in the code cite
+them by task number (for example `T367`) and constitution principle (for example `XII`).

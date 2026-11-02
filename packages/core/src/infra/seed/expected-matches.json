@@ -1,25 +1,43 @@
 {
-  "about": "T299: the sample listing the demo agent publishes, and which seeded buy boxes match it. The seed test checks the seed against this file; the reviewer walkthrough uses the same listing.",
+  "about": "T299, T409: the sample listing the demo agent publishes, and which seeded buy boxes match it; then, for each listing the seed publishes (la-listings.ts, by street line), the investors it is matched to. Written by hand from the buy boxes in seed.ts; the seed test checks the seed against this file, and the reviewer walkthrough uses the same sample listing.",
   "today": "2026-11-01",
   "listing": {
-    "zip": "78704",
-    "state": "TX",
+    "zip": "90042",
+    "state": "CA",
     "propertyType": "SINGLE_FAMILY",
-    "priceExpectationMax": 300000,
-    "yearBuilt": 1985,
+    "priceExpectationMax": 1050000,
+    "yearBuilt": 1924,
     "beds": 3,
     "baths": 2,
-    "sqft": 1600,
+    "sqft": 1500,
     "units": null,
     "condition": "FAIR",
-    "repairEstimate": 25000,
+    "repairEstimate": 70000,
     "closingWindowStart": "2026-11-20",
     "closingWindowEnd": "2026-12-15",
     "currentlyListed": false,
     "eligiblePrograms": ["CASH_OFFER"]
   },
   "matches": {
-    "summit@example.com": ["Austin flips", "Texas rentals"],
+    "summit@example.com": ["California rentals", "Eastside flips"],
     "harbor@example.com": ["Anywhere"]
+  },
+  "seededListings": {
+    "2417 Corvina St": [
+      "cobalt@example.com",
+      "dune@example.com",
+      "harbor@example.com",
+      "summit@example.com"
+    ],
+    "1185 Halvern St": ["cobalt@example.com", "harbor@example.com", "summit@example.com"],
+    "6620 Delmora Ave": ["cobalt@example.com", "harbor@example.com"],
+    "5318 Wren Hollow Ave": ["harbor@example.com", "summit@example.com"],
+    "3841 Saffron Hill Rd": ["harbor@example.com"],
+    "1529 Marisol Pl": ["harbor@example.com", "summit@example.com"],
+    "11942 Brightwater Ln Unit 204": ["harbor@example.com", "ridge@example.com"],
+    "3207 Alderwood Ct": ["harbor@example.com", "summit@example.com"],
+    "718 Vireo Ct": ["harbor@example.com"],
+    "2290 Palomar Vista Dr": ["harbor@example.com"],
+    "15520 Cobblerock Way": []
   }
 }

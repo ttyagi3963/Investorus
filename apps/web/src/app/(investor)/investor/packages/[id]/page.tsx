@@ -218,12 +218,7 @@ function MyOffer({ pkg, open }: { pkg: InvestorPackageView; open: boolean }) {
         description={`Seller expects ${formatUsd(pkg.priceExpectationMin)} to ${formatUsd(pkg.priceExpectationMax)}.`}
       >
         {open ? (
-          <OfferForm
-            key={offer?.version ?? 0}
-            packageId={pkg.id}
-            myOffer={offer}
-            deadline={pkg.offerDeadline}
-          />
+          <OfferForm packageId={pkg.id} myOffer={offer} deadline={pkg.offerDeadline} />
         ) : (
           <p role="status" className={NOTICE}>
             {CLOSED_TO_OFFERS[pkg.status] ??

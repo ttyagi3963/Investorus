@@ -12,6 +12,7 @@
     "dev": "turbo run dev",
     "test": "turbo run test",
     "test:integration": "turbo run test:integration --concurrency=1",
+    "test:e2e": "pnpm --filter @clever/e2e exec playwright test",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "db:check": "pnpm --filter @clever/core db:check",

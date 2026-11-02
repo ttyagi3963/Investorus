@@ -41,8 +41,7 @@ export default function BuyBoxPage() {
         <div className="grid grid-cols-1 items-start gap-stack-lg lg:grid-cols-4">
           <BuyBoxNav currentId={box.id} />
           <div className="lg:col-span-3">
-            {/* The key reloads the form after a save, so it shows the saved values and version. */}
-            <BuyBoxForm key={box.version} existing={box} />
+            <BuyBoxForm existing={box} />
           </div>
         </div>
       )}

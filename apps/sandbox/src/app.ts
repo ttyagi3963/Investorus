@@ -6,7 +6,7 @@ import { crmRoutes } from "./crm.js";
 import { inspectionPage } from "./inspection.js";
 import { messageRoutes } from "./messages.js";
 import { simulation } from "./simulation.js";
-import { storageRoutes, type StorageConfig } from "./storage.js";
+import { storageCors, storageRoutes, type StorageConfig } from "./storage.js";
 import type { SandboxStore } from "./store.js";
 
 export type SandboxConfig = StorageConfig & {
@@ -45,6 +45,8 @@ export function createApp(config: SandboxConfig): Express {
   app.use(outages.routes);
   app.use(crmRoutes({ store, internalToken, gate: outages.gate("crm") }));
   app.use(messageRoutes({ store, internalToken, gate: outages.gate("messaging") }));
+  // CORS first: a browser must be able to read an outage's answer, or it sees only a network error.
+  app.use(storageCors(config.webOrigins));
   app.use(["/storage/objects", "/internal/storage/objects"], outages.gate("storage"));
   app.use(storageRoutes(config));
   app.use(onError);

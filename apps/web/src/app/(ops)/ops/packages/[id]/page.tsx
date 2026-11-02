@@ -1,7 +1,8 @@
 "use client";
 // One package's trace for operations (T342; design 09, FR-073, FR-074): the address and status, the
 // counts (buy boxes evaluated, matched, delivered, failed, offers), the timeline, and the investors
-// with why each was or was not matched. A retry button appears while deliveries need attention.
+// with why each was or was not matched. A retry button appears while deliveries need attention;
+// what the retry queued stays in view after they no longer do.
 import { PACKAGE_STATUS_TONES, StatTile, StatusChip } from "@clever/ui";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -46,7 +47,11 @@ export default function PackageTracePage() {
         }
         description={`Package ${pkg.id} · Listing version ${pkg.listingVersion} · Offer round ${pkg.round}`}
         actions={
-          failed > 0 && <BulkActions retryLabel="Retry failed deliveries" packageId={pkg.id} />
+          <BulkActions
+            retryLabel="Retry failed deliveries"
+            packageId={pkg.id}
+            canRetry={failed > 0}
+          />
         }
       />
       {isError && <ErrorNotice error={describeError(error, "The trace could not be refreshed.")} />}

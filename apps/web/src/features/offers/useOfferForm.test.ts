@@ -1,8 +1,8 @@
-// Guards the offer form's rules (T302; XX.2, FR-042): pressing submit twice sends one request, and
-// the api's field errors land on their fields. The client keeps the Idempotency-Key for a retry
-// (T381; client/http.test.ts).
+// Guards the offer form's rules (T302; XX.2, FR-042): pressing submit twice sends one request, the
+// api's field errors land on their fields, and "sent" lasts while the offer is as sent (T414). The
+// client keeps the Idempotency-Key for a retry (T381; client/http.test.ts).
 import { ApiError } from "@clever/contracts/client";
-import type { CreateOfferInput } from "@clever/contracts/offer";
+import type { CreateOfferInput, OfferView } from "@clever/contracts/offer";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
@@ -56,5 +56,21 @@ describe("useOfferForm", () => {
     const { result } = renderHook(() => useOfferForm("p1", null), { wrapper });
     await act(() => result.current.submit(terms));
     expect(result.current.fieldErrors).toEqual({ closingDate: "Cannot be in the past" });
+  });
+
+  it("says sent once the page holds the offer as sent, and no longer once it changes", async () => {
+    makeOffer.mockReset();
+    const offer = { ...terms, id: "o1", status: "ACTIVE", version: 1 } as OfferView;
+    makeOffer.mockResolvedValue(offer);
+    const { result, rerender } = renderHook(
+      ({ myOffer }: { myOffer: OfferView | null }) => useOfferForm("p1", myOffer),
+      { wrapper, initialProps: { myOffer: null as OfferView | null } },
+    );
+    await act(() => result.current.submit(terms));
+
+    rerender({ myOffer: offer });
+    expect(result.current.saved).toBe(true);
+    rerender({ myOffer: { ...offer, status: "WITHDRAWN", version: 2 } });
+    expect(result.current.saved).toBe(false);
   });
 });

@@ -23,7 +23,7 @@ describe("parseLegacyCsv", () => {
       "row 7: Max Price (-5): Must be 0 or more",
       "row 12: Markets: ZIP 00000 is not a valid ZIP code",
       "row 19: Email is required",
-      "row 24: Min Price (400000): Min price must not be above max price",
+      "row 24: Min Price (1400000): Min price must not be above max price",
     ]);
     expect(ignoredColumns).toEqual(["Source"]);
   });

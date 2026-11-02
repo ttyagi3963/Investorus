@@ -72,17 +72,34 @@ matches), one is under contract, and two are drafts. The listings have no photos
 | Investor | `dune@example.com` | An offer on Blake's West Adams listing |
 | Operations | `morgan@example.com` | The operations console: each package's full history, failed deliveries and retries, simulated outages, the CRM comparison, and the legacy investor import |
 
-> **Status:** Sprints 1–8 are in, and every screen uses the brand's design system (Sprints 5 and 7). Open
-> <http://localhost:3000> and sign in as any account with one press. Avery
-> builds and publishes a package, which is matched to investors who then make offers. Blake's
-> seeded West Adams listing already has four offers: compare them, accept one, and track the deal to closing.
-> If it falls through, promote a backup, then sign in as that investor to reconfirm. Investors
-> manage their own buy boxes under **Buy boxes**, and a new or edited box is matched at once
-> against listings still taking offers. The operations account imports
-> [seed/legacy-investors.csv](seed/legacy-investors.csv) under **Investor imports**: 26 rows are
-> imported and 4 rejected with their reasons, and importing it again duplicates nothing. The other
-> operations console shows each package's history and every email, text, and CRM update with
-> its outcome (see **Try an outage** below).
+## A 15-minute tour
+
+Open three windows. A browser holds one sign-in at a time, so give each role its own window:
+
+1. **http://localhost:3000** in a normal window, for the agent.
+2. **http://localhost:3000** in a private (incognito) window, for an investor or operations.
+3. **http://localhost:4100**, the sandbox page. Every email, text, and CRM update the platform
+   sends appears here as it happens.
+
+Then, in order:
+
+1. **An agent publishes.** Sign in as `avery`, open the draft duplex, add a closing window, an
+   offer program, and a photo (any image on your computer), and publish. Matching runs at once.
+2. **Investors hear about it.** The sandbox page shows Harbor's match email (investors with a
+   phone number, such as Summit, also get a text). In the private window, sign in as `harbor`:
+   the listing is in the matched list. Open it, see why it matched, and make an offer. The seller's details are
+   never shown to investors.
+3. **The agent compares and accepts.** Sign in as `blake`. The West Adams listing already has
+   four offers side by side: accept one and move the deal through its milestones to closing. Or
+   mark it fallen through, promote a backup, and sign in as that investor to reconfirm.
+4. **An investor tunes a buy box.** As `ridge`, edit or add a buy box under **Buy boxes**. It is
+   matched at once against every listing still taking offers.
+5. **Operations sees everything.** As `morgan`, open a package's history: every match decision,
+   with the reason, and every delivery. Then try an outage (below), and import
+   [seed/legacy-investors.csv](seed/legacy-investors.csv) under **Investor imports**: 26 rows are
+   imported and 4 rejected with their reasons, and importing it again duplicates nothing.
+6. **A partner brand.** Open **http://partner.localhost:3000**: the same app under a partner's
+   name, colors, and logo (see **Switch brands** below).
 
 ## Try an outage
 

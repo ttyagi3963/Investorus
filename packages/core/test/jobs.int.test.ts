@@ -3,7 +3,7 @@
 // job; a job scheduled for later waits for its time on the worker's clock; a failure is retried
 // until maxRetries, then FAILED; a job whose worker renews its lease is never taken over, one whose
 // worker died is reclaimed as a used try, then FAILED; and a worker that lost the lease changes
-// nothing (T378).
+// nothing (T378). The database's time zone is not UTC, and a job is still due at its time (T390).
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -21,7 +21,7 @@ let n = 0;
 
 beforeAll(async () => {
   let url: string;
-  ({ db, url, stop } = await startMigratedDatabase());
+  ({ db, url, stop } = await startMigratedDatabase({ timeZone: "Asia/Tokyo" }));
   prisma = createPrismaClient(url);
   uow = new PrismaUnitOfWorkImpl(
     prisma,

@@ -254,6 +254,11 @@ below are the planning baseline.
   - The web contract client attaches the key automatically and keeps it with the request
     (method, path, body) until the api settles it, so a retry or a double-click reuses it and a
     changed body gets a new one (T381).
+  - Keys live in PostgreSQL (plan.md Complexity Tracking) for their 24 hours; each tick of the
+    worker's job loop deletes up to 1,000 older keys with their stored answers (T390), so the
+    table holds about one day of keys. Every Prisma session (api, worker, seed) runs in UTC
+    (`-c TimeZone=UTC` in `createPrismaClient`), because the timestamp columns hold UTC without a
+    zone and the leases and job times compare them with the database clock (T390).
 - **Rationale**: A literal implementation of XX.2. It sits outside route handlers (II, VI).
   Duplicate offers (FR-045) are also blocked by a unique constraint on (`packageId`,
   `investorId`, `round`) for active offers, giving defense in depth.

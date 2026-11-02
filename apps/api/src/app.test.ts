@@ -65,7 +65,7 @@ const container: AppContainer = {
     outside: { crmComparison: unused, simulations: unused, setSimulation: unused },
   },
   checkDatabase: async () => {},
-  idempotency: { claim: unused, complete: unused, release: unused },
+  idempotency: { claim: unused, complete: unused, release: unused, purgeExpired: unused },
   logger: pino({ level: "silent" }),
   reporter: { report: () => {} },
   dispose: async () => {},

@@ -1,6 +1,8 @@
 // Checks that the timers and the backup promotion wait for the package lock on a real Postgres
 // (T376; FR-044, FR-057, FR-059): a third connection holds the lock while two changes queue behind
-// it in a fixed order, so the interleaving that broke the rows happens on every run.
+// it in a fixed order, so the interleaving that broke the rows happens on every run. An investor's
+// revision waits for the package too, so an accept turning the other offers into backups never
+// fails on an offer revised under it (T390).
 import { randomBytes } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
 import pg from "pg";
@@ -99,16 +101,18 @@ async function lockWaiters(count: number) {
 }
 
 /**
- * Holds the package's lock while `first`, then `second`, queue behind it, then lets them go:
- * Postgres hands a row to its waiters in the order they came, so `first` always commits first.
+ * Holds a row's lock (the package's, unless another table is named) while `first`, then `second`,
+ * queue behind it, then lets them go: Postgres hands a row to its waiters in the order they came,
+ * so `first` always commits first.
  */
 async function inOrder(
-  packageId: string,
+  id: string,
   first: () => Promise<unknown>,
   second: () => Promise<unknown>,
+  table: "ListingPackage" | "Offer" = "ListingPackage",
 ) {
   await holder.query("BEGIN");
-  await holder.query(`SELECT id FROM "ListingPackage" WHERE id = $1 FOR UPDATE`, [packageId]);
+  await holder.query(`SELECT id FROM "${table}" WHERE id = $1 FOR UPDATE`, [id]);
   const a = first();
   await lockWaiters(1);
   const b = second();
@@ -188,6 +192,36 @@ describe("changes that wait for the package lock", () => {
     expect([accepted.status, expired.status]).toEqual(["fulfilled", "fulfilled"]);
     expect(await one(`SELECT status FROM "Offer" WHERE id = $1`, "second-3")).toEqual({
       status: "EXPIRED",
+    });
+  });
+
+  it("accepts an offer while another investor's revision of theirs is mid-write", async () => {
+    await listing("4", "ACCEPTING_OFFERS", { won: "ACTIVE", other: "ACTIVE" });
+
+    // Holding Harbor's offer stops the revision just before it writes, after the accept has
+    // listed the package's offers if the revision did not wait for the package first.
+    const [revised, accepted] = await inOrder(
+      "second-4",
+      () =>
+        offers.revise(harbor, "second-4", {
+          version: 1,
+          price: 290_000,
+          paymentType: "CASH",
+          closingDate: new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10),
+          earnestMoney: 5_000,
+          contingencies: [],
+          feesAndConcessions: 0,
+          expiresAt: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+        }),
+      () =>
+        decisions.record(avery, "package-4", { type: "ACCEPT", offerId: "first-4", version: 1 }),
+      "Offer",
+    );
+
+    expect([revised.status, accepted.status]).toEqual(["fulfilled", "fulfilled"]);
+    expect(await one(`SELECT status, price FROM "Offer" WHERE id = $1`, "second-4")).toEqual({
+      status: "BACKUP",
+      price: 290_000,
     });
   });
 });

@@ -18,6 +18,7 @@ function appWith(complete: (...args: unknown[]) => Promise<void>, report: () => 
     claim: async () => ({ kind: "claimed" as const, token: "t1" }),
     complete,
     release: vi.fn(),
+    purgeExpired: vi.fn(),
   };
   app.use(idempotency(store, { report }));
   app.post("/created", (_req, res) => void res.status(201).json({ id: "p1" }));
@@ -38,6 +39,7 @@ describe("idempotency middleware", () => {
       claim: async () => ({ kind: "replay" as const, status: 200, body: JSON.stringify({ v: 2 }) }),
       complete: vi.fn(),
       release: vi.fn(),
+      purgeExpired: vi.fn(),
     };
     app.use(idempotency(store, { report: vi.fn() }));
     app.put("/buy-boxes/b1", save);

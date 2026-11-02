@@ -5,8 +5,10 @@
 // offer until it is accepted, even after the deadline. A refusal says why (the deadline passed, the
 // package was withdrawn, an offer already exists). The investor answers an agent's counter by
 // taking its terms or keeping their own (T310), and can push out a backup offer's expiry, even after
-// the deadline, but change nothing else. Only the package's agent and operations (read-only, FR-080)
-// list its offers. Every change is audited.
+// the deadline, but change nothing else. A revision or an answer to a counter waits for the package's
+// lock and reads the offer after it, so an accept turning the other offers into backups happens wholly
+// before or after it (T390). Only the package's agent and operations (read-only, FR-080) list its
+// offers. Every change is audited.
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -99,8 +101,7 @@ export class OfferService implements IOfferService {
     const { version, ...rest } = reviseOfferInputSchema.parse(input);
     const now = this.deps.clock.now();
     return this.uow.run(async (repos) => {
-      const current = await repos.offers.findById(offerId);
-      if (!current || current.investorId !== investorId) throw new NotFoundError("Offer not found");
+      const current = await this.lockedOffer(repos, offerId, investorId);
       if (current.status === "BACKUP")
         return this.extendBackup(repos, actor, current, version, rest);
       if (current.status !== "ACTIVE" && current.status !== "COUNTERED") {
@@ -155,8 +156,7 @@ export class OfferService implements IOfferService {
     const investorId = investorOf(actor);
     const { action, version } = counterResponseSchema.parse(input);
     return this.uow.run(async (repos) => {
-      const current = await repos.offers.findById(offerId);
-      if (!current || current.investorId !== investorId) throw new NotFoundError("Offer not found");
+      const current = await this.lockedOffer(repos, offerId, investorId);
       if (current.status !== "COUNTERED") {
         throw new BusinessRuleError("There is no counter-offer to answer", "NOT_COUNTERED");
       }
@@ -204,6 +204,19 @@ export class OfferService implements IOfferService {
       }
       return offer;
     });
+  }
+
+  /** The investor's offer, read again once its package's lock is held, as the decisions take it. */
+  private async lockedOffer(
+    repos: UnitOfWorkRepositories,
+    offerId: string,
+    investorId: string,
+  ): Promise<Offer> {
+    const found = await repos.offers.findById(offerId);
+    if (!found || found.investorId !== investorId) throw new NotFoundError("Offer not found");
+    await repos.packages.lock(found.packageId);
+    // Offers are never deleted, so it is still there.
+    return (await repos.offers.findById(offerId))!;
   }
 
   /** A backup offer can only last longer: its expiry may move later, and nothing else changes. */

@@ -48,7 +48,7 @@ with retries, a "needs attention" list, outage simulation, and a per-package tim
 **Storage**:
 - PostgreSQL 17: system of record, durable jobs, outbox, audit, typed buy-box columns, and
   append-only buy box and listing versions.
-- Redis 7: the worker's BullMQ delivery queues (Sprint 6, T339): 64 MB, no eviction, no persistence. Idempotency keys (24 h) are stored in PostgreSQL in Sprint 2
+- Redis 7: the worker's BullMQ delivery queues (Sprint 6, T339): 64 MB, no eviction, no persistence. Idempotency keys (24 h) are stored in PostgreSQL in Sprint 2, and the worker's job loop purges older ones (T390)
   (Complexity Tracking, XX.2).
 - Object storage: the sandbox stand-in, reached through `IStorageProvider`.
 

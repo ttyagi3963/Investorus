@@ -2,7 +2,8 @@
 // built and wired, from validated settings. STORAGE_PROVIDER picks the sandbox or S3, as in the api,
 // so the investor import reads the file where the browser uploaded it. Deliveries use the BullMQ
 // queue on Redis with the retry policy read from ConfigEntry["deliveryRetry"] at startup, and the
-// sandbox CRM and messaging providers. `dispose` closes the queue and then the pool.
+// sandbox CRM and messaging providers. The job loop purges old idempotency keys through the
+// database's key store (T390). `dispose` closes the queue and then the pool.
 import {
   DealLifecycleWorkflow,
   DeliveryDispatcher,
@@ -16,6 +17,7 @@ import {
   createJobHandlers,
   type IClock,
   type IErrorReporter,
+  type IIdempotencyStore,
   type IUnitOfWork,
   type JobHandler,
 } from "@clever/core";
@@ -38,6 +40,7 @@ import type { WorkerEnv } from "./env.js";
 
 export type WorkerContainer = Readonly<{
   uow: IUnitOfWork;
+  idempotency: IIdempotencyStore;
   handlers: Record<JobType, JobHandler>;
   logger: Logger;
   reporter: IErrorReporter;
@@ -73,6 +76,7 @@ export async function createContainer(env: WorkerEnv): Promise<WorkerContainer> 
   const digests = new MatchDigestWorkflow(db.uow, { clock });
   return Object.freeze({
     uow: db.uow,
+    idempotency: db.idempotency,
     handlers: createJobHandlers({
       matching: new MatchingWorkflow(db.uow, { clock }),
       offerRound: new OfferRoundWorkflow(db.uow),

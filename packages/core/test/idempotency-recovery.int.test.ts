@@ -2,7 +2,9 @@
 // process dies before the change commits, a retry after the lease runs it once. If it dies after the
 // commit, a retry is told it was applied and nothing runs twice; the same holds after a 5xx. A
 // request that outlives its lease cannot commit once a retry has taken the key over. A crash is
-// simulated by not settling the claim, and the lease running out by moving it into the past.
+// simulated by not settling the claim, and the lease running out by moving it into the past. The
+// database's time zone is not UTC, as a server elsewhere may be, and every lease still holds. A key
+// past its 24 hours is purged with its stored answer; a newer one stays (T390).
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -23,7 +25,7 @@ let uow: PrismaUnitOfWorkImpl;
 
 beforeAll(async () => {
   let url: string;
-  ({ db, url, stop } = await startMigratedDatabase());
+  ({ db, url, stop } = await startMigratedDatabase({ timeZone: "America/Chicago" }));
   prisma = createPrismaClient(url);
   const cipher = new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`);
   store = new PrismaIdempotencyStoreImpl(prisma, cipher);
@@ -109,5 +111,24 @@ describe("an idempotency key after a crashed request", () => {
     await expect(change("slow", slow)).rejects.toMatchObject({ status: 503 });
     await change("slow", retry);
     expect(await timesApplied("slow")).toBe(1);
+  });
+});
+
+describe("an idempotency key past its 24 hours", () => {
+  it("is purged with its stored answer, while newer keys stay, answered or still running", async () => {
+    for (const key of ["expired", "answered"]) {
+      await store.complete(USER, key, await tokenOf(key), 201, '{"id":"offer-1"}');
+    }
+    await tokenOf("running");
+    await db.query(
+      `UPDATE "IdempotencyKey" SET "createdAt" = now() - interval '25 hours' WHERE key = 'expired'`,
+    );
+
+    await store.purgeExpired();
+
+    const { rows } = await db.query(
+      `SELECT key FROM "IdempotencyKey" WHERE key IN ('expired', 'answered', 'running') ORDER BY key`,
+    );
+    expect(rows.map((r) => r.key)).toEqual(["answered", "running"]);
   });
 });

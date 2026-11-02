@@ -6,8 +6,9 @@
 // - lease still running: the request may still be running (in progress);
 // - lease over, nothing committed: safe to run again (the key is taken over);
 // - lease over, committed but no answer stored: it already ran ("applied", never re-run).
-// A key older than 24 hours is claimed afresh. The stored answer can hold seller details, so it is
-// encrypted with the PII cipher (constitution XII).
+// A key older than 24 hours is claimed afresh, and purged by the worker (T390). Every time comes
+// from the database clock. The stored answer can hold seller details, so it is encrypted with the
+// PII cipher (constitution XII).
 import { randomUUID } from "node:crypto";
 import { InfrastructureError } from "../../errors/InfrastructureError.js";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
@@ -21,6 +22,10 @@ import type {
 
 /** Longer than any request takes; a request still running past it cannot commit. */
 const LEASE_MS = 30_000;
+/** How long a key is kept (contracts/api.md): within it a retry replays the stored answer. */
+const RETENTION_HOURS = 24;
+/** Keys purged in one statement, so one purge never holds many rows; the next one goes on. */
+const PURGE_BATCH = 1_000;
 
 const unavailable = (cause: unknown) =>
   new InfrastructureError("The idempotency key store did not answer", 503, cause);
@@ -58,7 +63,7 @@ export class PrismaIdempotencyStoreImpl implements IIdempotencyStore {
           status = 'IN_PROGRESS', "responseStatus" = NULL, "responseBody" = NULL,
           "claimToken" = EXCLUDED."claimToken", "lockedUntil" = EXCLUDED."lockedUntil",
           "committedAt" = NULL, "createdAt" = CURRENT_TIMESTAMP
-        WHERE "IdempotencyKey"."createdAt" < CURRENT_TIMESTAMP - INTERVAL '24 hours'
+        WHERE "IdempotencyKey"."createdAt" < CURRENT_TIMESTAMP - make_interval(hours => ${RETENTION_HOURS}::int)
           OR ("IdempotencyKey".status = 'IN_PROGRESS'
             AND "IdempotencyKey"."committedAt" IS NULL
             AND "IdempotencyKey"."lockedUntil" < clock_timestamp()
@@ -114,17 +119,26 @@ export class PrismaIdempotencyStoreImpl implements IIdempotencyStore {
       await this.prisma.idempotencyKey.deleteMany({
         where: { userId, key, claimToken: token, status: "IN_PROGRESS", committedAt: null },
       });
-      // A write committed before the 5xx: end the lease now, so a retry is told it already ran.
-      await this.prisma.idempotencyKey.updateMany({
-        where: {
-          userId,
-          key,
-          claimToken: token,
-          status: "IN_PROGRESS",
-          committedAt: { not: null },
-        },
-        data: { lockedUntil: new Date() },
-      });
+      // A write committed before the 5xx: end the lease now on the database clock the lease is
+      // read against, so a retry is told it already ran.
+      await this.prisma.$executeRaw`
+        UPDATE "IdempotencyKey" SET "lockedUntil" = clock_timestamp()
+        WHERE "userId" = ${userId} AND key = ${key} AND "claimToken" = ${token}
+          AND status = 'IN_PROGRESS' AND "committedAt" IS NOT NULL`;
+    } catch (cause) {
+      throw unavailable(cause);
+    }
+  }
+
+  async purgeExpired(): Promise<number> {
+    try {
+      // SKIP LOCKED leaves a key that a claim is taking over, or another worker is purging, to the
+      // next purge, so a purge never waits on a request.
+      return await this.prisma.$executeRaw`
+        DELETE FROM "IdempotencyKey" WHERE id IN (
+          SELECT id FROM "IdempotencyKey"
+          WHERE "createdAt" < CURRENT_TIMESTAMP - make_interval(hours => ${RETENTION_HOURS}::int)
+          LIMIT ${PURGE_BATCH} FOR UPDATE SKIP LOCKED)`;
     } catch (cause) {
       throw unavailable(cause);
     }

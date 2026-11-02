@@ -1,8 +1,9 @@
 // The job loop (T294; constitution VIII): each tick takes back the jobs whose worker died, then claims
 // and runs the jobs due by the clock until none is left. A claim is a lease the runner renews while
 // the handler runs, so a long run is never taken over (T378). Each job runs inside its own trace (the
-// ID of the request that queued it, or a new one), so every line of its run logs that ID. Stopping
-// lets the running job finish and claims no more.
+// ID of the request that queued it, or a new one), so every line of its run logs that ID. Each tick
+// then purges a batch of idempotency keys past their 24 hours (T390). Stopping lets the running job
+// finish and claims no more.
 import { newTraceId } from "@clever/contracts/common";
 import type { Job, JobType } from "@clever/contracts/jobs";
 import {
@@ -10,6 +11,7 @@ import {
   scrubPiiText,
   type IClock,
   type IErrorReporter,
+  type IIdempotencyStore,
   type IUnitOfWork,
   type JobHandler,
 } from "@clever/core";
@@ -83,7 +85,10 @@ function keepLease(job: Job, deps: JobRunnerDeps, logger: Logger): { stop(): voi
 }
 
 /** Runs a tick every `intervalMs` until stopped; a failed tick is reported and the loop goes on. */
-export function startJobLoop(deps: JobRunnerDeps, intervalMs = 1_000): { stop(): Promise<void> } {
+export function startJobLoop(
+  deps: JobRunnerDeps & { idempotency: IIdempotencyStore },
+  intervalMs = 1_000,
+): { stop(): Promise<void> } {
   let stopping = false;
   let timer: NodeJS.Timeout | undefined;
   let running: Promise<void> = Promise.resolve();
@@ -95,6 +100,8 @@ export function startJobLoop(deps: JobRunnerDeps, intervalMs = 1_000): { stop():
         runWithTrace(job.correlationId ?? newTraceId(), () => translateLostRun(job, deps));
       }
       while (!stopping && (await runNextJob(deps)));
+      const purged = await deps.idempotency.purgeExpired();
+      if (purged > 0) deps.logger.info({ purged }, "expired idempotency keys purged");
     } catch (err) {
       deps.reporter.report(err, { workerId: deps.workerId });
     }

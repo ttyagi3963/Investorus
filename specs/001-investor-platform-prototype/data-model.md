@@ -507,7 +507,7 @@ One `Idempotency-Key` a user sent with a POST or PATCH, stored in Postgres inste
 | lockedUntil | timestamp | the claim's 30-second lease; past it, a retry takes the key over if nothing committed |
 | committedAt | timestamp? | set in the same transaction as the request's first write, only while the lease holds; a request that outlived its lease is rolled back |
 | responseStatus / responseBody | int? / text? | set when DONE; a 5xx is never stored (the row is deleted if nothing committed; if something did, a retry is told it was applied). The body can hold seller details (a package view), so it is the JSON encrypted with the PII cipher (XII). A replay returns it as first sent; the screens re-read the package after a save |
-| createdAt | timestamp | a key older than 24 hours is ignored and claimed again |
+| createdAt | timestamp | a key older than 24 hours is ignored and claimed again, and the worker purges it (T390; indexed) |
 
 ### EffectMarker (added 2026-11-01, T368; FR-072)
 `key` (primary key), `createdAt`. A one-time effect a job has applied, such as

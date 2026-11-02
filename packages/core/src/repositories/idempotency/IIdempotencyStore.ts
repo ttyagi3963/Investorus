@@ -1,8 +1,9 @@
 // The idempotency key store port (T285, T367; constitution XX.2): the api's idempotency middleware
 // claims a user's key before a POST or PATCH runs, then stores its answer, or frees the key after a
 // 5xx. A claim is a lease with a token, so a claim abandoned by a crashed process can be taken over
-// when nothing committed, and is reported as already applied when something did. Any store failure
-// is an InfrastructureError, so the middleware can fail closed.
+// when nothing committed, and is reported as already applied when something did. The worker purges
+// keys past their retention (T390). Any store failure is an InfrastructureError, so the middleware
+// can fail closed.
 
 /** What identifies one request under a key: a retry must send the same method, path, and body. */
 export type IdempotencyRequest = {
@@ -36,4 +37,6 @@ export interface IIdempotencyStore {
   ): Promise<void>;
   /** After a 5xx: frees the key if nothing committed, so a retry runs the change again. */
   release(userId: string, key: string, token: string): Promise<void>;
+  /** Deletes a batch of keys past their 24 hours, with their stored answers; returns how many. */
+  purgeExpired(): Promise<number>;
 }

@@ -2,7 +2,8 @@
 // matched, one notification per newly matched investor with no seller detail, one audited decision
 // per matched investor; a re-run adds nothing; after a material edit, an investor matched before
 // hears that it changed only if a field their boxes check changed, even when it no longer fits them,
-// and new ones hear that it matches (T366); and a stale job does nothing.
+// and new ones hear that it matches (T366); each of them gets a decision at every new version, told
+// or not, naming the boxes that still match (T383); and a stale job does nothing.
 import type { Actor } from "@clever/contracts/auth";
 import type { BuyBox } from "@clever/contracts/buy-box";
 import type { CreateListingPackageInput } from "@clever/contracts/listing-package";
@@ -247,6 +248,47 @@ describe("MatchingWorkflow", () => {
     expect(told(4)).toEqual([
       ["user-summit", "PACKAGE_CHANGED"],
       ["user-ridge", "PACKAGE_CHANGED"],
+    ]);
+  });
+
+  it("records once, at each new version, which boxes still match every investor matched before, told or not (T383)", async () => {
+    const { uow, packages, pkg, matching } = await published();
+    const edit = async (priceExpectationMax: number) => {
+      const current = (await uow.repos.packages.findById(pkg.id))!;
+      const { package: edited } = await packages.update(avery, pkg.id, {
+        version: current.version,
+        priceExpectationMax,
+      });
+      for (const _rerun of [1, 2]) {
+        await matching.evaluatePackage({
+          packageId: pkg.id,
+          round: 1,
+          listingVersion: edited.listingVersion,
+          trigger: "PACKAGE_EDIT",
+        });
+      }
+    };
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
+    await edit(275_000); // ridge's box now fits
+
+    // Past summit's Texas box and ridge's box; harbor's box checks nothing, so harbor is not told.
+    await edit(310_000);
+
+    const atVersion3 = actions(uow, "MATCH_DECISION")
+      .filter((d) => d.details?.listingVersion === 3)
+      .map((d) => [
+        d.details?.investorId,
+        (d.details?.buyBoxes as { id: string }[]).map((b) => b.id),
+      ]);
+    expect(atVersion3).toEqual([
+      ["investor-summit", ["Austin flips"]],
+      ["investor-harbor", ["Anywhere"]],
+      ["investor-ridge", []],
     ]);
   });
 

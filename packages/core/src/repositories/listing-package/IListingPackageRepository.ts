@@ -31,6 +31,7 @@ export type ListingPackagePatch = Partial<
 >;
 
 export interface IListingPackageRepository {
+  /** An active package already at the address is a BusinessRuleError (DUPLICATE_ACTIVE_LISTING). */
   create(pkg: NewListingPackage): Promise<ListingPackage>;
   findForAgent(agentId: string, id: string): Promise<ListingPackage | null>;
   /** For the system (matching), never for a request: it does not check the agent. */
@@ -46,7 +47,7 @@ export interface IListingPackageRepository {
   /**
    * Applies the patch and moves to the next version, only if the stored version is `version`;
    * otherwise throws ConflictError. An empty patch still moves the version (the seller or the
-   * property changed).
+   * property changed). A new address an active package already has is DUPLICATE_ACTIVE_LISTING.
    */
   update(id: string, version: number, patch: ListingPackagePatch): Promise<ListingPackage>;
   /**

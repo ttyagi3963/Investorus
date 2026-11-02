@@ -1,9 +1,10 @@
 // What operations read about packages (T341; FR-073, FR-074): every package with its delivery
 // trouble; one package's trace, with who matched and which boxes, whether their notice arrived, what
 // they offered, who was not matched, and a timeline of audit entries and deliveries; and why one
-// investor was or was not matched. A matched investor's answer is the decision stored when matching
-// ran. A non-match is replayed with the current evaluator against the listing version and each box
-// as it was when that version was matched, and says so if the rules changed since.
+// investor was or was not matched. Both answer for the package's current listing version (T383). An
+// investor matched at it gets the decision stored when matching ran. A non-match, or a drop-out
+// (decided with no box), is replayed with the current evaluator against the listing version and
+// each box as it was when that version was matched, and says so if the rules changed since.
 import type { Actor } from "@clever/contracts/auth";
 import { CRITERIA, CRITERION_KEYS, type CriterionKey } from "@clever/contracts/buy-box";
 import { NotFoundError } from "@clever/contracts/common";
@@ -86,8 +87,10 @@ export class OpsQueryService implements IOpsQueryService {
         companies.set(id, name);
       }
 
-      const decisions = this.decisions(audit, pkg.round);
-      const boxNames = await repos.opsQuery.buyBoxNames(matches.flatMap((m) => m.matchedBuyBoxIds));
+      const decisions = this.decisions(audit, pkg.round, pkg.listingVersion);
+      const boxNames = await repos.opsQuery.buyBoxNames(
+        [...decisions.values()].flatMap((d) => d.buyBoxes.map((box) => box.id)),
+      );
       const matched: TraceInvestor[] = matches.map((match) => {
         const decided = decisions.get(match.investorId);
         const notice = deliveries.findLast(
@@ -100,10 +103,11 @@ export class OpsQueryService implements IOpsQueryService {
         return {
           investorId: match.investorId,
           companyName: companies.get(match.investorId) ?? match.investorId,
-          buyBoxes: match.matchedBuyBoxIds.map((id) => ({
+          // The boxes that match the current version; the Match row keeps every one that ever did.
+          buyBoxes: (decided?.buyBoxes ?? []).map(({ id, version }) => ({
             id,
             name: boxNames.get(id) ?? "A deleted buy box",
-            version: decided?.buyBoxes.find((b) => b.id === id)?.version ?? 0,
+            version,
           })),
           notification: notice ? { status: notice.status, lastError: notice.lastError } : null,
           offer: offer ? { status: offer.status, price: offer.price } : null,
@@ -180,8 +184,8 @@ export class OpsQueryService implements IOpsQueryService {
       const pkg = await repos.opsQuery.findPackage(packageId);
       if (!pkg) throw new NotFoundError(NOT_FOUND);
       const audit = await repos.audit.listForEntity("ListingPackage", packageId);
-      const stored = this.decisions(audit, pkg.round).get(investorId);
-      if (stored) return this.fromStored(repos, stored);
+      const stored = this.decisions(audit, pkg.round, pkg.listingVersion).get(investorId);
+      if (stored && stored.buyBoxes.length > 0) return this.fromStored(repos, stored);
       // The boxes are judged as they were when matching ran for this listing version.
       const matchedAt = audit.findLast(
         (e) =>
@@ -193,15 +197,20 @@ export class OpsQueryService implements IOpsQueryService {
   }
 
   /**
-   * Each investor's stored decisions in the round, merged: a later decision (a buy box saved after
-   * publish) adds its box to the earlier ones, and a box decided twice keeps its latest result.
+   * Each investor's stored decisions at this listing version of the round, merged: a later decision
+   * (a buy box saved after the version was matched) adds its box to the earlier ones, and a box
+   * decided twice keeps its latest result. `audit` is newest first.
    */
-  private decisions(audit: { action: string; details: unknown }[], round: number) {
+  private decisions(
+    audit: { action: string; details: unknown }[],
+    round: number,
+    listingVersion: number,
+  ) {
     const byInvestor = new Map<string, StoredDecision>();
-    for (const entry of audit) {
+    for (const entry of audit.toReversed()) {
       if (entry.action !== "MATCH_DECISION") continue;
       const decision = entry.details as StoredDecision;
-      if (decision.round !== round) continue;
+      if (decision.round !== round || decision.listingVersion !== listingVersion) continue;
       const earlier = byInvestor.get(decision.investorId);
       const boxes = new Map((earlier?.buyBoxes ?? []).map((box) => [box.id, box]));
       for (const box of decision.buyBoxes) boxes.set(box.id, box);

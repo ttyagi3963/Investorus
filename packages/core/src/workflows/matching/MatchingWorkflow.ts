@@ -3,10 +3,12 @@
 // evaluator) decides every criterion. Each matched investor gets one Match naming every box that
 // matched and one audited decision. After a material edit, an investor matched before is told of the
 // change only if a field their boxes check changed, even if the listing no longer fits them (FR-022,
-// T366). A run for a stale version or a closed package does nothing, so a retried or
-// late job is harmless. A saved buy box is matched the other way round (T321, FR-023): one box
-// against every package still taking offers; a package it newly shares is a match like any other,
-// and an investor already matched gets the box added and no second notice.
+// T366), and gets a decision for the new version either way, naming the boxes that still match (none
+// if they dropped out), so "Why?" explains the current version (T383). A run for a stale version or
+// a closed package does nothing, so a retried or late job is harmless. A saved buy box is matched
+// the other way round (T321, FR-023): one box against every package still taking offers; a package
+// it newly shares is a match like any other, and an investor already matched gets the box added, a
+// decision for the box as saved, and no second notice.
 import {
   CRITERIA,
   CRITERION_KEYS,
@@ -96,8 +98,15 @@ export class MatchingWorkflow implements IMatchingWorkflow {
       // they still match (FR-022). Newly matched investors are handled below.
       for (const [investorId, prior] of earlier) {
         const lastTold = prior.lastNotifiedListingVersion!;
-        // Already told about this version: a re-run adds nothing.
+        // Already told about, or decided at, this version: a re-run adds nothing.
         if (lastTold >= listingVersion) continue;
+        if (
+          !(await repos.effects.claimOnce(
+            `MATCH_DECISION:${packageId}:${listingVersion}:${investorId}`,
+          ))
+        ) {
+          continue;
+        }
         const stillMatched = byInvestor.get(investorId) ?? [];
         if (stillMatched.length > 0) {
           await repos.matches.upsert({
@@ -108,6 +117,11 @@ export class MatchingWorkflow implements IMatchingWorkflow {
             trigger,
           });
         }
+        // Decided whether or not they are told: no box is a drop-out at this version.
+        await repos.audit.append({
+          ...systemEntry(packageId, "MATCH_DECISION"),
+          details: decisionDetails(investorId, round, listingVersion, stillMatched),
+        });
         const seen = await repos.listingVersions.find(packageId, lastTold);
         if (!seen) throw new Error(`Listing version ${lastTold} of ${packageId} is missing`);
         const boxes = await boxesOf(repos, prior.matchedBuyBoxIds, stillMatched);
@@ -118,12 +132,6 @@ export class MatchingWorkflow implements IMatchingWorkflow {
           changedNotice(pkg, property, stillMatched.length > 0),
         );
         await repos.matches.markNotified(prior.id, listingVersion);
-        if (stillMatched.length > 0) {
-          await repos.audit.append({
-            ...systemEntry(packageId, "MATCH_DECISION"),
-            details: decisionDetails(investorId, round, listingVersion, stillMatched),
-          });
-        }
       }
 
       for (const [investorId, matched] of byInvestor) {
@@ -172,9 +180,9 @@ export class MatchingWorkflow implements IMatchingWorkflow {
           throw new Error(`Listing version ${pkg.listingVersion} of ${pkg.id} is missing`);
         const evaluation = evaluateBuyBox(box, listing.snapshot, today);
         if (!evaluation.matched) continue;
-        // A retried run: this box already shares the package.
-        const known = await repos.matches.findOne(pkg.id, box.investorId, pkg.round);
-        if (known?.matchedBuyBoxIds.includes(box.id)) continue;
+        // A retried run: this box, as saved, is already decided for this listing version.
+        const decided = `MATCH_BUY_BOX:${box.id}:${box.version}:${pkg.id}:${pkg.listingVersion}`;
+        if (!(await repos.effects.claimOnce(decided))) continue;
 
         const { match, created } = await repos.matches.upsert({
           packageId: pkg.id,

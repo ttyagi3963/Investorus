@@ -1,5 +1,7 @@
 // The match port over Prisma (T288): the only file with Match queries. The Match row has no
-// columns the domain type lacks, so it is returned as is.
+// columns the domain type lacks, so it is returned as is. An upsert is one INSERT ... ON CONFLICT
+// that adds the boxes to whatever is stored, so two matching jobs at once both keep theirs (T383).
+import { randomUUID } from "node:crypto";
 import type { Match } from "@clever/contracts/match";
 import type { Prisma } from "../../generated/prisma/client.js";
 import type { IMatchRepository, MatchUpsert } from "./IMatchRepository.js";
@@ -8,20 +10,19 @@ export class PrismaMatchRepositoryImpl implements IMatchRepository {
   constructor(private readonly db: Prisma.TransactionClient) {}
 
   async upsert(m: MatchUpsert): Promise<{ match: Match; created: boolean }> {
-    const where = {
-      packageId_investorId_round: {
-        packageId: m.packageId,
-        investorId: m.investorId,
-        round: m.round,
-      },
-    };
-    const existing = await this.db.match.findUnique({ where });
-    if (!existing) return { match: await this.db.match.create({ data: m }), created: true };
-    const boxes = [...new Set([...existing.matchedBuyBoxIds, ...m.matchedBuyBoxIds])];
-    if (boxes.length === existing.matchedBuyBoxIds.length)
-      return { match: existing, created: false };
-    const match = await this.db.match.update({ where, data: { matchedBuyBoxIds: boxes } });
-    return { match, created: false };
+    const id = randomUUID();
+    // A conflicting insert waits for the other change, then adds only the boxes not stored yet.
+    const [row] = await this.db.$queryRaw<{ id: string }[]>`
+      INSERT INTO "Match" (id, "packageId", "investorId", round, "matchedBuyBoxIds", trigger)
+      VALUES (${id}, ${m.packageId}, ${m.investorId}, ${m.round}, ${m.matchedBuyBoxIds}::text[],
+              ${m.trigger}::"MatchTrigger")
+      ON CONFLICT ("packageId", "investorId", round) DO UPDATE
+      SET "matchedBuyBoxIds" = "Match"."matchedBuyBoxIds" || ARRAY(
+        SELECT box FROM unnest(EXCLUDED."matchedBuyBoxIds") WITH ORDINALITY AS added(box, n)
+        WHERE box <> ALL("Match"."matchedBuyBoxIds") ORDER BY n)
+      RETURNING id`;
+    const match = await this.db.match.findUniqueOrThrow({ where: { id: row!.id } });
+    return { match, created: row!.id === id };
   }
 
   async markNotified(id: string, listingVersion: number): Promise<void> {

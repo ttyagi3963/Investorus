@@ -308,7 +308,7 @@ matches (FR-022). It is the investor's access grant (FR-040) and the notificatio
 | packageId | cuid → ListingPackage | cascade |
 | investorId | cuid → Investor | cascade |
 | round | int | |
-| matchedBuyBoxIds | cuid[] | every box that matched, across listing versions of this round |
+| matchedBuyBoxIds | cuid[] | every box that matched, across listing versions of this round (the boxes a change notice checks); the boxes that match the current version are in that version's `MATCH_DECISION` entries. A job adds its boxes in one `INSERT … ON CONFLICT DO UPDATE`, so two jobs at once keep both |
 | trigger | `PUBLISH` \| `PACKAGE_EDIT` \| `BUY_BOX_CHANGE` | what first created the match |
 | firstMatchedAt | timestamptz | |
 | notifiedAt | timestamptz? | set when the `package.matched` event is written |
@@ -318,7 +318,9 @@ matches (FR-022). It is the investor's access grant (FR-040) and the notificatio
 Unique `(packageId, investorId, round)`, so a re-run never sends a second notification.
 Index `(investorId)` for the dashboard.
 - A later edit that stops a box matching does not delete the row: shared packages stay visible
-  (spec Story 5, scenario 1).
+  (spec Story 5, scenario 1). Each new listing version records a `MATCH_DECISION` for every
+  investor matched before, told or not, naming the boxes that still match (none after a drop-out),
+  so "Why?" answers for the current version (T383).
 - After a material edit, `package.changed` goes to investors with `notifiedAt` set, only if a
   changed field is in the `listingFields` of a non-null criterion of one of their matched
   boxes.

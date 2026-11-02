@@ -9,7 +9,9 @@ Limits (from the submission instructions):
     .next, .turbo, or coverage folder (the only ones this stack creates), and no file over 5 MB.
 Also checked, in case the zip is ever made by hand from the working folder:
   - the committed .env with working defaults is at the top level;
-  - assignment.md (confidential, gitignored) is not included.
+  - no confidential or personal file is included: the brief (assignment.md), the written
+    answers kept beside the code, the local secrets file (.env.local, which holds cloud keys),
+    local editor settings, study notes, or agent worktrees (T388).
 
 Entries are counted strictly (folders too).
 
@@ -28,7 +30,8 @@ MAX_ENTRIES = 20_000
 MAX_UNZIPPED_BYTES = 500 * MB
 MAX_FILE_BYTES = 5 * MB  # "large media": the seed photos are under 5 MB in total (T138)
 FORBIDDEN_DIRS = {"node_modules", "dist", ".next", ".turbo", "coverage"}
-FORBIDDEN_FILES = {"assignment.md"}
+FORBIDDEN_FILES = {"assignment.md", "teams.md", "forgemini.md", ".env.local", "settings.local.json"}
+PRIVATE_DIRS = {"study-notes", "worktrees"}
 
 
 def human(n: float) -> str:
@@ -69,6 +72,8 @@ def main(path: str) -> int:
             failures.append(f"build output or dependencies included: {n}")
         if parts and parts[-1] in FORBIDDEN_FILES:
             failures.append(f"confidential file included: {n}")
+        if PRIVATE_DIRS.intersection(parts[:-1] if not n.endswith("/") else parts):
+            failures.append(f"private folder included: {n}")
     for i in infos:
         if i.file_size > MAX_FILE_BYTES:
             failures.append(f"large file ({human(i.file_size)} > {human(MAX_FILE_BYTES)}): {i.filename}")

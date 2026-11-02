@@ -1,5 +1,5 @@
 // What the BFF's routes share: the CSRF check (a state-changing request must come from this site's
-// own pages, research R12), reading the session token from the cookie, whether a cookie is Secure
+// own pages, research R12), reading and writing the session cookie, whether a cookie is Secure
 // (T372), and the trace headers (T283). Pure functions over the standard Request, so they can be
 // tested without Next.
 import { newTraceId, toTraceparent, traceIdFrom } from "@clever/contracts/common";
@@ -38,8 +38,27 @@ export function cookieIsSecure(
   return forwarded === "https" || URL.parse(request.url ?? "")?.protocol === "https:";
 }
 
+/**
+ * The session cookie's Set-Cookie value: HTTP-only and SameSite=Lax always, Secure per
+ * cookieIsSecure. An empty value with Max-Age 0 clears it.
+ */
+export function sessionCookie(value: string, maxAge: number, secure: boolean): string {
+  return [
+    `${SESSION_COOKIE}=${value}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`,
+    ...(secure ? ["Secure"] : []),
+  ].join("; ");
+}
+
 export function forbidden(): Response {
   return Response.json({ error: "Cross-site request refused", code: "FORBIDDEN" }, { status: 403 });
+}
+
+export function notFound(): Response {
+  return Response.json({ error: "Not found", code: "NOT_FOUND" }, { status: 404 });
 }
 
 export function sessionToken(request: Request): string | undefined {

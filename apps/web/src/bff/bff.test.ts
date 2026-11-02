@@ -3,7 +3,9 @@
 // refused before it reaches the api (CSRF); the session token travels only in an HTTP-only cookie
 // and is forwarded as a bearer token; the api's answer comes back unchanged; and every call to the
 // api carries one trace ID, the caller's when its `traceparent` is valid (T283), and the caller's
-// Idempotency-Key (T285). The cookie is Secure when the browser came over HTTPS (T372).
+// Idempotency-Key (T285). The cookie is Secure when the browser came over HTTPS (T372). The proxy
+// never forwards to the api's sign-in, whose answer carries the raw token, nor a dot segment that
+// would leave /api/v1 (T374).
 import { describe, expect, it, vi } from "vitest";
 import { forwardToApi } from "./proxy";
 import { signIn, signOut } from "./session";
@@ -62,6 +64,23 @@ describe("forwardToApi", () => {
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer tok123");
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: "Package not found", code: "NOT_FOUND" });
+  });
+});
+
+describe("forwardToApi's boundary", () => {
+  it("refuses the api's sign-in and a dot segment with 404, without calling the api", async () => {
+    const fetch = vi.fn();
+    // Express routes case-insensitively, so SESSIONS would reach sign-in too.
+    for (const path of [["sessions"], ["SESSIONS"], ["..", "health"], ["listing-packages", "."]]) {
+      const res = await forwardToApi(
+        fromSite(`/bff/${path.join("/")}`, { method: "POST", body: "{}" }),
+        path,
+        { apiUrl: API, fetch },
+      );
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: "Not found", code: "NOT_FOUND" });
+    }
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

@@ -5,25 +5,15 @@
 import type { SessionResponse } from "@clever/contracts/auth";
 import {
   type CookieSecure,
-  SESSION_COOKIE,
   cookieIsSecure,
   forbidden,
   passBackHeaders,
   sameOrigin,
+  sessionCookie,
   traceparentFor,
 } from "./shared";
 
 const EIGHT_HOURS = 8 * 60 * 60;
-
-const cookie = (value: string, maxAge: number, secure: boolean) =>
-  [
-    `${SESSION_COOKIE}=${value}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    `Max-Age=${maxAge}`,
-    ...(secure ? ["Secure"] : []),
-  ].join("; ");
 
 export async function signIn(
   request: Request,
@@ -49,7 +39,11 @@ export async function signIn(
     {
       status: 201,
       headers: {
-        "Set-Cookie": cookie(body.token, EIGHT_HOURS, cookieIsSecure(deps.cookieSecure, request)),
+        "Set-Cookie": sessionCookie(
+          body.token,
+          EIGHT_HOURS,
+          cookieIsSecure(deps.cookieSecure, request),
+        ),
       },
     },
   );
@@ -59,6 +53,6 @@ export async function signOut(request: Request, cookieSecure: CookieSecure): Pro
   if (!sameOrigin(request)) return forbidden();
   return new Response(null, {
     status: 204,
-    headers: { "Set-Cookie": cookie("", 0, cookieIsSecure(cookieSecure, request)) },
+    headers: { "Set-Cookie": sessionCookie("", 0, cookieIsSecure(cookieSecure, request)) },
   });
 }

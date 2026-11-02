@@ -5,6 +5,7 @@
 // `readHead` lets the api check a photo's first bytes (T384).
 import type { UploadInstruction } from "@clever/contracts/photo";
 
+/** `contentType` is the media type alone, without parameters such as charset (T397). */
 export type StoredObject = { contentType: string; sizeBytes: number };
 
 export interface IStorageProvider {

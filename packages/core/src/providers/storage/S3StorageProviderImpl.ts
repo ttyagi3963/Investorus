@@ -14,6 +14,7 @@ import type { UploadInstruction } from "@clever/contracts/photo";
 import { InfrastructureError } from "../../errors/InfrastructureError.js";
 import type { IClock } from "../clock/IClock.js";
 import type { IStorageProvider, StoredObject } from "./IStorageProvider.js";
+import { mediaType } from "./media-type.js";
 import { readLimited } from "./read-limited.js";
 
 const UPLOAD_SECONDS = 10 * 60;
@@ -74,7 +75,7 @@ export class S3StorageProviderImpl implements IStorageProvider {
       if (!head.ContentType || head.ContentLength === undefined) {
         throw new InfrastructureError("S3 sent an incomplete object description", 502);
       }
-      return { contentType: head.ContentType, sizeBytes: head.ContentLength };
+      return { contentType: mediaType(head.ContentType), sizeBytes: head.ContentLength };
     });
   }
 

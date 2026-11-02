@@ -129,6 +129,13 @@ AWS_ACCESS_KEY_ID=<your key id>
 AWS_SECRET_ACCESS_KEY=<your secret>
 ```
 
+Then start with both files, so the web's Content-Security-Policy allows the bucket (the web gets
+the bucket and region from `.env.local`, never the keys):
+
+```sh
+docker compose --env-file .env --env-file .env.local up --build
+```
+
 The bucket needs:
 
 - **Public photos, nothing else public.** Under Block public access, turn off the two settings

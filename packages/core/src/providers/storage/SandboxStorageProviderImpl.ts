@@ -10,6 +10,7 @@ import { InfrastructureError } from "../../errors/InfrastructureError.js";
 import type { IClock } from "../clock/IClock.js";
 import { sandboxRequest } from "../sandbox-http.js";
 import type { IStorageProvider, StoredObject } from "./IStorageProvider.js";
+import { mediaType } from "./media-type.js";
 import { readLimited } from "./read-limited.js";
 
 const UPLOAD_SECONDS = 10 * 60;
@@ -65,7 +66,7 @@ export class SandboxStorageProviderImpl implements IStorageProvider {
     });
     if (!parsed.success)
       throw new InfrastructureError("The sandbox sent a malformed storage check", 502);
-    return parsed.data;
+    return { ...parsed.data, contentType: mediaType(parsed.data.contentType) };
   }
 
   async read(key: string, maxBytes: number): Promise<Buffer | null> {

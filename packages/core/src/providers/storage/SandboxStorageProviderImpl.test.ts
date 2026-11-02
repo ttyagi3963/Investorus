@@ -57,6 +57,22 @@ describe("SandboxStorageProviderImpl", () => {
     await expect(storage.read("imports/a.csv", 1_024)).rejects.toMatchObject({ status: 502 });
   });
 
+  it("reports the stored type without its parameters, as the import and photo checks compare it (T397)", async () => {
+    const head = new Response(null, {
+      status: 200,
+      headers: {
+        "content-type": "text/csv; charset=utf-8",
+        "content-length": "120",
+        "x-object-key": encodeURIComponent("imports/a.csv"),
+      },
+    });
+    const storage = new SandboxStorageProviderImpl(options(vi.fn(async () => head)));
+    expect(await storage.stat("imports/a.csv")).toEqual({
+      contentType: "text/csv",
+      sizeBytes: 120,
+    });
+  });
+
   it("refuses an object larger than the caller allows without reading all of it", async () => {
     // A 1 MB body with no declared length, sent 1 KB at a time; the limit is 4 KB.
     let sent = 0;

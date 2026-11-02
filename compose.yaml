@@ -170,6 +170,11 @@ services:
     environment:
       # Measured at about 290 MiB resident under concurrent page loads.
       NODE_OPTIONS: --max-old-space-size=384
+      # Where photos live, for the Content-Security-Policy (T389, T397): only these three settings,
+      # never the cloud keys in .env.local. S3 mode passes them with `--env-file .env.local`.
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-sandbox}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

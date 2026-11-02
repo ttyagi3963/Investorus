@@ -36,6 +36,8 @@ export type SeedListing = {
   seller: { fullName: string; email: string; phone: string };
   streetLine: string;
   zip: string;
+  /** Files in seed/photos, main photo first; none for a draft or the empty lot (T420). */
+  photos?: string[];
   facts: Facts;
   priceMin: number;
   priceMax: number;
@@ -72,6 +74,7 @@ export const DEAL_DEMO: SeedListing = {
   },
   streetLine: "2417 Corvina St",
   zip: "90016",
+  photos: ["la-14.webp", "la-13.webp", "la-01.webp"],
   // A 1922 craftsman bungalow; West Adams' typical value is about $900k.
   facts: home({
     propertyType: "SINGLE_FAMILY",
@@ -140,6 +143,7 @@ export const LISTINGS: SeedListing[] = [
     seller: { fullName: "Desmond Hale", email: "desmond.hale@example.net", phone: "+13105550117" },
     streetLine: "1185 Halvern St",
     zip: "90301",
+    photos: ["la-06.webp", "la-03.webp"],
     // A 1949 post-war bungalow, under contract; Inglewood's typical value is about $680k.
     facts: home({
       propertyType: "SINGLE_FAMILY",
@@ -186,6 +190,7 @@ export const LISTINGS: SeedListing[] = [
     seller: { fullName: "Priya Nair", email: "priya.nair@example.net", phone: "+18185550123" },
     streetLine: "6620 Delmora Ave",
     zip: "91406",
+    photos: ["la-19.webp"],
     // A 1962 fourplex of two-bedroom units; Van Nuys' typical home value is about $840k.
     facts: home({
       propertyType: "MULTI_FAMILY",
@@ -226,6 +231,7 @@ export const LISTINGS: SeedListing[] = [
     },
     streetLine: "5318 Wren Hollow Ave",
     zip: "90042",
+    photos: ["la-20.webp", "la-02.webp"],
     // A 1912 craftsman needing work; Highland Park's typical value is about $965k.
     facts: home({
       propertyType: "SINGLE_FAMILY",
@@ -261,6 +267,7 @@ export const LISTINGS: SeedListing[] = [
     seller: { fullName: "Lena Okafor", email: "lena.okafor@example.net", phone: "+13235550152" },
     streetLine: "3841 Saffron Hill Rd",
     zip: "90065",
+    photos: ["la-15.webp", "la-18.webp"],
     // A 1987 hillside contemporary; Glassell Park's typical value is about $1.09M.
     facts: home({
       propertyType: "SINGLE_FAMILY",
@@ -284,6 +291,7 @@ export const LISTINGS: SeedListing[] = [
     seller: { fullName: "Tomás Villalobos", email: "tomas.v@example.net", phone: "+12135550164" },
     streetLine: "1529 Marisol Pl",
     zip: "90026",
+    photos: ["la-04.webp", "la-05.webp"],
     // A 1928 Spanish revival; Echo Park's typical value is about $1.14M.
     facts: home({
       propertyType: "SINGLE_FAMILY",
@@ -319,6 +327,7 @@ export const LISTINGS: SeedListing[] = [
     seller: { fullName: "Grace Lindqvist", email: "grace.l@example.net", phone: "+13105550175" },
     streetLine: "11942 Brightwater Ln Unit 204",
     zip: "90066",
+    photos: ["la-17.webp", "la-10.webp"],
     // A 1974 two-bedroom condo; Mar Vista's condos sell well below its $1.69M typical home value.
     facts: home({
       propertyType: "CONDO",
@@ -345,6 +354,7 @@ export const LISTINGS: SeedListing[] = [
     },
     streetLine: "3207 Alderwood Ct",
     zip: "90039",
+    photos: ["la-09.webp", "la-11.webp"],
     // A 2006 townhome; Atwater Village's typical value is about $1.33M.
     facts: home({
       propertyType: "TOWNHOME",
@@ -372,6 +382,7 @@ export const LISTINGS: SeedListing[] = [
     },
     streetLine: "718 Vireo Ct",
     zip: "90291",
+    photos: ["la-08.webp", "la-07.webp"],
     // A 1948 beach bungalow on a small lot; Venice's typical value is about $1.91M.
     facts: home({
       propertyType: "SINGLE_FAMILY",
@@ -395,6 +406,7 @@ export const LISTINGS: SeedListing[] = [
     seller: { fullName: "Celeste Moreau", email: "celeste.m@example.net", phone: "+13235550108" },
     streetLine: "2290 Palomar Vista Dr",
     zip: "90027",
+    photos: ["la-16.webp", "la-12.webp"],
     // A 1958 mid-century modern in the hills; Los Feliz's typical value is about $1.77M.
     facts: home({
       propertyType: "SINGLE_FAMILY",

@@ -8,8 +8,8 @@
 // applied in front of these routes (simulation.ts), behind the CORS headers; the internal answers
 // name their object (x-object-key), so core can tell a garbled one (T384).
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { extname, join } from "node:path";
 import { Router, type Request, type Response } from "express";
 import { sameSecret } from "./auth.js";
 
@@ -59,10 +59,43 @@ export function storageCors(webOrigins: readonly string[]): Router {
   });
 }
 
+/** Where an object's bytes live: named by a hash of its key, so no key can reach outside the dir. */
+function objectPath(storageDir: string, key: string): string {
+  return join(storageDir, createHash("sha256").update(key).digest("hex"));
+}
+
+/** The demo listings' photos, by file extension; anything else in the folder is not a photo. */
+const SEED_PHOTO_TYPES: Record<string, string> = {
+  ".webp": "image/webp",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+};
+
+/**
+ * Stores the demo listings' photos (T420) under packages/seed/<file name>, the keys the seed's Photo
+ * rows point at, so they are served like any uploaded listing photo. A photo already stored is left
+ * as it is, so every start after the first changes nothing and the photos persist on the volume.
+ */
+export async function seedPhotos(storageDir: string, photosDir: string): Promise<void> {
+  for (const name of await readdir(photosDir)) {
+    const contentType = SEED_PHOTO_TYPES[extname(name).toLowerCase()];
+    if (!contentType) continue;
+    const path = objectPath(storageDir, `packages/seed/${name}`);
+    if (await stat(`${path}.json`).catch(() => null)) continue;
+    const data = await readFile(join(photosDir, name));
+    // The bytes first, then the sidecar that says they are there, as an upload writes them (T392).
+    await writeWhole(path, data);
+    await writeWhole(
+      `${path}.json`,
+      JSON.stringify({ contentType, sizeBytes: data.length } satisfies Meta),
+    );
+  }
+}
+
 export function storageRoutes(config: StorageConfig): Router {
   const router = Router();
-  const file = (key: string) =>
-    join(config.storageDir, createHash("sha256").update(key).digest("hex"));
+  const file = (key: string) => objectPath(config.storageDir, key);
   /** The sidecar, or null if there is none or a write interrupted before T392 cut it off. */
   const readMeta = async (key: string): Promise<Meta | null> => {
     const text = await readFile(`${file(key)}.json`, "utf8").catch(() => null);

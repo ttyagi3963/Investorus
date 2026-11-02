@@ -4,9 +4,14 @@
 // "Why?", notices, the version each investor was told about), each offer made through the real
 // OfferService (its CRM event and expiry job), and an accepted offer through the DecisionWorkflow
 // and DealLifecycleWorkflow. A listing whose address already has a package is skipped, so the seed
-// adds nothing when it runs again. The demo has no photos yet, so published listings are written
-// straight to ACCEPTING_OFFERS rather than through the publish rule that asks for one.
+// adds nothing when it runs again. Each listing's photos (T420) are Photo rows pointing at the files
+// the sandbox stores under packages/seed/; their sizes are read from seed/photos, and a missing file
+// stops the seed. Published listings are written straight to ACCEPTING_OFFERS rather than through
+// the publish rule, so the empty lot can stay without a photo.
+import { stat } from "node:fs/promises";
+import { extname, join } from "node:path";
 import type { Actor } from "@clever/contracts/auth";
+import type { PhotoContentType } from "@clever/contracts/photo";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 import { ZIPS } from "../../providers/geo/zips.js";
 import type { AddressHasher, IPiiCipher } from "../../providers/pii-cipher/IPiiCipher.js";
@@ -22,7 +27,20 @@ import { LISTINGS, type SeedListing } from "./la-listings.js";
 
 const DAY = 86_400_000;
 
-type Deps = { cipher: IPiiCipher; addressHash: AddressHasher; now?: Date };
+type Deps = {
+  cipher: IPiiCipher;
+  addressHash: AddressHasher;
+  /** The folder holding the listings' photo files (seed/photos). */
+  photosDir: string;
+  now?: Date;
+};
+
+const PHOTO_TYPES: Record<string, PhotoContentType> = {
+  ".webp": "image/webp",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+};
 
 export async function seedListings(prisma: PrismaClient, deps: Deps): Promise<void> {
   const now = deps.now ?? new Date();
@@ -30,8 +48,20 @@ export async function seedListings(prisma: PrismaClient, deps: Deps): Promise<vo
   for (const listing of LISTINGS) {
     const addressHash = deps.addressHash({ streetLine: listing.streetLine, zip: listing.zip });
     if (await prisma.listingPackage.findFirst({ where: { addressHash } })) continue;
-    await seedListing(prisma, uow, listing, addressHash, now);
+    await seedListing(prisma, uow, listing, addressHash, now, deps.photosDir);
   }
+}
+
+/** A listing's photo rows, main photo first, each pointing at the file the sandbox stores. */
+async function photoRows(listing: SeedListing, photosDir: string) {
+  return Promise.all(
+    (listing.photos ?? []).map(async (file, position) => {
+      const contentType = PHOTO_TYPES[extname(file).toLowerCase()];
+      if (!contentType) throw new Error(`seed: ${file} is not a JPEG, PNG, or WebP photo`);
+      const { size } = await stat(join(photosDir, file));
+      return { storageKey: `packages/seed/${file}`, contentType, sizeBytes: size, position };
+    }),
+  );
 }
 
 async function seedListing(
@@ -40,7 +70,9 @@ async function seedListing(
   listing: SeedListing,
   addressHash: string,
   now: Date,
+  photosDir: string,
 ): Promise<void> {
+  const photos = await photoRows(listing, photosDir);
   const at = (days: number) => new Date(now.getTime() + days * DAY);
   const date = (days: number) => at(days).toISOString().slice(0, 10);
   const clock = { now: () => now };
@@ -82,6 +114,7 @@ async function seedListing(
       outcome: "SUCCESS" as const,
     });
     await repos.audit.append(entry("PACKAGE_CREATED"));
+    for (const photo of photos) await repos.photos.add({ packageId: draft.id, ...photo });
     if (listing.deadlineInDays === null) return null;
 
     const pkg = await repos.packages.update(draft.id, draft.version, {

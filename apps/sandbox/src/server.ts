@@ -1,10 +1,12 @@
-// Entry point: check the settings, create the `sandbox` schema and its tables, then listen on
+// Entry point: check the settings, create the `sandbox` schema and its tables, store the demo
+// listings' photos if SEED_PHOTOS_DIR names them (T420), then listen on
 // 0.0.0.0 (PORT, default 4100). A missing setting or an unreachable database stops the process
 // before it listens; SIGTERM stops taking requests, then closes the database pool, within a time
 // limit (T391).
 import pg from "pg";
 import { createApp } from "./app.js";
 import { parseEnv } from "./env.js";
+import { seedPhotos } from "./storage.js";
 import { createStore } from "./store.js";
 
 const SLOW_MODE_DELAY_MS = 10_000;
@@ -19,6 +21,8 @@ pool.on("error", (error) =>
 );
 const store = createStore(pool);
 await store.ensureSchema();
+// The demo listings' photos, stored once on the volume, so the seed's Photo rows find them (T420).
+if (env.SEED_PHOTOS_DIR) await seedPhotos(env.SANDBOX_STORAGE_DIR, env.SEED_PHOTOS_DIR);
 
 const app = createApp({
   storageDir: env.SANDBOX_STORAGE_DIR,

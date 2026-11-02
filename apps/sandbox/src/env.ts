@@ -14,6 +14,8 @@ const envSchema = z.object({
     .transform((value) => value.split(",").map((origin) => origin.trim()))
     .pipe(z.array(z.url()).min(1)),
   PORT: z.coerce.number().int().positive().default(4100),
+  /** The demo listings' photos to store at startup (T420); the image sets it to its seed/photos. */
+  SEED_PHOTOS_DIR: z.string().min(1).optional(),
 });
 export type SandboxEnv = z.infer<typeof envSchema>;
 

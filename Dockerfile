@@ -79,6 +79,9 @@ CMD ["node", "dist/main.js"]
 FROM runtime AS sandbox
 COPY --from=deploy /out/sandbox ./
 RUN mkdir -p /data/sandbox-objects && chown node:node /data/sandbox-objects
+# The demo listings' photos, stored on the volume at startup (T420).
+COPY --from=build /app/seed/photos ./seed/photos
+ENV SEED_PHOTOS_DIR=/app/seed/photos
 USER node
 EXPOSE 4100
 CMD ["node", "dist/server.js"]
@@ -91,7 +94,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl \
 COPY --from=deploy /out/migrate ./
 # The brands the seed loads into the Brand table (T347): data, not code, so they are copied as files.
 COPY --from=build /app/seed/brands ./seed/brands
-ENV PATH=/app/node_modules/.bin:$PATH SEED_BRANDS_DIR=/app/seed/brands
+# The listings' photos: the seed reads each one's size for its Photo row (T420).
+COPY --from=build /app/seed/photos ./seed/photos
+ENV PATH=/app/node_modules/.bin:$PATH SEED_BRANDS_DIR=/app/seed/brands SEED_PHOTOS_DIR=/app/seed/photos
 USER node
 CMD ["node", "scripts/migrate-and-seed.mjs"]
 

@@ -1,5 +1,5 @@
-// Guards the draft package rules (T258): an unknown ZIP or future year is refused on its field, city and state
-// come from the ZIP, one active package per address across all agents, a closed or withdrawn one
+// Guards the draft package rules (T258): any 5-digit ZIP is accepted, one the lookup does not know as an
+// unknown city and state (T421), a future year is refused on its field, city and state come from the ZIP, one active package per address across all agents, a closed or withdrawn one
 // freeing it (FR-013, T369), an agent only reaches their own packages while operations read any,
 // each read of the seller audited (FR-080, T386), a stale edit is refused, an edit is checked on
 // the merged result, and each change is audited without seller PII (T282, XII). Edits stop once an offer is accepted, and an
@@ -37,12 +37,11 @@ const fields = (err: unknown) =>
   ((err as ValidationError).details?.fields as { field: string }[]).map((f) => f.field);
 
 describe("ListingPackageService", () => {
-  it("refuses an unknown ZIP and a future year built, on their fields", async () => {
+  it("accepts a ZIP the lookup does not know, as an unknown city and state (T421), and refuses a future year built", async () => {
     const s = service();
     const unknownZip = { ...draft, property: { ...draft.property, zip: "99999" } };
-    expect(fields(await s.create(avery, unknownZip).catch((e: unknown) => e))).toEqual([
-      "property.zip",
-    ]);
+    const created = await s.create(avery, unknownZip);
+    expect(created.property).toMatchObject({ zip: "99999", city: "Unknown", state: "Unknown" });
     const future = { ...draft, property: { ...draft.property, yearBuilt: 2027 } };
     expect(fields(await s.create(avery, future).catch((e: unknown) => e))).toEqual([
       "property.yearBuilt",

@@ -48,6 +48,7 @@ export interface IListingPackageService {
 
 type Deps = { geo: IGeoProvider; addressHash: AddressHasher; clock: IClock };
 
+const UNKNOWN_PLACE: ZipInfo = { city: "Unknown", state: "Unknown", neighborhood: "Unknown" };
 const invalid = (fields: FieldError[]) => new ValidationError("Some fields are invalid", fields);
 const NOT_FOUND = "Package not found";
 const AGENTS_ONLY = "Only agents work on listing packages";
@@ -80,9 +81,9 @@ export class ListingPackageService implements IListingPackageService {
     const data = createListingPackageInputSchema.parse(input);
     const { seller, property } = data;
     const errors: FieldError[] = [];
-    const place = this.place(property.zip, errors);
+    const place = this.place(property.zip);
     this.checkYear(property.yearBuilt, errors);
-    if (errors.length > 0 || !place) throw invalid(errors);
+    if (errors.length > 0) throw invalid(errors);
     const addressHash = this.deps.addressHash(property);
 
     return this.uow.run(async (repos) => {
@@ -193,7 +194,7 @@ export class ListingPackageService implements IListingPackageService {
 
       // Rules that span the stored row and the change are checked on the merged result.
       const zipChanged = change.zip !== undefined && change.zip !== property.zip;
-      const place = zipChanged ? this.place(change.zip!, errors) : null;
+      const place = zipChanged ? this.place(change.zip!) : null;
       this.checkYear(change.yearBuilt, errors);
       const type = change.propertyType ?? property.propertyType;
       const units = change.units !== undefined ? change.units : property.units;
@@ -320,10 +321,12 @@ export class ListingPackageService implements IListingPackageService {
     };
   }
 
-  private place(zip: string, errors: FieldError[]): ZipInfo | null {
-    const place = this.deps.geo.lookup(zip);
-    if (!place) errors.push({ field: "property.zip", message: "Unknown ZIP code" });
-    return place;
+  /**
+   * The ZIP's city and state. Any 5-digit ZIP is accepted (T421): one that exists nowhere is stored
+   * as an unknown place, so an agent is never blocked, and it simply matches no state-wide buy box.
+   */
+  private place(zip: string): ZipInfo {
+    return this.deps.geo.lookup(zip) ?? UNKNOWN_PLACE;
   }
 
   private checkYear(year: number | null | undefined, errors: FieldError[]) {

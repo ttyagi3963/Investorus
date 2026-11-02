@@ -5,18 +5,22 @@
 // with the visitor's session, and drops the cached brands only after the api accepted the save, so
 // no one else can empty the cache. A server action is a public endpoint: inputs are checked here.
 import type { BrandThemeView } from "@clever/contracts/brand";
-import { ApiError, brandsClient, createApiClient } from "@clever/contracts/client";
+import { ApiError, brandsClient } from "@clever/contracts/client";
 import { z } from "zod";
 import { updateTag } from "next/cache";
 import { cookies, headers } from "next/headers";
 import { SESSION_COOKIE, cookieIsSecure } from "@/bff/shared";
 import { serverEnv } from "@/env";
+import { serverApi } from "@/lib/server-api";
 import { BRAND_CACHE_TAG, BRAND_COOKIE, listBrands } from "./active-brand";
 
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
 export async function chooseBrand(input: unknown): Promise<void> {
-  const brandId = z.string().min(1).parse(input);
+  // An unreadable or unknown brand is ignored, like a switch to a brand that does not exist.
+  const parsed = z.string().min(1).safeParse(input);
+  if (!parsed.success) return;
+  const brandId = parsed.data;
   if (!(await listBrands()).some((b) => b.brandId === brandId)) return;
   (await cookies()).set(BRAND_COOKIE, brandId, {
     path: "/",
@@ -40,19 +44,22 @@ const saveInputSchema = z.object({
 });
 
 export async function saveBrandTokens(input: unknown): Promise<SaveTokensResult> {
-  const { brandId, tokens, tokenVersion } = saveInputSchema.parse(input);
-  const token = (await cookies()).get(SESSION_COOKIE)?.value;
-  const api = brandsClient(
-    createApiClient({
-      baseUrl: `${serverEnv().API_URL}/api/v1`,
-      fetch: (url, init) =>
-        fetch(url, {
-          ...init,
-          cache: "no-store",
-          headers: { ...init?.headers, ...(token && { Authorization: `Bearer ${token}` }) },
-        }),
-    }),
-  );
+  // A malformed save is a field error, as the api would answer it, not a crash (T395).
+  const parsed = saveInputSchema.safeParse(input);
+  if (!parsed.success) {
+    const fields = parsed.error.issues.map((i) => ({
+      field: i.path.join("."),
+      message: i.message,
+    }));
+    return {
+      ok: false,
+      status: 400,
+      body: { error: "Some fields are invalid", code: "VALIDATION_ERROR", details: { fields } },
+    };
+  }
+  const { brandId, tokens, tokenVersion } = parsed.data;
+  const session = (await cookies()).get(SESSION_COOKIE)?.value;
+  const api = brandsClient(await serverApi({ cache: "no-store" }, session));
   try {
     const theme = await api.updateTheme(brandId, { tokens, tokenVersion });
     updateTag(BRAND_CACHE_TAG);

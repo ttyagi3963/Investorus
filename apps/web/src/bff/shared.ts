@@ -80,7 +80,7 @@ export function sessionToken(request: Request): string | undefined {
 }
 
 /** The `traceparent` for the api call: the caller's trace ID when its header is valid, else a new one. */
-export function traceparentFor(request: Request): string {
+export function traceparentFor(request: { headers: Pick<Headers, "get"> }): string {
   return toTraceparent(traceIdFrom(request.headers.get("traceparent")) ?? newTraceId());
 }
 

@@ -106,8 +106,11 @@ const CONDITIONS: Record<string, NonNullable<BuyBoxInput["conditionsAccepted"]>[
 /** A row the parser refuses, with the reason already worded for operations. */
 class RowError extends Error {}
 
-/** RFC 4180: comma-separated, fields may be quoted, a quote inside one is doubled. */
-function parseCsv(text: string): string[][] {
+/**
+ * RFC 4180: comma-separated, fields may be quoted, a quote inside one is doubled. Each record keeps
+ * its spreadsheet row number (the first is 1), counted before blank rows are dropped (T393).
+ */
+function parseCsv(text: string): { cells: string[]; rowNumber: number }[] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -133,7 +136,9 @@ function parseCsv(text: string): string[][] {
     } else field += char;
   }
   if (field !== "" || row.length > 0) rows.push([...row, field]);
-  return rows.filter((cells) => cells.some((cell) => cell.trim() !== ""));
+  return rows
+    .map((cells, i) => ({ cells, rowNumber: i + 1 }))
+    .filter(({ cells }) => cells.some((cell) => cell.trim() !== ""));
 }
 
 const list = (value: string) =>
@@ -265,7 +270,8 @@ function boxOf(cell: (column: Column) => string, geo: IGeoProvider): BuyBoxInput
 export function parseLegacyCsv(file: Buffer, geo: IGeoProvider): ParsedFile {
   if (file.byteLength > MAX_IMPORT_BYTES)
     throw new FileRefusedError("The file is larger than 5 MB");
-  const [header = [], ...lines] = parseCsv(file.toString("utf8").replace(/^\uFEFF/, ""));
+  const [first, ...lines] = parseCsv(file.toString("utf8").replace(/^\uFEFF/, ""));
+  const header = first?.cells ?? [];
   if (lines.length > MAX_ROWS) throw new FileRefusedError("The file has more than 10,000 rows");
 
   const index = new Map(header.map((name, i) => [name.trim().toLowerCase(), i]));
@@ -277,8 +283,7 @@ export function parseLegacyCsv(file: Buffer, geo: IGeoProvider): ParsedFile {
     );
   }
 
-  const rows = lines.map((cells, i): ParsedRow => {
-    const rowNumber = i + 2;
+  const rows = lines.map(({ cells, rowNumber }): ParsedRow => {
     const cell = (column: Column) =>
       (cells[index.get(COLUMNS[column].toLowerCase()) ?? -1] ?? "").trim();
     try {

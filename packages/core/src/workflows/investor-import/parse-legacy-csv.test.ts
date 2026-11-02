@@ -64,6 +64,16 @@ describe("parseLegacyCsv", () => {
     });
   });
 
+  it("numbers each row as the spreadsheet does, counting a blank row it skips (T393)", () => {
+    const { rows } = parse(
+      "LEG-1,Al,Al,al@example.com,,Wholesaler,TX,SFR,1,2,,,",
+      "",
+      "LEG-2,Bo,Bo,bo@example.com,,Wholesaler,TX;78704,SFR,1,2,,,",
+    );
+    expect(rows.map((row) => row.rowNumber)).toEqual([2, 4]);
+    expect(rows[1]).toMatchObject({ reason: "row 4: Markets mixes states and ZIP codes" });
+  });
+
   it("refuses a file without a required column", () => {
     const file = Buffer.from("Company,Email\nAlamo,al@example.com\n");
     expect(() => parseLegacyCsv(file, geo)).toThrow(FileRefusedError);

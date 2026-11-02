@@ -40,8 +40,8 @@ price above max).
 - Criterion rules (ranges, min ≤ max, non-empty lists) are not re-implemented here: each row is
   mapped to the buy box input and validated with the Criterion Registry schema (constitution
   XIX.3), and failing fields are reported with their CSV column names.
-- Rejection reasons are specific and name the spreadsheet row (the header is row 1) and the
-  column, for example: `row 7: Max Price (-5): Must be 0 or more`,
+- Rejection reasons are specific and name the spreadsheet row (the header is row 1, and a blank
+  row is skipped but still counted, T393) and the column, for example: `row 7: Max Price (-5): Must be 0 or more`,
   `row 12: Markets: ZIP 00000 is not a valid ZIP code`, `row 19: Email is required`.
 - The import runs as an `IMPORT_INVESTORS` durable job (202 + `jobId` and `batchId`). Progress
   is the number of row results recorded so far (`GET /ops/investor-imports/:batchId`), since each

@@ -47,3 +47,9 @@ request.
 | # | Title | Status | Date |
 | --- | --- | --- | --- |
 | 0020 | [Hold quality with gates and invest in the developer workflow](0020-hold-quality-with-gates-and-invest-in-the-developer-workflow.md) | Accepted | 2026-11-01 |
+
+## Migration
+
+| # | Title | Status | Date |
+| --- | --- | --- | --- |
+| 0021 | [Migrate by strangling the legacy workflow, one workflow and one cohort at a time](0021-migrate-by-strangling-one-workflow-and-one-cohort-at-a-time.md) | Accepted | 2026-11-02 |

@@ -2,7 +2,7 @@
 // The agent's deal tracker (T316, restyled in T330; FR-055 to FR-058): the buyer's terms, the
 // milestones as a stepper with the current one marked, a button only for the allowed next milestone,
 // a fall-through dialog that needs a reason, and after a fall-through the backups ranked by net
-// proceeds with Promote (a deactivated investor's backup is flagged and cannot be promoted, T370).
+// proceeds with Promote (an inactive investor's backup is flagged, for the agent to weigh, T398).
 // While no promoted backup is deciding, the agent can instead reopen the package for a new round or
 // withdraw it, declining any backups left (T377). Nothing changes on screen until the api answers
 // (never optimistic, XIII); the fall-through and reopen dialogs stay open on a refusal (T385).
@@ -69,7 +69,7 @@ function Milestones({ current }: { current: number }) {
 export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealView }) {
   const { run, isBusy, error } = useAction(CHANGE_FAILED, packageKeys.all);
   const current = STEPS.indexOf(deal.status as (typeof STEPS)[number]);
-  const usable = deal.backups.filter((b) => !b.expired && b.investorActive);
+  const usable = deal.backups.filter((b) => !b.expired);
   const decided = pkg.status === "FELL_THROUGH" && deal.status !== "PENDING_RECONFIRMATION";
   const canFallThrough = OPEN.includes(deal.status);
 
@@ -172,14 +172,14 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
                     {backup.expired && (
                       <StatusChip tone={OFFER_STATUS_TONES.EXPIRED}>Expired</StatusChip>
                     )}
-                    {!backup.investorActive && <StatusChip tone="error">Deactivated</StatusChip>}
+                    {!backup.investorActive && <StatusChip tone="draft">Inactive</StatusChip>}
                   </span>
                   <span className="text-body text-muted">
                     {formatUsd(backup.offer.price)} · net {formatUsd(backup.netProceeds)} · closing{" "}
                     {day(backup.offer.closingDate)}
                   </span>
                 </div>
-                {!backup.expired && backup.investorActive && decided && (
+                {!backup.expired && decided && (
                   <ConfirmDialog
                     triggerLabel="Promote"
                     title={`Promote ${backup.investorName}'s offer?`}

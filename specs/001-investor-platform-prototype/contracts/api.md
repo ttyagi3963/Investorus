@@ -108,11 +108,11 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | Method | Path | Role | Body / Response | Spec |
 | --- | --- | --- | --- | --- |
 | GET | `/listing-packages/:id/offer-comparison` | AGENT (own) | `?sort=netProceeds\|closingDate\|certainty` → `{ rows: OfferComparisonRow[], assumptions }` (each row includes the net-proceeds breakdown) | FR-050, FR-051 |
-| POST | `/listing-packages/:id/decisions` | AGENT (own) | `{ type: "ACCEPT"\|"COUNTER"\|"DECLINE_ALL", offerId?, counterTerms?, note?, version }` → 201 `Decision` | FR-052, FR-053 (409 if an offer is already accepted; 409 `INVESTOR_INACTIVE` for the offer of a deactivated investor, T370). `counterTerms` may change any term. DECLINE_ALL after the deadline moves the package to NO_OFFERS_RECEIVED (T377) |
+| POST | `/listing-packages/:id/decisions` | AGENT (own) | `{ type: "ACCEPT"\|"COUNTER"\|"DECLINE_ALL", offerId?, counterTerms?, note?, version }` → 201 `Decision` | FR-052, FR-053 (409 if an offer is already accepted; an inactive investor's offer can be accepted, flagged `investorActive: false`, T398). `counterTerms` may change any term. DECLINE_ALL after the deadline moves the package to NO_OFFERS_RECEIVED (T377) |
 | GET | `/listing-packages/:id/deal` | AGENT (own) | → `DealView` (the package's latest deal) with `allowedNextMilestones[]` and `backups[]`; 404 before any acceptance. The buyer reads their deal's status in `InvestorPackageView.myDeal`; the ops view comes with US6 | FR-055 |
 | POST | `/deals/:dealId/milestones` | AGENT (own) | `{ milestone, version }` → 200 `DealView` | 409 with `details.allowedNext` if out of order |
 | POST | `/deals/:dealId/fall-through` | AGENT (own) | `{ reason, version }` → 200 `DealView` (with the ranked backups) | FR-056 |
-| POST | `/listing-packages/:id/backup-promotions` | AGENT (own) | `{ offerId, version }` → 201 `DealView` (PENDING_RECONFIRMATION); 409 `INVESTOR_INACTIVE` for a deactivated investor's backup (T370) | FR-057 |
+| POST | `/listing-packages/:id/backup-promotions` | AGENT (own) | `{ offerId, version }` → 201 `DealView` (PENDING_RECONFIRMATION); an inactive investor's backup can be promoted (T398) | FR-057 |
 
 ## Operations
 

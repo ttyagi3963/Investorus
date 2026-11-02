@@ -12,6 +12,9 @@ export interface IUserRepository {
   findIdByInvestorId(investorId: string): Promise<string | null>;
   /** The ID of the agent's login, or null when the agent has none (T306: the agent's notices). */
   findIdByAgentId(agentId: string): Promise<string | null>;
-  /** True while the user is active and, for an investor's login, the investor is ACTIVE. */
+  /**
+   * True while the login is not banned (the user is active). An INACTIVE investor's login still
+   * acts: inactive only keeps the investor out of matching (FR-024, T398).
+   */
   canAct(userId: string): Promise<boolean>;
 }

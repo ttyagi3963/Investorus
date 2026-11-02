@@ -1,8 +1,9 @@
 // Sessions (T079, T253, research R12): signs a user in with bcrypt and issues an 8-hour HS256 JWT
 // naming the user, role, and agent; verifies a token on every request (HS256 only, unexpired, and a
 // payload that is a valid actor, whose user may still act); and answers /me while the user may act.
-// A user may act while active and, for an investor's login, while the investor is ACTIVE, checked
-// against the database on every request, so deactivation takes effect at once (T370). Every sign-in failure
+// A user may act while their login is not banned (the user is active), checked against the database
+// on every request, so a ban takes effect at once (T370); an INACTIVE investor is only not matched
+// and keeps signing in (T398). Every sign-in failure
 // gets the same message, and an unknown email still runs one bcrypt comparison, so neither the
 // answer nor its timing tells a caller which emails have accounts.
 import {
@@ -80,7 +81,7 @@ export class AuthService implements IAuthService {
     } catch {
       throw new UnauthenticatedError("Sign in again");
     }
-    // A valid token is not enough: its user, or their investor, may have been deactivated since.
+    // A valid token is not enough: its login may have been banned since.
     if (!(await this.uow.run((repos) => repos.users.canAct(actor.userId)))) {
       throw new UnauthenticatedError("Sign in again");
     }

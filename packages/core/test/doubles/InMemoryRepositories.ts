@@ -100,14 +100,9 @@ const apply = <T extends object>(target: T, patch: object): T => ({
 });
 
 export class InMemoryUserRepository implements IUserRepository {
-  constructor(
-    private readonly credentials: UserCredentials[] = [],
-    private readonly investors?: InMemoryInvestorRepository,
-  ) {}
+  constructor(private readonly credentials: UserCredentials[] = []) {}
   async canAct(userId: string) {
-    const user = this.credentials.find((c) => c.user.id === userId)?.user;
-    if (!user?.active) return false;
-    return user.role !== "INVESTOR" || !this.investors?.inactive.has(user.investorId);
+    return this.credentials.find((c) => c.user.id === userId)?.user.active === true;
   }
   async findByEmail(email: string) {
     return this.credentials.find((c) => c.user.email === email) ?? null;
@@ -901,7 +896,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       }
     }
     this.repos = {
-      users: new InMemoryUserRepository(users, investors),
+      users: new InMemoryUserRepository(users),
       sellers: new InMemorySellerRepository(),
       properties: new InMemoryPropertyRepository(),
       packages: new InMemoryListingPackageRepository(),

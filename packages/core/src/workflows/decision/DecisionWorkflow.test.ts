@@ -1,7 +1,7 @@
 // Guards the seller's decision (T309; FR-052 to FR-054, FR-080): accepting makes a deal, accepts the
 // offer, turns the other open offers into backups, moves the package to "Offer accepted", and tells
 // every matched investor the outcome, in one change; an expired offer, a stale version, or a second
-// accept is refused, and so is the offer of an investor operations deactivated (T370); a counter is
+// accept is refused, while an inactive investor's offer can still be accepted (T398); a counter is
 // an agent revision only its investor hears about; decline all
 // declines every open offer, and after the deadline leaves the package reopenable (T377); only
 // the agent decides; and the agent's note stays out of the audit log and every notice.
@@ -69,7 +69,7 @@ describe("DecisionWorkflow", () => {
     });
   });
 
-  it("refuses to accept the offer of an investor operations deactivated (T370)", async () => {
+  it("leaves the agent free to accept an inactive investor's offer, which is only flagged (T398)", async () => {
     const { uow, pkg, summit, decisions } = await setup();
     uow.repos.investors.inactive.add("investor-summit");
 
@@ -79,7 +79,7 @@ describe("DecisionWorkflow", () => {
         offerId: summit.id,
         version: summit.version,
       }),
-    ).rejects.toMatchObject({ code: "INVESTOR_INACTIVE" });
+    ).resolves.toMatchObject({ type: "ACCEPT" });
   });
 
   it("counters with an agent revision that only that investor hears about", async () => {

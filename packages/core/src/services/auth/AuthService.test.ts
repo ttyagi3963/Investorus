@@ -134,7 +134,7 @@ describe("AuthService.verify", () => {
     }
   });
 
-  it("refuses a token as soon as its user, or the investor it belongs to, is deactivated (T370)", async () => {
+  it("refuses a banned login's token at once, while an inactive investor keeps access (T370, T398)", async () => {
     const uow = new InMemoryUnitOfWork([at("avery@example.com"), investor]);
     const auth = new AuthService(uow, { jwtSecret: SECRET, clock: { now: () => NOW } });
     const signIn = (email: string) => auth.signIn({ email, password: "demo1234" });
@@ -145,8 +145,8 @@ describe("AuthService.verify", () => {
     uow.repos.investors.inactive.add("investor-1");
 
     await expect(auth.verify(agentToken)).rejects.toBeInstanceOf(UnauthenticatedError);
-    await expect(auth.verify(investorToken)).rejects.toBeInstanceOf(UnauthenticatedError);
-    await expect(signIn("summit@example.com")).rejects.toBeInstanceOf(ValidationError);
+    await expect(signIn("avery@example.com")).rejects.toBeInstanceOf(ValidationError);
+    await expect(auth.verify(investorToken)).resolves.toMatchObject({ investorId: "investor-1" });
   });
 
   it("answers /me only while the user is still active", async () => {

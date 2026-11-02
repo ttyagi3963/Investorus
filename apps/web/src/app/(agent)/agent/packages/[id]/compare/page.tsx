@@ -3,7 +3,7 @@
 // side as columns, sortable by net proceeds, closing date, or certainty, the leading offer for the
 // sort highlighted, each net figure with a breakdown of what was subtracted, and the seller's
 // decision recorded from here. An expired, backup, or countered offer cannot be accepted directly,
-// nor can the offer of an investor operations deactivated, which is flagged rather than hidden (T370).
+// and an inactive investor's offer is flagged, for the agent to weigh (T370, T398).
 import type { CreateDecisionInput } from "@clever/contracts/deal";
 import type { ComparisonSort, OfferComparisonRow } from "@clever/contracts/offer";
 import {
@@ -222,7 +222,7 @@ export default function ComparePage() {
                           {row.investorName}
                         </span>
                         {!row.investorActive && (
-                          <StatusChip tone="error">Investor deactivated</StatusChip>
+                          <StatusChip tone="draft">Investor inactive</StatusChip>
                         )}
                         <span className="text-helper font-regular text-muted">
                           Revision {row.offer.revision} · {moment(row.offer.updatedAt)}

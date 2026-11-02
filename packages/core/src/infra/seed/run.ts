@@ -2,7 +2,7 @@
 // (compiled to dist/infra/seed/run.js, since the image has no TypeScript runner). The listings
 // store sellers, so they need the PII and address-hash keys too. A missing setting stops it with
 // the names printed. The brands come from seed/brands/ (T347): SEED_BRANDS_DIR in the migrate image,
-// the repository's folder otherwise.
+// the repository's folder otherwise; the listings' photos likewise from seed/photos/ (T420).
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { AesGcmPiiCipherImpl } from "../../providers/pii-cipher/AesGcmPiiCipherImpl.js";
@@ -21,6 +21,10 @@ const env = z
       .string()
       .min(1)
       .default(fileURLToPath(new URL("../../../../../seed/brands/", import.meta.url))),
+    SEED_PHOTOS_DIR: z
+      .string()
+      .min(1)
+      .default(fileURLToPath(new URL("../../../../../seed/photos/", import.meta.url))),
   })
   .safeParse(process.env);
 if (!env.success) {
@@ -40,6 +44,7 @@ try {
   await seedListings(prisma, {
     cipher: new AesGcmPiiCipherImpl(env.data.PII_ENCRYPTION_KEY),
     addressHash: createAddressHasher(env.data.ADDRESS_HASH_KEY),
+    photosDir: env.data.SEED_PHOTOS_DIR,
   });
   process.stdout.write("seed: brands, demo accounts, config, and the Los Angeles listings ready\n");
 } finally {

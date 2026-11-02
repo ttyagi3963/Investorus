@@ -74,7 +74,8 @@ home page and the sign-in page, each account's **Sign in** button signs in with 
 The seed also creates a small Los Angeles market: 13 listing packages with made-up addresses in
 real LA ZIP codes (Highland Park, Echo Park, West Adams, Inglewood, Van Nuys, Venice, and more),
 priced around each ZIP's typical home value. Ten are taking offers (one is a lot no investor
-matches), one is under contract, and two are drafts. The listings have no photos yet.
+matches), one is under contract, and two are drafts. Ten listings have photos (one to three
+each, from [seed/photos](seed/photos/)); the two drafts and the empty lot have none.
 
 | Role | Email | Shows |
 | --- | --- | --- |
@@ -255,7 +256,7 @@ What the prototype does more simply than production would, and the production ap
 | Listing photos are public: anyone with a photo's link can open it, and the link never expires (the owner's decision, 2026-11-01, T326). Import files stay private. | A private bucket served through a CDN with signed cookies, or an app address that checks access and redirects to a short-lived link, so a leaked link stops working and access can be withdrawn |
 | Brands live in the database and are chosen per request by cookie, host, or `DEFAULT_BRAND_ID`, but emails and texts always carry the default brand's name, the brand's font must be registered in the web app's code to load, and content and hosts change only through the seed files (Sprint 7, T346–T353) | Each agent and investor belongs to a brand, so messages carry that brand; brand fonts are self-hosted files stored with the brand; content, hosts, and logos are edited in the console with design review; the theme CSS is served as a cached, versioned stylesheet from a CDN |
 | Static ZIP code list: twelve Los Angeles ZIPs for the seeded market, plus five Austin ZIPs the tests use | Address validation and geocoding provider |
-| The seeded listings have no photos: the seed writes them straight to Accepting offers, past the publish rule that asks for one (T409; the images are still to come). Every package an agent publishes still needs a photo | Demo photos stored with their Photo rows at seed time, so seeded listings meet the same publish rule |
+| The seed writes listings straight to Accepting offers, past the publish rule, so the empty lot has no photo; the seed photos are stored by the sandbox when it starts, so with `STORAGE_PROVIDER=s3` the seeded listings' photos are missing (T420). Every package an agent publishes still needs a photo | Seed data published through the same publish rule, with its photos uploaded through the configured storage provider |
 | `LogErrorReporterImpl` instead of Sentry | Sentry provider plus alert routing for needs-attention deliveries |
 | Tracing is a W3C `traceparent` trace ID carried in an `AsyncLocalStorage` request context and written as `trace_id` on every log line, with no spans, metrics, or dashboards | The OpenTelemetry SDK with HTTP, Express, and Postgres instrumentation reading the same context and header, exporting traces to a collector (Jaeger or Tempo); Prometheus metrics (request latency and errors, job queue depth and age, failed jobs, match run time) with Grafana dashboards and alerts |
 | Single PostgreSQL instance; the sandbox shares the server (separate schema) | Managed PostgreSQL with backups, read replica, and PITR; the sandbox does not exist in production |

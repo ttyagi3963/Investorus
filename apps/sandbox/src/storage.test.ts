@@ -10,7 +10,7 @@ import { join } from "node:path";
 import express from "express";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { storageCors, storageRoutes } from "./storage.js";
+import { seedPhotos, storageCors, storageRoutes } from "./storage.js";
 
 const NOW = new Date("2026-11-01T12:00:00Z");
 const config = {
@@ -39,6 +39,25 @@ function uploadPath(
 const jpeg = Buffer.alloc(2_000, 1);
 
 describe("sandbox storage", () => {
+  it("stores the seed photos once under packages/seed/ and serves them like any listing photo (T420)", async () => {
+    const photosDir = mkdtempSync(join(tmpdir(), "seed-photos-"));
+    writeFileSync(join(photosDir, "la-01.webp"), Buffer.from("first photo"));
+    await seedPhotos(config.storageDir, photosDir);
+    const served = await request(app)
+      .get(`/storage/objects/${encodeURIComponent("packages/seed/la-01.webp")}`)
+      .expect(200);
+    expect(served.headers["content-type"]).toBe("image/webp");
+    expect(Buffer.from(served.body as Buffer).toString()).toBe("first photo");
+
+    // Loading again (every sandbox start does) leaves a stored photo as it is.
+    writeFileSync(join(photosDir, "la-01.webp"), Buffer.from("changed on disk"));
+    await seedPhotos(config.storageDir, photosDir);
+    const again = await request(app)
+      .get(`/storage/objects/${encodeURIComponent("packages/seed/la-01.webp")}`)
+      .expect(200);
+    expect(Buffer.from(again.body as Buffer).toString()).toBe("first photo");
+  });
+
   it("accepts an upload only with a valid link for that object, type, and exact size", async () => {
     const path = uploadPath("packages/p1/a.jpg", "image/jpeg", 2_000);
     await request(app).put(path).set("Content-Type", "image/jpeg").send(jpeg).expect(200);

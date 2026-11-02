@@ -7,6 +7,7 @@
 // "Why?" and the version its investor was told about; each offer writes the CRM event that brings
 // the deal demo's CRM count to four (T373); and the accepted offer's deal is under contract.
 import { randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPrismaClient, type PrismaClient } from "../src/infra/prisma-client.js";
@@ -90,7 +91,8 @@ describe("seed", () => {
     await seedDemoAccounts(prisma);
     const cipher = new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`);
     const addressHash = createAddressHasher("test-hash-key");
-    const deps = { cipher, addressHash };
+    const photosDir = fileURLToPath(new URL("../../../seed/photos/", import.meta.url));
+    const deps = { cipher, addressHash, photosDir };
     // run.ts's order: buy box versions before the listings.
     await seedConfig(prisma);
     await seedBuyBoxVersions(prisma);
@@ -121,6 +123,20 @@ describe("seed", () => {
       expect(pkg.status).toBe(listing.acceptedInvestor ? "UNDER_CONTRACT" : "ACCEPTING_OFFERS");
     }
     expect(seeded).toEqual(expected.seededListings);
+
+    // Each listing has exactly its photos, in order, once (the seed ran twice); the drafts have
+    // none. They point at the files the sandbox stores under packages/seed/ (T420).
+    for (const listing of LISTINGS) {
+      const pkg = await packageAt(listing.streetLine, listing.zip);
+      const photos = await prisma.photo.findMany({
+        where: { packageId: pkg.id },
+        orderBy: { position: "asc" },
+      });
+      expect(photos.map((p) => p.storageKey)).toEqual(
+        (listing.photos ?? []).map((file) => `packages/seed/${file}`),
+      );
+      if (listing.deadlineInDays === null) expect(photos).toEqual([]);
+    }
 
     // Every matched box really fits the version its investor was told about (FR-022).
     const uow = new PrismaUnitOfWorkImpl(prisma, cipher);

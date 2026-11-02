@@ -54,10 +54,12 @@ unchanged (FR-003).
 
 ### V2 — Publish → match → privacy (Story 2, SC-003, SC-006)
 
-1. Log in as `avery@example.com` → **New package**. Use the sample address shown in the form hint
-   (Austin 78704, single-family, Fair condition), upload one photo, and publish.
+1. Log in as `avery@example.com` → **New package**. Use the sample listing in
+   `packages/core/src/infra/seed/expected-matches.json` (any made-up street in Highland Park
+   90042, Los Angeles; single-family, 3 beds, 2 baths, 1,500 sq ft, built 1924, Fair condition,
+   $70k repairs, top price $1,050,000), upload one photo, and publish.
 2. Expected: status "Accepting offers". The match count shown is the seeded number
-   (`seed/expected-matches.json`), and the sandbox shows one email per matched investor within
+   (`expected-matches.json`), and the sandbox shows one email per matched investor within
    1 minute. `summit@example.com` has two buy boxes that both fit; it gets **one** email that names
    both boxes (FR-022).
 3. Log in as `ridge@example.com` (excluded). The package is not listed, and opening its URL
@@ -80,7 +82,8 @@ unchanged (FR-003).
 
 ### V4 — Compare, accept, track to close, backup (Story 4, SC-005, SC-010, SC-011)
 
-1. As `blake@example.com`, open the seeded package at 48 Maple Ave, which has 4 offers →
+1. As `blake@example.com`, open the seeded package at 2417 Corvina St (West Adams, Los Angeles
+   90016), which has 4 offers →
    **Compare**. Sort by net
    proceeds; each row's breakdown matches the formula in data-model.md.
 2. Accept the top offer. The winner sees the seller contact details (an audit entry is written),
@@ -96,7 +99,7 @@ unchanged (FR-003).
 
 1. As `harbor@example.com`, set Min Price above Max Price. The save is refused, and the field is
    named. Clear every property type: the save is refused ("leave it blank for any").
-2. As `ridge@example.com`, add a second buy box with ZIP code 78745, which covers Blake's seeded
+2. As `ridge@example.com`, add a second buy box with ZIP code 90016, which covers Blake's seeded
    package (still accepting offers) that ridge's narrow first box does not fit. Within 1 minute
    the package appears on ridge's dashboard and in the in-app inbox, with no email or SMS in the
    sandbox. The daily digest email (FR-023) arrives with the outbox in Story 6 (see plan.md

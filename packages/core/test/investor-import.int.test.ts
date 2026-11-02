@@ -98,10 +98,10 @@ describe("InvestorImportWorkflow", () => {
   });
 
   it("rejects a row the database refuses and leaves that investor as it was", async () => {
-    // Alamo (LEG-1001) given Bluebonnet's email: the update breaks the unique email.
+    // Arroyo (LEG-1001) given Bungalow Row's email: the update breaks the unique email.
     const key = uploadRows(
       "imports/clash.csv",
-      "LEG-1001,Alamo Home Buyers,Al,bluebonnet@example.com,iBuyer,ALL,SFR,1,2",
+      "LEG-1001,Arroyo Home Buyers,Ar,bungalow@example.com,iBuyer,ALL,SFR,1,2",
     );
     const before = await counts();
 
@@ -111,8 +111,8 @@ describe("InvestorImportWorkflow", () => {
     expect(rows).toEqual([
       expect.objectContaining({ outcome: "REJECTED", reason: expect.stringMatching(/^row 2: /) }),
     ]);
-    const alamo = await db.query(`SELECT email FROM "Investor" WHERE "externalRef" = 'LEG-1001'`);
-    expect(alamo.rows).toEqual([{ email: "alamo@example.com" }]);
+    const arroyo = await db.query(`SELECT email FROM "Investor" WHERE "externalRef" = 'LEG-1001'`);
+    expect(arroyo.rows).toEqual([{ email: "arroyo@example.com" }]);
     expect(await counts()).toEqual(before);
   });
 

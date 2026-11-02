@@ -207,7 +207,7 @@ function CriterionFields({
             <TextField
               name="geography"
               label="States or ZIP codes"
-              description="Two-letter states (TX, AZ) or five-digit ZIP codes (78704), separated by commas. Leave empty for nationwide."
+              description="Two-letter states (CA, NV) or five-digit ZIP codes (90026), separated by commas. Leave empty for nationwide."
               defaultValue={existing?.geography.join(", ")}
               errorMessage={error("geography")}
             />

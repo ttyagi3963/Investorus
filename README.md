@@ -56,21 +56,26 @@ ssh -L 3000:localhost:3000 -L 4100:localhost:4100 <server>
 Every demo account uses the password **`demo1234`**. The seed creates them automatically. On the
 home page and the sign-in page, each account's **Sign in** button signs in with one press.
 
+The seed also creates a small Los Angeles market: 13 listing packages with made-up addresses in
+real LA ZIP codes (Highland Park, Echo Park, West Adams, Inglewood, Van Nuys, Venice, and more),
+priced around each ZIP's typical home value. Eleven are taking offers (one is a lot no investor
+matches), one is under contract, and two are drafts. The listings have no photos yet.
+
 | Role | Email | Shows |
 | --- | --- | --- |
-| Agent | `avery@example.com` | Building and publishing a listing package |
-| Agent | `blake@example.com` | Comparing offers and tracking deals to close |
+| Agent | `avery@example.com` | Building and publishing a listing package; seven seeded listings, one a draft |
+| Agent | `blake@example.com` | Comparing offers and tracking deals to close; six seeded listings, one with four offers and one under contract |
 | Investor | `summit@example.com` | Two buy boxes that both match the sample listing; has a phone number, so match notices also arrive as texts |
-| Investor | `harbor@example.com` | One broad buy box |
-| Investor | `ridge@example.com` | A deliberately narrow buy box (often not matched); add a second one to see it matched |
-| Investor | `cobalt@example.com` | An offer on Blake's seeded listing |
-| Investor | `dune@example.com` | An offer on Blake's seeded listing |
+| Investor | `harbor@example.com` | One broad buy box (any home but land, anywhere) |
+| Investor | `ridge@example.com` | A deliberately narrow buy box (Westside condos: one seeded match); add a second one to see more |
+| Investor | `cobalt@example.com` | An offer on Blake's West Adams listing, and the accepted offer on his Inglewood one |
+| Investor | `dune@example.com` | An offer on Blake's West Adams listing |
 | Operations | `morgan@example.com` | The operations console: each package's full history, failed deliveries and retries, simulated outages, the CRM comparison, and the legacy investor import |
 
 > **Status:** Sprints 1–8 are in, and every screen uses the brand's design system (Sprints 5 and 7). Open
 > <http://localhost:3000> and sign in as any account with one press. Avery
 > builds and publishes a package, which is matched to investors who then make offers. Blake's
-> seeded listing already has four offers: compare them, accept one, and track the deal to closing.
+> seeded West Adams listing already has four offers: compare them, accept one, and track the deal to closing.
 > If it falls through, promote a backup, then sign in as that investor to reconfirm. Investors
 > manage their own buy boxes under **Buy boxes**, and a new or edited box is matched at once
 > against listings still taking offers. The operations account imports
@@ -225,7 +230,8 @@ table is in [plan.md](specs/001-investor-platform-prototype/plan.md).
 | Sandbox stand-ins for CRM, email/SMS, storage | HubSpot, SendGrid/Twilio, and S3 provider implementations behind the same ports (S3 storage is T274–T275, after Sprint 1) |
 | Listing photos are public: anyone with a photo's link can open it, and the link never expires (the owner's decision, 2026-11-01, T326). Import files stay private. | A private bucket served through a CDN with signed cookies, or an app address that checks access and redirects to a short-lived link, so a leaked link stops working and access can be withdrawn |
 | Brands live in the database and are chosen per request by cookie, host, or `DEFAULT_BRAND_ID`, but emails and texts always carry the default brand's name, the brand's font must be registered in the web app's code to load, and content and hosts change only through the seed files (Sprint 7, T346–T353) | Each agent and investor belongs to a brand, so messages carry that brand; brand fonts are self-hosted files stored with the brand; content, hosts, and logos are edited in the console with design review; the theme CSS is served as a cached, versioned stylesheet from a CDN |
-| Static ZIP code list for the seeded markets | Address validation and geocoding provider |
+| Static ZIP code list: twelve Los Angeles ZIPs for the seeded market, plus five Austin ZIPs the tests use | Address validation and geocoding provider |
+| The seeded listings have no photos: the seed writes them straight to Accepting offers, past the publish rule that asks for one (T409; the images are still to come). Every package an agent publishes still needs a photo | Demo photos stored with their Photo rows at seed time, so seeded listings meet the same publish rule |
 | `LogErrorReporterImpl` instead of Sentry | Sentry provider plus alert routing for needs-attention deliveries |
 | Tracing is a W3C `traceparent` trace ID carried in an `AsyncLocalStorage` request context and written as `trace_id` on every log line, with no spans, metrics, or dashboards | The OpenTelemetry SDK with HTTP, Express, and Postgres instrumentation reading the same context and header, exporting traces to a collector (Jaeger or Tempo); Prometheus metrics (request latency and errors, job queue depth and age, failed jobs, match run time) with Grafana dashboards and alerts |
 | Single PostgreSQL instance; the sandbox shares the server (separate schema) | Managed PostgreSQL with backups, read replica, and PITR; the sandbox does not exist in production |

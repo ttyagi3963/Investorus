@@ -1,31 +1,31 @@
 Investor ID,Company,Contact Name,Email,Phone,Type,Markets,Property Types,Min Price,Max Price,Min Beds,Max Beds,Conditions,Max Repairs,Close Within Days,Proof of Funds Expires,Active,Source
-LEG-1001,Alamo Home Buyers,Alamo Contact,alamo@example.com,(512) 555-0100,Direct Buyer,78701;78702,SFR,100000,250000,2,5,Fair;Poor,40000,,2027-01-28,Y,Referral
-LEG-1002,Bluebonnet Home Buyers,Bluebonnet Contact,bluebonnet@example.com,512-555-0201,Wholesaler,75201;75204,SFR;Townhome,125000,300000,,,,,21,2027-02-28,,Event
-LEG-1003,Canyon Home Buyers,Canyon Contact,canyon@example.com,,iBuyer,85003;85006,Condo,150000,350000,,,Good;Fair,42000,28,2027-03-28,Y,Referral
-LEG-1004,Desert Home Buyers,Desert Contact,desert@example.com,+1 214 555 0303,Direct Buyer,30303;30306,SFR;Multi,175000,400000,2,5,Poor;Distressed,,35,2027-04-28,,Event
-LEG-1005,Elm Home Buyers,Elm Contact,elm@example.com,(512) 555-0104,Wholesaler,TX,Multi,200000,450000,,,,44000,14,2027-05-28,Y,Referral
-LEG-1006,Falcon Home Buyers,Falcon Contact,falcon@example.com,512-555-0205,iBuyer,78745,SFR,100000,-5,,,Fair,,,,,Event
-LEG-1007,Granite Home Buyers,Granite Contact,granite@example.com,,Direct Buyer,78745,Townhome;Condo,125000,550000,2,5,Fair;Poor,46000,28,2027-07-28,Y,Referral
-LEG-1008,Hill Country Home Buyers,Hill Country Contact,hillcountry@example.com,+1 214 555 0307,Wholesaler,TX;AZ,SFR;Manufactured,150000,250000,,,,,35,2027-08-28,,Event
-LEG-1009,Iron Home Buyers,Iron Contact,iron@example.com,(512) 555-0108,iBuyer,85012;85016,Land,175000,300000,,,Good;Fair,48000,14,2027-09-28,Y,Referral
-LEG-1010,Juniper Home Buyers,Juniper Contact,juniper@example.com,512-555-0209,Direct Buyer,30307;30308,SFR,200000,350000,2,5,Poor;Distressed,,21,2027-10-28,N,Event
-LEG-1011,Keystone Home Buyers,Keystone Contact,keystone@example.com,,Wholesaler,78704;00000,SFR,100000,400000,,,,50000,,2027-11-28,Y,Referral
-LEG-1012,Lone Star Home Buyers,Lone Star Contact,lonestar@example.com,+1 214 555 0311,iBuyer,75206,SFR;Townhome,125000,450000,,,Fair,,35,,,Event
-LEG-1013,Mesa Home Buyers,Mesa Contact,mesa@example.com,(512) 555-0112,Direct Buyer,ALL,Condo,150000,500000,2,5,Fair;Poor,52000,14,2027-01-28,Y,Referral
-LEG-1014,Northgate Home Buyers,Northgate Contact,northgate@example.com,512-555-0213,Wholesaler,78703;78704,SFR;Multi,175000,550000,,,,,21,2027-02-28,,Event
-LEG-1015,Oakridge Home Buyers,Oakridge Contact,oakridge@example.com,,iBuyer,GA,Multi,200000,250000,,,Good;Fair,54000,28,2027-03-28,Y,Referral
-LEG-1016,Pecan Home Buyers,Pecan Contact,pecan@example.com,+1 214 555 0315,Direct Buyer,75214;75219,SFR,100000,300000,2,5,Poor;Distressed,,,2027-04-28,,Event
-LEG-1017,Quarry Home Buyers,Quarry Contact,quarry@example.com,(512) 555-0116,Wholesaler,85003,Townhome;Condo,125000,350000,,,,56000,14,2027-05-28,Y,Referral
-LEG-1018,Riverbend Home Buyers,Riverbend Contact,,512-555-0217,iBuyer,30309,SFR;Manufactured,150000,400000,,,Fair,,21,,,Event
-LEG-1019,Saguaro Home Buyers,Saguaro Contact,saguaro@example.com,,Direct Buyer,30309,Land,175000,450000,2,5,Fair;Poor,58000,28,2027-07-28,Y,Referral
-LEG-1020,Trinity Home Buyers,Trinity Contact,trinity@example.com,+1 214 555 0319,Wholesaler,AZ,SFR,200000,500000,,,,,35,2027-08-28,,Event
-LEG-1021,Uptown Home Buyers,Uptown Contact,uptown@example.com,(512) 555-0120,iBuyer,78705,SFR,100000,550000,,,Good;Fair,60000,,2027-09-28,Y,Referral
-LEG-1022,Vista Home Buyers,Vista Contact,vista@example.com,512-555-0221,Direct Buyer,TX;GA,SFR;Townhome,125000,250000,2,5,Poor;Distressed,,21,2027-10-28,,Event
-LEG-1023,Westlake Home Buyers,Westlake Contact,westlake@example.com,,Wholesaler,75201,Condo,400000,300000,,,,62000,28,2027-11-28,Y,Referral
-LEG-1024,Yucca Home Buyers,Yucca Contact,yucca@example.com,+1 214 555 0323,iBuyer,75201,SFR;Multi,175000,350000,,,Fair,,35,,,Event
-LEG-1025,Zia Home Buyers,Zia Contact,zia@example.com,(512) 555-0124,Direct Buyer,85006;85012,Multi,200000,400000,2,5,Fair;Poor,64000,14,2027-01-28,Y,Referral
-LEG-1026,Brazos Home Buyers,Brazos Contact,brazos@example.com,512-555-0225,Wholesaler,30303,SFR,100000,450000,,,,,,2027-02-28,,Event
-LEG-1027,Cedar Home Buyers,Cedar Contact,cedar@example.com,,iBuyer,78701;78745,Townhome;Condo,125000,500000,,,Good;Fair,66000,28,2027-03-28,Y,Referral
-LEG-1028,Dogwood Home Buyers,Dogwood Contact,dogwood@example.com,+1 214 555 0327,Direct Buyer,75204;75206,SFR;Manufactured,150000,550000,2,5,Poor;Distressed,,35,2027-04-28,,Event
-LEG-1029,Eastside Home Buyers,Eastside Contact,eastside@example.com,(512) 555-0128,Wholesaler,TX,Land,175000,250000,,,,68000,14,2027-05-28,Y,Referral
-LEG-1030,Frontier Home Buyers,Frontier Contact,frontier@example.com,512-555-0229,iBuyer,30306;30307,SFR,200000,300000,,,Fair,,21,,,Event
+LEG-1001,Arroyo Home Buyers,Arroyo Contact,arroyo@example.com,(213) 555-0100,Direct Buyer,90042;90065,SFR,700000,1100000,2,5,Fair;Poor,120000,,2027-01-28,Y,Referral
+LEG-1002,Bungalow Row Capital,Bungalow Contact,bungalow@example.com,323-555-0201,Wholesaler,90016;90019,SFR;Townhome,650000,1200000,,,,,21,2027-02-28,,Event
+LEG-1003,Canyon Crest Investors,Canyon Contact,canyoncrest@example.com,,iBuyer,90066;90291,Condo,600000,950000,,,Good;Fair,40000,28,2027-03-28,Y,Referral
+LEG-1004,Driftwood Holdings,Driftwood Contact,driftwood@example.com,+1 310 555 0303,Direct Buyer,90016;90301,SFR;Multi,600000,1300000,2,5,Poor;Distressed,,35,2027-04-28,,Event
+LEG-1005,Eucalyptus Partners,Eucalyptus Contact,eucalyptus@example.com,(213) 555-0104,Wholesaler,CA,Multi,1000000,2500000,,,,90000,14,2027-05-28,Y,Referral
+LEG-1006,Foothill Home Buyers,Foothill Contact,foothill@example.com,323-555-0205,iBuyer,91406,SFR,500000,-5,,,Fair,,,,,Event
+LEG-1007,Greenleaf Property Co,Greenleaf Contact,greenleaf@example.com,,Direct Buyer,91406,Townhome;Condo,450000,850000,2,5,Fair;Poor,50000,28,2027-07-28,Y,Referral
+LEG-1008,Hollyhock Investments,Hollyhock Contact,hollyhock@example.com,+1 310 555 0307,Wholesaler,CA;AZ,SFR;Manufactured,300000,700000,,,,,35,2027-08-28,,Event
+LEG-1009,Ivanhoe Land Co,Ivanhoe Contact,ivanhoe@example.com,(213) 555-0108,iBuyer,91406;90065,Land,300000,800000,,,Good;Fair,25000,14,2027-09-28,Y,Referral
+LEG-1010,Jacaranda Home Buyers,Jacaranda Contact,jacaranda@example.com,323-555-0209,Direct Buyer,90026;90039,SFR,800000,1300000,2,5,Poor;Distressed,,21,2027-10-28,N,Event
+LEG-1011,Kenmore Capital,Kenmore Contact,kenmore@example.com,,Wholesaler,90042;00000,SFR,600000,1200000,,,,100000,,2027-11-28,Y,Referral
+LEG-1012,Laurel Canyon Buyers,Laurel Contact,laurel@example.com,+1 310 555 0311,iBuyer,90034,SFR;Townhome,900000,1500000,,,Fair,,35,,,Event
+LEG-1013,Mulholland Partners,Mulholland Contact,mulholland@example.com,(213) 555-0112,Direct Buyer,ALL,Condo,400000,900000,2,5,Fair;Poor,60000,14,2027-01-28,Y,Referral
+LEG-1014,Normandie Homes,Normandie Contact,normandie@example.com,323-555-0213,Wholesaler,90019;90016,SFR;Multi,700000,1600000,,,,,21,2027-02-28,,Event
+LEG-1015,Olympic Equity,Olympic Contact,olympic@example.com,,iBuyer,CA,Multi,1200000,2000000,,,Good;Fair,80000,28,2027-03-28,Y,Referral
+LEG-1016,Pico Property Group,Pico Contact,pico@example.com,+1 310 555 0315,Direct Buyer,90301;90016,SFR,550000,850000,2,5,Poor;Distressed,,,2027-04-28,,Event
+LEG-1017,Quartz Hill Buyers,Quartz Contact,quartzhill@example.com,(213) 555-0116,Wholesaler,90039,Townhome;Condo,700000,1200000,,,,40000,14,2027-05-28,Y,Referral
+LEG-1018,Rampart Investors,Rampart Contact,,323-555-0217,iBuyer,91406,SFR;Manufactured,450000,900000,,,Fair,,21,,,Event
+LEG-1019,Sepulveda Land Co,Sepulveda Contact,sepulveda@example.com,,Direct Buyer,90065,Land,250000,700000,2,5,Fair;Poor,30000,28,2027-07-28,Y,Referral
+LEG-1020,Topanga Capital,Topanga Contact,topanga@example.com,+1 310 555 0319,Wholesaler,CA,SFR,500000,1500000,,,,,35,2027-08-28,,Event
+LEG-1021,Urban Grove Buyers,Urban Grove Contact,urbangrove@example.com,(213) 555-0120,iBuyer,90027,SFR,1200000,2500000,,,Good;Fair,150000,,2027-09-28,Y,Referral
+LEG-1022,Verdugo Home Buyers,Verdugo Contact,verdugo@example.com,323-555-0221,Direct Buyer,CA;NV,SFR;Townhome,400000,900000,2,5,Poor;Distressed,,21,2027-10-28,,Event
+LEG-1023,Wilshire Equity,Wilshire Contact,wilshire@example.com,,Wholesaler,90291,Condo,1400000,1200000,,,,62000,28,2027-11-28,Y,Referral
+LEG-1024,Yucca Street Partners,Yucca Contact,yucca@example.com,+1 310 555 0323,iBuyer,90301,SFR;Multi,550000,1100000,,,Fair,,35,,,Event
+LEG-1025,Zanja Holdings,Zanja Contact,zanja@example.com,(213) 555-0124,Direct Buyer,91406;90019,Multi,900000,2000000,2,5,Fair;Poor,120000,14,2027-01-28,Y,Referral
+LEG-1026,Barrington Buyers,Barrington Contact,barrington@example.com,323-555-0225,Wholesaler,90026,SFR,800000,1200000,,,,,,2027-02-28,,Event
+LEG-1027,Cahuenga Capital,Cahuenga Contact,cahuenga@example.com,,iBuyer,90034;90066,Townhome;Condo,600000,1100000,,,Good;Fair,50000,28,2027-03-28,Y,Referral
+LEG-1028,Descanso Investors,Descanso Contact,descanso@example.com,+1 310 555 0327,Direct Buyer,90042;90065,SFR;Manufactured,500000,1000000,2,5,Poor;Distressed,,35,2027-04-28,,Event
+LEG-1029,Eagle Rock Land Co,Eagle Rock Contact,eaglerock@example.com,(213) 555-0128,Wholesaler,CA,Land,200000,600000,,,,25000,14,2027-05-28,Y,Referral
+LEG-1030,Fairfax Home Buyers,Fairfax Contact,fairfax@example.com,323-555-0229,iBuyer,90039;90027,SFR,1000000,1800000,,,Fair,,21,,,Event

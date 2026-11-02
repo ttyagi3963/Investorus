@@ -1,15 +1,17 @@
-// Guards the seed's promises (T260, T299, T314): running it again (every `docker compose up` does)
-// adds nothing; the demo agent can sign in with the README's credentials through the real service;
-// the seeded buy boxes match the sample listing exactly as seed/expected-matches.json says; and
-// Blake's deal demo is seeded once, matched only to investors whose boxes really fit it, with its
-// seller stored encrypted. Seeded in run.ts's order, the demo is matched by the real workflow: each
-// match has the decision behind the ops console's "Why?" and the version its investor was told
-// about, and each offer writes the CRM event that brings the CRM's count to four (T373).
+// Guards the seed's promises (T260, T299, T314, T409): running it again (every `docker compose up`
+// does) adds nothing; the demo agent can sign in with the README's credentials through the real
+// service; the seeded buy boxes match the sample listing exactly as expected-matches.json says; and
+// the Los Angeles listings are seeded once, each published one matched to exactly the investors
+// expected-matches.json names, with the sellers stored encrypted. Seeded in run.ts's order, the
+// listings are matched by the real workflow: each match has the decision behind the ops console's
+// "Why?" and the version its investor was told about; each offer writes the CRM event that brings
+// the deal demo's CRM count to four (T373); and the accepted offer's deal is under contract.
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPrismaClient, type PrismaClient } from "../src/infra/prisma-client.js";
-import { seedConfig, seedDealDemo } from "../src/infra/seed/deal-demo.js";
+import { DEAL_DEMO, LISTINGS } from "../src/infra/seed/la-listings.js";
+import { seedConfig, seedListings } from "../src/infra/seed/listings.js";
 import { DEMO_PASSWORD, seedBuyBoxVersions, seedDemoAccounts } from "../src/infra/seed/seed.js";
 import { createAddressHasher } from "../src/providers/pii-cipher/address-hasher.js";
 import expected from "../src/infra/seed/expected-matches.json" with { type: "json" };
@@ -47,7 +49,7 @@ describe("seed", () => {
               (SELECT count(*) FROM "Investor")::int AS investors, (SELECT count(*) FROM "BuyBox")::int AS boxes,
               (SELECT count(*) FROM "BuyBoxVersion")::int AS versions`,
     );
-    expect(counts.rows[0]).toEqual({ agents: 2, users: 8, investors: 5, boxes: 6, versions: 6 });
+    expect(counts.rows[0]).toEqual({ agents: 2, users: 8, investors: 5, boxes: 7, versions: 7 });
 
     const uow = new PrismaUnitOfWorkImpl(
       prisma,
@@ -84,50 +86,77 @@ describe("seed", () => {
     expect(byEmail).toEqual(expected.matches);
   });
 
-  it("seeds Blake's deal demo once, matched only where a buy box fits, with the seller encrypted", async () => {
+  it("seeds the listings once, each matched as expected-matches.json says, sellers encrypted", async () => {
     await seedDemoAccounts(prisma);
     const cipher = new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`);
-    const deps = { cipher, addressHash: createAddressHasher("test-hash-key") };
-    // run.ts's order: buy box versions before the deal demo.
+    const addressHash = createAddressHasher("test-hash-key");
+    const deps = { cipher, addressHash };
+    // run.ts's order: buy box versions before the listings.
     await seedConfig(prisma);
     await seedBuyBoxVersions(prisma);
-    await seedDealDemo(prisma, deps);
-    await seedDealDemo(prisma, deps);
+    await seedListings(prisma, deps);
+    await seedListings(prisma, deps);
 
-    const offers = await db.query(`SELECT count(*)::int AS n FROM "Offer"`);
-    expect(offers.rows[0].n).toBe(4);
-    const seller = await db.query(`SELECT "fullName", phone FROM "Seller"`);
-    expect(JSON.stringify(seller.rows)).not.toMatch(/Jordan|5550142/);
+    expect(await prisma.listingPackage.count()).toBe(LISTINGS.length);
+    const sellers = await db.query(`SELECT "fullName", email, phone FROM "Seller"`);
+    for (const { seller } of LISTINGS) {
+      expect(JSON.stringify(sellers.rows)).not.toContain(seller.fullName);
+      expect(JSON.stringify(sellers.rows)).not.toContain(seller.phone);
+    }
 
+    // Each published listing is matched to exactly the investors the file names; drafts to none.
+    const packageAt = (streetLine: string, zip: string) =>
+      prisma.listingPackage.findFirstOrThrow({
+        where: { addressHash: addressHash({ streetLine, zip }) },
+        include: { matches: { include: { investor: { select: { email: true } } } } },
+      });
+    const seeded: Record<string, string[]> = {};
+    for (const listing of LISTINGS) {
+      const pkg = await packageAt(listing.streetLine, listing.zip);
+      if (listing.deadlineInDays === null) {
+        expect(pkg).toMatchObject({ status: "DRAFT", matches: [] });
+        continue;
+      }
+      seeded[listing.streetLine] = pkg.matches.map((m) => m.investor.email).sort();
+      expect(pkg.status).toBe(listing.acceptedInvestor ? "UNDER_CONTRACT" : "ACCEPTING_OFFERS");
+    }
+    expect(seeded).toEqual(expected.seededListings);
+
+    // Every matched box really fits the version its investor was told about (FR-022).
     const uow = new PrismaUnitOfWorkImpl(prisma, cipher);
-    const [pkg] = await prisma.listingPackage.findMany();
-    const version = await uow.run((repos) => repos.listingVersions.find(pkg!.id, 1));
     const matches = await prisma.match.findMany();
-    expect(matches).toHaveLength(4);
     const today = new Date().toISOString().slice(0, 10);
     for (const match of matches) {
+      expect(match.lastNotifiedListingVersion).toBe(1);
+      const version = await uow.run((repos) => repos.listingVersions.find(match.packageId, 1));
+      const boxes = await uow.run((repos) =>
+        repos.buyBoxes.listCandidates(version!.snapshot.zip, version!.snapshot.state, new Date()),
+      );
       for (const id of match.matchedBuyBoxIds) {
-        const [box] = await uow.run((repos) =>
-          repos.buyBoxes
-            .listCandidates(version!.snapshot.zip, version!.snapshot.state, new Date())
-            .then((found) => found.filter((b) => b.id === id)),
-        );
+        const box = boxes.find((b) => b.id === id);
         expect(box && evaluateBuyBox(box, version!.snapshot, today).matched).toBe(true);
       }
     }
 
-    // Every match was told about version 1, so a later edit reaches it (FR-022).
-    expect(matches.map((m) => m.lastNotifiedListingVersion)).toEqual(matches.map(() => 1));
     // "Why?" shows the stored decision with each box's criteria.
+    const demo = await packageAt(DEAL_DEMO.streetLine, DEAL_DEMO.zip);
     const ops = { userId: "user-ops", role: "OPS" as const, agentId: null };
-    const why = await new OpsQueryService(uow).explainMatch(ops, pkg!.id, matches[0]!.investorId);
+    const why = await new OpsQueryService(uow).explainMatch(
+      ops,
+      demo.id,
+      demo.matches[0]!.investorId,
+    );
     expect(why).toMatchObject({ source: "STORED", matched: true });
     expect(why.buyBoxes.length).toBeGreaterThan(0);
-    // The last offer's CRM event carries all four offers.
+    // Every offer writes its CRM event; the deal demo's last one carries all four of its offers.
     const events = await db.query(
-      `SELECT payload FROM "OutboxEvent" WHERE type = 'offer.submitted' ORDER BY "occurredAt"`,
+      `SELECT payload FROM "OutboxEvent" WHERE type = 'offer.submitted'`,
     );
-    expect(events.rows).toHaveLength(4);
-    expect(events.rows.at(-1).payload.crm.offerCount).toBe(4);
+    const offerCount = LISTINGS.reduce((n, listing) => n + (listing.offers?.length ?? 0), 0);
+    expect(events.rows).toHaveLength(offerCount);
+    const demoCounts = events.rows
+      .filter((row) => row.payload.packageId === demo.id)
+      .map((row) => row.payload.crm.offerCount);
+    expect(demoCounts.sort()).toEqual([1, 2, 3, 4]);
   });
 });

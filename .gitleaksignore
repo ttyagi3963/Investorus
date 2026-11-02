@@ -18,8 +18,8 @@ f4f30576b4fb367ddf8b0ad4ad3d4679e85cac61:.env:generic-api-key:28
 # The same four values in the working tree
 .env:generic-api-key:15
 .env:generic-api-key:17
-.env:generic-api-key:26
 .env:generic-api-key:27
+.env:generic-api-key:28
 
 # A test fixture, never a real secret: the sign-in test's made-up JWT key in the PR 6 branch
 # commit 39b4134 (the test now generates its key at runtime; the squash merge to main has none).

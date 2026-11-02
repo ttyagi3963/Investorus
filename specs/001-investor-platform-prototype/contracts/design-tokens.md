@@ -10,6 +10,9 @@ Sprint 7 (T346–T353) brands live in the `Brand` table (data-model.md): the see
 `seed/brands/<brandId>/`, the api serves them, and operations can edit a brand's tokens in the
 console without a deploy.
 
+Prototype: each brand's tokens file is a complete token set. Production: a base theme with
+per-brand overrides, merged and validated at read time (plan.md, Prototype Shortcuts, T408).
+
 ## Files
 
 ### `tokens.json` (DTCG)

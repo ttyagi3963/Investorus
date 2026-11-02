@@ -2,13 +2,18 @@
 // delivery with the delivery's ID as the job ID, so adding it twice queues it once; finished jobs
 // are removed, so an operator's retry can queue the same delivery again. The consumer hands each
 // job to the DeliveryDispatcher: a RETRY becomes a BullMQ retry after the dispatcher's wait, and a
-// delivery set aside is also recorded on the dead-letter queue. PostgreSQL stays the record of
-// every delivery's state; Redis only carries the work, so a lost queue is rebuilt by the relay.
+// delivery set aside is also recorded on the dead-letter queue. A job that threw on every try is
+// handed to the dispatcher's giveUp, so its delivery is set aside rather than dropped (T379), and
+// queue and connection errors go to the error reporter, not the console. PostgreSQL stays the
+// record of every delivery's state; Redis only carries the work, so a lost queue is rebuilt by the
+// relay.
 import type { DeliveryRetryPolicy } from "@clever/contracts/config";
 import { Queue, Worker, type Job } from "bullmq";
 import { Redis } from "ioredis";
-import type { DispatchResult } from "../../outbox/DeliveryDispatcher.js";
+import { scrubPiiText } from "../../errors/redact-pii.js";
+import type { DeliveryDispatcher } from "../../outbox/DeliveryDispatcher.js";
 import { retryDelayMs } from "../../outbox/retry-delay.js";
+import type { IErrorReporter } from "../error-reporter/IErrorReporter.js";
 import type { IDeliveryConsumer, IDeliveryQueue } from "./IDeliveryQueue.js";
 
 const DELIVERIES = "deliveries";
@@ -37,11 +42,23 @@ export class BullMqDeliveryQueueImpl implements IDeliveryQueue, IDeliveryConsume
   private worker: Worker<DeliveryJob> | null = null;
   private workerConnection: Redis | null = null;
 
-  constructor(private readonly options: { redisUrl: string; retry: DeliveryRetryPolicy }) {
+  constructor(
+    private readonly options: {
+      redisUrl: string;
+      retry: DeliveryRetryPolicy;
+      reporter: IErrorReporter;
+    },
+  ) {
     this.connection = producerConnection(options.redisUrl);
     this.deliveries = new Queue(DELIVERIES, { connection: this.connection });
     this.deadLetters = new Queue(DEAD_LETTERS, { connection: this.connection });
+    // BullMQ forwards its Redis connections' errors here; unheard, it writes them to the console.
+    this.deliveries.on("error", this.reportError);
+    this.deadLetters.on("error", this.reportError);
   }
+
+  private readonly reportError = (err: Error) =>
+    this.options.reporter.report(err, { component: "delivery-queue" });
 
   async enqueue(deliveryIds: string[]): Promise<void> {
     await this.deliveries.addBulk(
@@ -60,30 +77,28 @@ export class BullMqDeliveryQueueImpl implements IDeliveryQueue, IDeliveryConsume
     );
   }
 
-  /** Starts consuming: `dispatch` sends one delivery and says what happened. */
+  /** Starts consuming: the dispatcher sends one delivery and says what happened. */
   startConsumer(
-    dispatch: (deliveryId: string) => Promise<DispatchResult>,
+    dispatcher: Pick<DeliveryDispatcher, "dispatch" | "giveUp">,
     options: { concurrency: number; onSetAside: (deliveryId: string, error: string) => void },
   ): void {
     const { retry } = this.options;
+    const setAside = async (deliveryId: string, error: string) => {
+      await this.deadLetters.add("set-aside", { deliveryId, error });
+      // Bounded, so a long outage cannot fill Redis's memory (it never evicts).
+      await this.deadLetters.clean(DEAD_LETTER_DAY_MS, 1_000, "wait");
+      options.onSetAside(deliveryId, error);
+    };
     this.workerConnection = consumerConnection(this.options.redisUrl);
     this.worker = new Worker<DeliveryJob>(
       DELIVERIES,
       async (job: Job<DeliveryJob>) => {
-        const result = await dispatch(job.data.deliveryId);
+        const result = await dispatcher.dispatch(job.data.deliveryId);
         if (result.outcome === "RETRY") {
           await job.updateData({ ...job.data, delayMs: result.delayMs });
           throw new Error(result.error);
         }
-        if (result.outcome === "NEEDS_ATTENTION") {
-          await this.deadLetters.add("set-aside", {
-            deliveryId: job.data.deliveryId,
-            error: result.error,
-          });
-          // Bounded, so a long outage cannot fill Redis's memory (it never evicts).
-          await this.deadLetters.clean(DEAD_LETTER_DAY_MS, 1_000, "wait");
-          options.onSetAside(job.data.deliveryId, result.error);
-        }
+        if (result.outcome === "NEEDS_ATTENTION") await setAside(job.data.deliveryId, result.error);
       },
       {
         connection: this.workerConnection,
@@ -95,6 +110,19 @@ export class BullMqDeliveryQueueImpl implements IDeliveryQueue, IDeliveryConsume
         },
       },
     );
+    this.worker.on("error", this.reportError);
+    // BullMQ reports every failed try; only the last one, after which it drops the job, matters.
+    this.worker.on("failed", (job, err) => {
+      if (!job || job.attemptsMade < (job.opts.attempts ?? 1)) return;
+      const { deliveryId } = job.data;
+      this.options.reporter.report(err, { component: "delivery-queue", delivery_id: deliveryId });
+      // An unexpected error may quote a value, so what is stored and logged is scrubbed.
+      const error = scrubPiiText(err.message);
+      void dispatcher
+        .giveUp(deliveryId, error)
+        .then(() => setAside(deliveryId, error))
+        .catch(this.reportError);
+    });
   }
 
   async close(): Promise<void> {

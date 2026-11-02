@@ -52,17 +52,12 @@ export class PrismaMatchRepositoryImpl implements IMatchRepository {
     });
   }
 
-  async listUndigested(): Promise<Match[]> {
-    return this.db.match.findMany({
+  async claimUndigested(at: Date): Promise<Match[]> {
+    // UPDATE ... RETURNING: a run that meets rows another run is claiming waits, then skips them.
+    const claimed = await this.db.match.updateManyAndReturn({
       where: { trigger: "BUY_BOX_CHANGE", digestedAt: null },
-      orderBy: { firstMatchedAt: "asc" },
-    });
-  }
-
-  async markDigested(ids: string[], at: Date): Promise<void> {
-    await this.db.match.updateMany({
-      where: { id: { in: ids }, digestedAt: null },
       data: { digestedAt: at },
     });
+    return claimed.sort((a, b) => a.firstMatchedAt.getTime() - b.firstMatchedAt.getTime());
   }
 }

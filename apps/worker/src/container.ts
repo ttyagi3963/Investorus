@@ -67,7 +67,8 @@ export async function createContainer(env: WorkerEnv): Promise<WorkerContainer> 
           clock,
         });
   const retry = await db.uow.run((repos) => readConfig(repos.config, "deliveryRetry"));
-  const queue = new BullMqDeliveryQueueImpl({ redisUrl: env.REDIS_URL, retry });
+  const reporter = new LogErrorReporterImpl(logger);
+  const queue = new BullMqDeliveryQueueImpl({ redisUrl: env.REDIS_URL, retry, reporter });
   const sandbox = { internalUrl: env.SANDBOX_URL, internalToken: env.SANDBOX_INTERNAL_TOKEN };
   const digests = new MatchDigestWorkflow(db.uow, { clock });
   return Object.freeze({
@@ -84,7 +85,7 @@ export async function createContainer(env: WorkerEnv): Promise<WorkerContainer> 
       digests,
     }),
     logger,
-    reporter: new LogErrorReporterImpl(logger),
+    reporter,
     clock,
     relay: new OutboxRelay(db.uow, { queue, clock }),
     digests,

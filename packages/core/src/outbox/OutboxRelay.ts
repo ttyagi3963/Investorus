@@ -1,11 +1,13 @@
 // The outbox relay (T339; constitution XVIII, contracts/events.md), run by the worker every second.
 // First it turns each unrelayed event into one delivery per target and recipient (no SMS for an
-// investor without a phone) and marks the event relayed, in one transaction. Then it queues every
-// PENDING delivery not yet on the queue, which also re-queues deliveries an operator retried and
-// any whose queueing failed while Redis was down. Before that it puts back every delivery whose job
-// may be lost (Redis restarted without its data, or the worker died mid-send): one queued but not
-// started, overdue for its retry, or sending for longer than the lease. An event whose payload no
-// longer parses is marked relayed with no deliveries and reported, so it cannot block the rest.
+// investor without a phone) and marks the event relayed, in one transaction. Then it claims every
+// PENDING delivery not yet on the queue, which includes those an operator retried, and queues them
+// on Redis only after that claim commits, so no Redis call runs while rows are locked (T379): a
+// batch Redis refuses is released for the next tick. Before that it puts back every delivery whose
+// job may be lost (Redis restarted without its data, or the worker died mid-send or between the
+// claim and the queue): one queued but not started, overdue for its retry, or sending for longer
+// than the lease. An event whose payload no longer parses is marked relayed with no deliveries and
+// reported, so it cannot block the rest.
 import { deliveriesOf, outboxEventInputSchema } from "@clever/contracts/events";
 import type { IClock } from "../providers/clock/IClock.js";
 import type { IDeliveryQueue } from "../providers/delivery-queue/IDeliveryQueue.js";
@@ -62,14 +64,16 @@ export class OutboxRelay {
       repos.deliveries.requeueStale(new Date(this.deps.clock.now().getTime() - LEASE_MS)),
     );
 
-    // Queued inside the transaction holding the rows: if Redis refuses, nothing is marked queued.
-    const queued = await this.uow.run(async (repos) => {
-      const ids = await repos.deliveries.claimUnqueued(BATCH);
-      if (ids.length === 0) return 0;
-      await this.deps.queue.enqueue(ids);
-      await repos.deliveries.markQueued(ids, this.deps.clock.now());
-      return ids.length;
-    });
-    return { relayed, queued, recovered, unreadable };
+    const claimedAt = this.deps.clock.now();
+    const ids = await this.uow.run((repos) => repos.deliveries.claimUnqueued(BATCH, claimedAt));
+    if (ids.length > 0) {
+      try {
+        await this.deps.queue.enqueue(ids);
+      } catch (err) {
+        await this.uow.run((repos) => repos.deliveries.releaseQueued(ids, claimedAt));
+        throw err;
+      }
+    }
+    return { relayed, queued: ids.length, recovered, unreadable };
   }
 }

@@ -32,7 +32,7 @@ const stopHeartbeat = startHeartbeat(
 );
 const loop = startJobLoop({ ...container, workerId: `${hostname()}-${process.pid}` });
 const relay = startRelayLoop(container);
-container.deliveries.startConsumer((id) => container.dispatcher.dispatch(id), {
+container.deliveries.startConsumer(container.dispatcher, {
   concurrency: DELIVERY_CONCURRENCY,
   onSetAside: (deliveryId, error) =>
     container.logger.warn({ delivery_id: deliveryId, error }, "delivery needs attention"),

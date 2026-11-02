@@ -3,8 +3,8 @@
 // or an investor who cannot be reached is set aside at once; a CRM update carries the seller's
 // contact read at send time, that read is audited, and STALE counts as delivered; a duplicate job
 // sends nothing; the relay makes each delivery once, with no text for an investor with no phone, and
-// puts back a delivery whose job was lost when the worker died mid-send. Messages carry the brand's
-// name.
+// puts back a delivery whose job was lost when the worker died mid-send, and queues on Redis only
+// after the claim commits, claiming a refused batch again. Messages carry the brand's name.
 import type { DeliveryRetryPolicy } from "@clever/contracts/config";
 import type { OutboxEventInput } from "@clever/contracts/events";
 import { describe, expect, it, vi } from "vitest";
@@ -13,6 +13,7 @@ import { DeliveryRejectedError } from "../errors/DeliveryRejectedError.js";
 import { InfrastructureError } from "../errors/InfrastructureError.js";
 import type { ICrmProvider } from "../providers/crm/ICrmProvider.js";
 import type { IMessagingProvider } from "../providers/messaging/IMessagingProvider.js";
+import type { IUnitOfWork } from "../unit-of-work/IUnitOfWork.js";
 import { DeliveryDispatcher } from "./DeliveryDispatcher.js";
 import { OutboxRelay } from "./OutboxRelay.js";
 import { writeEvent } from "./write-event.js";
@@ -186,6 +187,35 @@ describe("OutboxRelay", () => {
     expect(ctx.queue.enqueue).toHaveBeenLastCalledWith([email.id]);
     expect(retried.outcome).toBe("SENT");
     expect(email.attempts).toBe(2);
+  });
+
+  it("queues deliveries only after the change claiming them commits, and claims a refused batch again", async () => {
+    const ctx = setup();
+    ctx.uow.repos.investors.contacts.set("investor-1", { email: "i@example.test", phone: null });
+    await ctx.uow.run((repos) => writeEvent(repos, NOTICE));
+    let open = 0;
+    const tracked: IUnitOfWork = {
+      run: async (work) => {
+        open += 1;
+        try {
+          return await ctx.uow.run(work);
+        } finally {
+          open -= 1;
+        }
+      },
+    };
+    const openWhenQueued: number[] = [];
+    ctx.queue.enqueue.mockImplementation(async () => {
+      openWhenQueued.push(open);
+      if (openWhenQueued.length === 1) throw new Error("Redis is down");
+    });
+    const relay = new OutboxRelay(tracked, { queue: ctx.queue, clock: { now: () => NOW } });
+
+    await expect(relay.tick()).rejects.toThrow("Redis is down");
+    const { queued } = await relay.tick();
+
+    expect(openWhenQueued).toEqual([0, 0]);
+    expect(queued).toBe(1);
   });
 
   it("makes each delivery once and queues it once, with no text for an investor with no phone", async () => {

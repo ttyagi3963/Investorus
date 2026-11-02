@@ -109,7 +109,8 @@ below are the planning baseline.
      transaction.
   2. A relay loop in `apps/worker` (1-second poll, `SKIP LOCKED`) creates one `Delivery` row per
      target (CRM, email, SMS, in-app) and enqueues a BullMQ job with `jobId = delivery.id`, so a
-     re-relayed event is not enqueued twice.
+     re-relayed event is not enqueued twice. It queues only after the transaction claiming the
+     rows commits, never inside it, and a sweep re-queues any delivery whose job was lost (T379).
   3. BullMQ consumers call the provider. Retries use exponential backoff (base 2 seconds,
      capped at 60 seconds, 10 attempts by default, about 5 minutes, configurable). Exhausted jobs go to the DLQ, and the `Delivery` row
      is set to `NEEDS_ATTENTION` with the last error.

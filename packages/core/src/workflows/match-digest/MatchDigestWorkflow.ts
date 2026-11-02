@@ -1,9 +1,10 @@
 // The daily match digest (T340; FR-023, contracts/events.md). A buy box saved or edited later matches
 // packages already taking offers; those matches reach the investor in the app at once and by email
 // once a day, here. A run writes one `investor.match_digest` event per investor with matches to
-// packages still taking offers, marks every pending match digested (so a second run sends nothing),
-// audits the run, and schedules the next one at ConfigEntry["matchDigest"].hourUtc, keyed by date so
-// it is queued once. The worker calls ensureScheduled at startup; operations can run one now.
+// packages still taking offers, claiming every pending match by marking it digested as it reads it
+// (so a second run, even one at the same time, sends nothing again; T379), audits the run, and
+// schedules the next one at ConfigEntry["matchDigest"].hourUtc, keyed by date so it is queued once.
+// The worker calls ensureScheduled at startup; operations can run one now.
 import type { Actor } from "@clever/contracts/auth";
 import { ForbiddenError } from "@clever/contracts/common";
 import type { OutboxEventInput } from "@clever/contracts/events";
@@ -37,7 +38,7 @@ export class MatchDigestWorkflow implements IMatchDigestWorkflow {
     // The next run is queued first, in its own change, so a run that fails cannot stop the next one.
     await this.uow.run((repos) => this.scheduleNext(repos, now));
     await this.uow.run(async (repos) => {
-      const pending = await repos.matches.listUndigested();
+      const pending = await repos.matches.claimUndigested(now);
       const byInvestor = new Map<string, Match[]>();
       for (const match of pending) {
         byInvestor.set(match.investorId, [...(byInvestor.get(match.investorId) ?? []), match]);
@@ -52,12 +53,6 @@ export class MatchDigestWorkflow implements IMatchDigestWorkflow {
           });
           emailed += 1;
         }
-      }
-      if (pending.length > 0) {
-        await repos.matches.markDigested(
-          pending.map((match) => match.id),
-          now,
-        );
       }
       await repos.audit.append({
         actorType: "SYSTEM",

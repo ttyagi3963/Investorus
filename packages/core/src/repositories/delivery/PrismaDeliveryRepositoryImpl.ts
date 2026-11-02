@@ -1,5 +1,6 @@
 // The delivery port over Prisma (T339): the only file with Delivery queries. Status changes are
-// guarded by the status they start from, so a late or duplicate job cannot undo a newer state.
+// guarded by the status they start from, and an attempt's outcome also by its attempt number
+// (T379), so a late, duplicate, or superseded run cannot undo a newer state.
 // lastError is cut to 500 characters; callers pass messages that never carry PII.
 import type { DeliveryPlan } from "@clever/contracts/events";
 import type { Prisma } from "../../generated/prisma/client.js";
@@ -26,18 +27,26 @@ export class PrismaDeliveryRepositoryImpl implements IDeliveryRepository {
          OR (status = 'SENDING' AND "updatedAt" < ${before})`;
   }
 
-  async claimUnqueued(limit: number): Promise<string[]> {
+  async claimUnqueued(limit: number, at: Date): Promise<string[]> {
     const rows = await this.db.$queryRaw<{ id: string }[]>`
       SELECT id FROM "Delivery"
       WHERE status = 'PENDING' AND "queuedAt" IS NULL
       ORDER BY "createdAt"
       FOR UPDATE SKIP LOCKED
       LIMIT ${limit}`;
-    return rows.map((row) => row.id);
+    const ids = rows.map((row) => row.id);
+    // The rows stay locked by this transaction until it commits, so no other relay can mark them.
+    if (ids.length > 0) {
+      await this.db.delivery.updateMany({ where: { id: { in: ids } }, data: { queuedAt: at } });
+    }
+    return ids;
   }
 
-  async markQueued(ids: string[], at: Date): Promise<void> {
-    await this.db.delivery.updateMany({ where: { id: { in: ids } }, data: { queuedAt: at } });
+  async releaseQueued(ids: string[], at: Date): Promise<void> {
+    await this.db.delivery.updateMany({
+      where: { id: { in: ids }, status: "PENDING", queuedAt: at },
+      data: { queuedAt: null },
+    });
   }
 
   async findWithEvent(id: string): Promise<DeliveryWithEvent | null> {
@@ -56,26 +65,34 @@ export class PrismaDeliveryRepositoryImpl implements IDeliveryRepository {
       );
   }
 
-  async markSending(id: string): Promise<boolean> {
-    const { count } = await this.db.delivery.updateMany({
+  async markSending(id: string): Promise<number | null> {
+    const [started] = await this.db.delivery.updateManyAndReturn({
       where: { id, status: { in: ["PENDING", "RETRYING"] } },
       data: { status: "SENDING", attempts: { increment: 1 }, nextAttemptAt: null },
+      select: { attempts: true },
+    });
+    return started?.attempts ?? null;
+  }
+
+  async markSent(id: string, attempt: number, at: Date): Promise<boolean> {
+    const { count } = await this.db.delivery.updateMany({
+      where: { id, status: "SENDING", attempts: attempt },
+      data: { status: "SENT", sentAt: at, lastError: null },
     });
     return count === 1;
   }
 
-  async markSent(id: string, at: Date): Promise<void> {
-    await this.db.delivery.updateMany({
-      where: { id, status: "SENDING" },
-      data: { status: "SENT", sentAt: at, lastError: null },
-    });
-  }
-
-  async markRetrying(id: string, error: string, nextAttemptAt: Date): Promise<void> {
-    await this.db.delivery.updateMany({
-      where: { id, status: "SENDING" },
+  async markRetrying(
+    id: string,
+    attempt: number,
+    error: string,
+    nextAttemptAt: Date,
+  ): Promise<boolean> {
+    const { count } = await this.db.delivery.updateMany({
+      where: { id, status: "SENDING", attempts: attempt },
       data: { status: "RETRYING", lastError: redacted(error), nextAttemptAt },
     });
+    return count === 1;
   }
 
   async resetForRetry(id: string): Promise<boolean> {
@@ -86,9 +103,17 @@ export class PrismaDeliveryRepositoryImpl implements IDeliveryRepository {
     return count === 1;
   }
 
-  async markNeedsAttention(id: string, error: string): Promise<void> {
+  async markNeedsAttention(id: string, attempt: number, error: string): Promise<boolean> {
+    const { count } = await this.db.delivery.updateMany({
+      where: { id, status: "SENDING", attempts: attempt },
+      data: { status: "NEEDS_ATTENTION", lastError: redacted(error), nextAttemptAt: null },
+    });
+    return count === 1;
+  }
+
+  async giveUp(id: string, error: string): Promise<void> {
     await this.db.delivery.updateMany({
-      where: { id, status: "SENDING" },
+      where: { id, status: { in: ["PENDING", "SENDING", "RETRYING"] } },
       data: { status: "NEEDS_ATTENTION", lastError: redacted(error), nextAttemptAt: null },
     });
   }

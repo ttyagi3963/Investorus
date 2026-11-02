@@ -79,7 +79,10 @@ home page and the sign-in page, each account's **Sign in** button signs in with 
 ## Try an outage
 
 Emails, texts, and CRM updates leave through a transactional outbox and a Redis queue, so an
-outside service being down never fails anyone's action and loses nothing.
+outside service being down never fails anyone's action and loses nothing. PostgreSQL keeps each
+delivery's state: a delivery whose queue job is lost is queued again, a run that outlived its
+2-minute lease cannot overwrite a newer one's result, and a delivery whose job kept failing ends
+in **Failed jobs** rather than vanishing.
 
 1. Sign in as `morgan@example.com`, open **Simulations**, and set the CRM to **Down** and
    messaging to **Garbage**.

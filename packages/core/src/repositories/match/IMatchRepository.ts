@@ -23,7 +23,9 @@ export interface IMatchRepository {
   findOne(packageId: string, investorId: string, round: number): Promise<Match | null>;
   /** Every match of the investor, newest first. */
   listForInvestor(investorId: string): Promise<Match[]>;
-  /** Buy-box-change matches not yet sent in a daily digest (FR-023), oldest first. */
-  listUndigested(): Promise<Match[]>;
-  markDigested(ids: string[], at: Date): Promise<void>;
+  /**
+   * Marks digested at `at` every buy-box-change match not yet sent in a daily digest (FR-023) and
+   * returns them, oldest first. One statement, so of two runs at once each match goes to one (T379).
+   */
+  claimUndigested(at: Date): Promise<Match[]>;
 }

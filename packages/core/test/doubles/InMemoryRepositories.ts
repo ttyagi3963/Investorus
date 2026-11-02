@@ -383,11 +383,12 @@ export class InMemoryMatchRepository implements IMatchRepository {
     return (await this.listByPackage(packageId, round)).length;
   }
   readonly digestedAt = new Map<string, Date>();
-  async listUndigested() {
-    return this.rows.filter((r) => r.trigger === "BUY_BOX_CHANGE" && !this.digestedAt.has(r.id));
-  }
-  async markDigested(ids: string[], at: Date) {
-    for (const id of ids) if (!this.digestedAt.has(id)) this.digestedAt.set(id, at);
+  async claimUndigested(at: Date) {
+    const pending = this.rows.filter(
+      (r) => r.trigger === "BUY_BOX_CHANGE" && !this.digestedAt.has(r.id),
+    );
+    for (const match of pending) this.digestedAt.set(match.id, at);
+    return pending;
   }
 }
 
@@ -715,45 +716,56 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
     }
     return count;
   }
-  async claimUnqueued(limit: number) {
-    return this.rows
+  async claimUnqueued(limit: number, at: Date) {
+    const claimed = this.rows
       .filter((r) => r.status === "PENDING" && r.queuedAt === null)
-      .slice(0, limit)
-      .map((r) => r.id);
+      .slice(0, limit);
+    for (const row of claimed) row.queuedAt = at;
+    return claimed.map((r) => r.id);
   }
-  async markQueued(ids: string[], at: Date) {
-    for (const row of this.rows) if (ids.includes(row.id)) row.queuedAt = at;
+  async releaseQueued(ids: string[], at: Date) {
+    for (const row of this.rows) {
+      if (ids.includes(row.id) && row.status === "PENDING" && row.queuedAt === at) {
+        row.queuedAt = null;
+      }
+    }
   }
   async findWithEvent(id: string) {
     const row = this.rows.find((r) => r.id === id);
     const event = row && this.outbox.rows.find((e) => e.id === row.outboxEventId);
     return row && event ? { ...row, event } : null;
   }
-  private move(id: string, from: Delivery["status"][], patch: Partial<Delivery>) {
-    const row = this.rows.find((r) => r.id === id && from.includes(r.status));
+  private move(id: string, from: Delivery["status"][], patch: Partial<Delivery>, attempt?: number) {
+    const row = this.rows.find(
+      (r) =>
+        r.id === id && from.includes(r.status) && (attempt === undefined || r.attempts === attempt),
+    );
     if (row) Object.assign(row, patch);
     return Boolean(row);
   }
   async markSending(id: string) {
-    const row = this.rows.find((r) => r.id === id);
-    return this.move(id, ["PENDING", "RETRYING"], {
+    const attempts = (this.rows.find((r) => r.id === id)?.attempts ?? 0) + 1;
+    const started = this.move(id, ["PENDING", "RETRYING"], {
       status: "SENDING",
-      attempts: (row?.attempts ?? 0) + 1,
+      attempts,
       nextAttemptAt: null,
     });
+    return started ? attempts : null;
   }
-  async markSent(id: string, at: Date) {
-    this.move(id, ["SENDING"], { status: "SENT", sentAt: at, lastError: null });
+  async markSent(id: string, attempt: number, at: Date) {
+    return this.move(id, ["SENDING"], { status: "SENT", sentAt: at, lastError: null }, attempt);
   }
-  async markRetrying(id: string, error: string, nextAttemptAt: Date) {
-    this.move(id, ["SENDING"], { status: "RETRYING", lastError: error, nextAttemptAt });
+  async markRetrying(id: string, attempt: number, error: string, nextAttemptAt: Date) {
+    const patch = { status: "RETRYING" as const, lastError: error, nextAttemptAt };
+    return this.move(id, ["SENDING"], patch, attempt);
   }
-  async markNeedsAttention(id: string, error: string) {
-    this.move(id, ["SENDING"], {
-      status: "NEEDS_ATTENTION",
-      lastError: error,
-      nextAttemptAt: null,
-    });
+  async markNeedsAttention(id: string, attempt: number, error: string) {
+    const patch = { status: "NEEDS_ATTENTION" as const, lastError: error, nextAttemptAt: null };
+    return this.move(id, ["SENDING"], patch, attempt);
+  }
+  async giveUp(id: string, error: string) {
+    const patch = { status: "NEEDS_ATTENTION" as const, lastError: error, nextAttemptAt: null };
+    this.move(id, ["PENDING", "SENDING", "RETRYING"], patch);
   }
   async resetForRetry(id: string) {
     return this.move(id, ["NEEDS_ATTENTION"], {

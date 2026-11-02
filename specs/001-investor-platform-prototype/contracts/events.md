@@ -59,14 +59,16 @@ The email or text reuses the notice's in-app title and body, so every channel sa
    creates one `Delivery` per (target, recipient) (no SMS for an investor without a phone), and
    marks the event relayed, in one transaction. Duplicates are blocked by the unique index. An
    event whose payload no longer parses is marked relayed with no deliveries and logged.
-2. **Queueing**: the relay also claims every PENDING delivery not yet queued and adds it to the
-   BullMQ `deliveries` queue with `jobId = delivery.id`, inside the transaction that holds the rows.
-   Redis is reached with a fail-fast connection: if it is down, nothing is marked queued and the
-   next tick tries again.
+2. **Queueing**: the relay also claims every PENDING delivery not yet queued, marking it queued,
+   and after that transaction commits adds it to the BullMQ `deliveries` queue with
+   `jobId = delivery.id`, so no Redis call runs while rows are locked (T379). Redis is reached with
+   a fail-fast connection: if it is down, the claim is released and the next tick tries again.
 3. **Recovery**: every tick also puts back any delivery whose job may be lost, because Redis keeps
-   no data across a restart, or because the worker died mid-send: one queued but never started,
-   one overdue for its retry, or one left sending, for longer than a 2-minute lease. Its attempts
-   are kept, and the idempotency key makes a resend safe. **The api never
+   no data across a restart, or because the worker died mid-send or between the claim and the
+   queue: one queued but never started, one overdue for its retry, or one left sending, for longer
+   than a 2-minute lease. Its attempts are kept, and the idempotency key makes a resend safe. Each
+   attempt's outcome is recorded only if the delivery is still on that attempt, so a run the sweep
+   superseded cannot overwrite the newer run's result (T379). **The api never
    touches Redis**: an operations retry resets the delivery in PostgreSQL and the relay re-queues
    it. Redis holds no state the platform needs; PostgreSQL does.
 4. **Send**: the dispatcher starts an attempt and reads what it needs in one transaction, sends
@@ -76,11 +78,15 @@ The email or text reuses the notice's in-app title and body, so every channel sa
    - 5xx, a timeout (5 s), 408, 429, or a malformed answer → `RETRYING`, with the next try's time.
    - Any other 4xx, or an investor who cannot be reached → `NEEDS_ATTENTION` at once (bad data is
      not retried blindly).
-   - A duplicate or late job finds the delivery already sent or set aside and does nothing.
+   - A duplicate or late job finds the delivery already sent, set aside, or on a newer attempt
+     and does nothing.
 5. **Backoff** (`ConfigEntry["deliveryRetry"]`, read at worker startup): base 2 s, factor 2,
    capped at 60 s, jitter ±20%, 10 attempts, about 5 minutes in total. The dispatcher counts
    attempts in PostgreSQL. After the last one, the delivery goes to `NEEDS_ATTENTION` and is also
    recorded on the `deliveries-dlq` queue, which keeps a day of entries (PostgreSQL keeps the record).
+   A job that throws instead of deciding (say the database is unreachable) is retried by BullMQ;
+   when it has thrown on every try, the delivery is set aside the same way with that error, and
+   the error is reported, so it cannot loop unseen (T379).
 6. **Manual retry**: `POST /ops/deliveries/:id/retry`, or `/ops/deliveries/retry-all` with an
    optional target, sets each delivery that needs attention back to `PENDING` with `attempts = 0`,
    off the queue. Each retry is audited (`DELIVERY_RETRIED`).

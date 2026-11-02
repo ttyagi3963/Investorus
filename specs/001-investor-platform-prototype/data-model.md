@@ -313,7 +313,7 @@ matches (FR-022). It is the investor's access grant (FR-040) and the notificatio
 | firstMatchedAt | timestamptz | |
 | notifiedAt | timestamptz? | set when the `package.matched` event is written |
 | lastNotifiedListingVersion | int? | the listing version the investor was last told about |
-| digestedAt | timestamptz? | set when a BUY_BOX_CHANGE match is sent in the daily digest |
+| digestedAt | timestamptz? | set when a BUY_BOX_CHANGE match is sent in the daily digest; the run claims matches by setting it in one `UPDATE … RETURNING`, so two runs at once never send one twice |
 
 Unique `(packageId, investorId, round)`, so a re-run never sends a second notification.
 Index `(investorId)` for the dashboard.
@@ -462,7 +462,7 @@ for the operations trace.
 | target | `CRM` \| `EMAIL` \| `SMS` | in-app notices stay in the change itself (Sprint 6) |
 | recipientRef | string | the investor's ID (EMAIL, SMS) or the package's ID (CRM); never contact data |
 | status | `PENDING` \| `SENDING` \| `SENT` \| `RETRYING` \| `NEEDS_ATTENTION` | CHECK: `SENT` exactly when `sentAt` is set |
-| attempts | int | CHECK ≥ 0; counted by the dispatcher |
+| attempts | int | CHECK ≥ 0; counted by the dispatcher; an attempt's outcome is written only while the row is still on that attempt |
 | lastError | string? | redacted, at most 500 characters |
 | nextAttemptAt / sentAt | timestamptz? | |
 | queuedAt | timestamptz? | set when the relay puts it on the BullMQ queue; reset by an operations retry |

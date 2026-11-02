@@ -1,5 +1,6 @@
-// Guards the sandbox storage rules (T252, T275): only a valid, unexpired link for that exact object,
-// type, and size may upload (like a presigned S3 PUT), and the internal routes need the shared token.
+// Guards the sandbox storage rules (T252, T275, T372): only a valid, unexpired link for that exact
+// object, type, and size may upload (like a presigned S3 PUT), the internal routes need the shared
+// token, and only the listed web origins (every brand's address) may upload from the browser.
 import { createHmac } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +15,7 @@ const config = {
   storageDir: mkdtempSync(join(tmpdir(), "sandbox-storage-")),
   signingKey: "signing-key",
   internalToken: "internal-token",
-  webOrigin: "http://localhost:3000",
+  webOrigins: ["http://localhost:3000", "http://partner.localhost:3000"],
   now: () => NOW,
 };
 // The storage routes alone: the outage gate in front of them needs the database (app.int.test.ts).
@@ -54,6 +55,19 @@ describe("sandbox storage", () => {
     await request(app).put(smaller).set("Content-Type", "image/jpeg").send(jpeg).expect(413);
     const larger = uploadPath("packages/p1/e.jpg", "image/jpeg", 3_000);
     await request(app).put(larger).set("Content-Type", "image/jpeg").send(jpeg).expect(400);
+  });
+
+  it("allows a browser upload from every listed web origin, and from no other", async () => {
+    const preflight = (origin: string) =>
+      request(app)
+        .options("/storage/objects/check")
+        .set("Origin", origin)
+        .set("Access-Control-Request-Method", "PUT")
+        .expect(204);
+    const partner = await preflight("http://partner.localhost:3000");
+    expect(partner.headers["access-control-allow-origin"]).toBe("http://partner.localhost:3000");
+    const other = await preflight("https://evil.example");
+    expect(other.headers["access-control-allow-origin"]).toBeUndefined();
   });
 
   it("serves a photo to anyone at its plain address, but nothing outside packages/", async () => {

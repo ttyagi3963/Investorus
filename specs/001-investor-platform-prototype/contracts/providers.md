@@ -67,8 +67,9 @@ type UploadInstruction = {
   from the AWS environment variables) returns a presigned `PUT` that signs `Content-Type` and
   `Content-Length`. `stat` is `HeadObject`. Signing is async, so `createUpload` returns a Promise.
   MinIO or other storage containers are deliberately not used, because of the 2 GB memory limit.
-- `/storage/objects/*` sends CORS headers for `WEB_ORIGIN` only (`PUT`, `GET`, `OPTIONS`;
-  `Content-Type`), because the browser uploads cross-origin from port 3000 to port 4100.
+- `/storage/objects/*` sends CORS headers only for an origin listed in `WEB_ORIGIN`
+  (comma-separated, one per brand host; `PUT`, `GET`, `OPTIONS`; `Content-Type`), echoing that
+  origin with `Vary: Origin`, because the browser uploads cross-origin from port 3000 to port 4100.
 - The api never trusts the upload itself. It calls `stat(key)` before recording a photo or
   starting an import.
 

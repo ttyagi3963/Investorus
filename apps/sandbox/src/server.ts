@@ -21,7 +21,7 @@ const app = createApp({
   storageDir: env.SANDBOX_STORAGE_DIR,
   signingKey: env.STORAGE_SIGNING_KEY,
   internalToken: env.SANDBOX_INTERNAL_TOKEN,
-  webOrigin: env.WEB_ORIGIN,
+  webOrigins: env.WEB_ORIGIN,
   now: () => new Date(),
   store,
   slowDelayMs: SLOW_MODE_DELAY_MS,

@@ -1,9 +1,17 @@
 // The BFF's session route (T263, research R12): sign-in goes to the api, and the token it returns is
-// set as an HTTP-only, SameSite=Lax cookie (Secure unless COOKIE_SECURE=false), 8 hours, so browser
+// set as an HTTP-only, SameSite=Lax cookie (Secure per COOKIE_SECURE; T372), 8 hours, so browser
 // code never sees it; only the user goes back. Sign-out clears the cookie. The sign-in call carries
 // the request's `traceparent` (T283).
 import type { SessionResponse } from "@clever/contracts/auth";
-import { SESSION_COOKIE, forbidden, passBackHeaders, sameOrigin, traceparentFor } from "./shared";
+import {
+  type CookieSecure,
+  SESSION_COOKIE,
+  cookieIsSecure,
+  forbidden,
+  passBackHeaders,
+  sameOrigin,
+  traceparentFor,
+} from "./shared";
 
 const EIGHT_HOURS = 8 * 60 * 60;
 
@@ -19,7 +27,7 @@ const cookie = (value: string, maxAge: number, secure: boolean) =>
 
 export async function signIn(
   request: Request,
-  deps: { apiUrl: string; secureCookie: boolean; fetch?: typeof globalThis.fetch },
+  deps: { apiUrl: string; cookieSecure: CookieSecure; fetch?: typeof globalThis.fetch },
 ): Promise<Response> {
   if (!sameOrigin(request)) return forbidden();
   const send = deps.fetch ?? globalThis.fetch;
@@ -38,14 +46,19 @@ export async function signIn(
   const body = (await upstream.json()) as SessionResponse;
   return Response.json(
     { user: body.user },
-    { status: 201, headers: { "Set-Cookie": cookie(body.token, EIGHT_HOURS, deps.secureCookie) } },
+    {
+      status: 201,
+      headers: {
+        "Set-Cookie": cookie(body.token, EIGHT_HOURS, cookieIsSecure(deps.cookieSecure, request)),
+      },
+    },
   );
 }
 
-export async function signOut(request: Request, secureCookie = true): Promise<Response> {
+export async function signOut(request: Request, cookieSecure: CookieSecure): Promise<Response> {
   if (!sameOrigin(request)) return forbidden();
   return new Response(null, {
     status: 204,
-    headers: { "Set-Cookie": cookie("", 0, secureCookie) },
+    headers: { "Set-Cookie": cookie("", 0, cookieIsSecure(cookieSecure, request)) },
   });
 }

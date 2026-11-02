@@ -211,10 +211,11 @@ below are the planning baseline.
   native build problems on a slim image). `apps/api` issues a signed JWT (HS256 via `jose`,
   8-hour expiry) carrying `userId`, `role`, and `investorId` or `agentId`. The `apps/web` BFF
   stores it in an HTTP-only, Secure, SameSite=Lax cookie and forwards it as a bearer token, so
-  the browser never sees the token. Browsers treat `http://localhost` as a secure context, so
-  Secure cookies work for reviewers. `COOKIE_SECURE=false` exists only for non-localhost plain
-  HTTP. State-changing BFF routes reject requests whose `Origin` does not match the host
-  (CSRF, XII). Demo accounts are seeded; credentials are in the README.
+  the browser never sees the token. The cookie is Secure when the browser came over HTTPS (the
+  request URL or `X-Forwarded-Proto`), so sign-in also works over plain HTTP on a non-localhost
+  host, where a browser drops Secure cookies (`COOKIE_SECURE=auto`, the default; `true` or
+  `false` force it; T372). State-changing BFF routes reject requests whose `Origin` does not
+  match the host (CSRF, XII). Demo accounts are seeded; credentials are in the README.
 - **Rationale**: Meets XII and XXI.4 with the fewest moving parts. Role checks run in services,
   using the actor passed in from the route (III).
 - **Alternatives considered**: NextAuth or Auth.js (couples auth to web, but api is the authority);

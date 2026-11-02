@@ -8,8 +8,8 @@ import type { BrandThemeView } from "@clever/contracts/brand";
 import { ApiError, brandsClient, createApiClient } from "@clever/contracts/client";
 import { z } from "zod";
 import { updateTag } from "next/cache";
-import { cookies } from "next/headers";
-import { SESSION_COOKIE } from "@/bff/shared";
+import { cookies, headers } from "next/headers";
+import { SESSION_COOKIE, cookieIsSecure } from "@/bff/shared";
 import { serverEnv } from "@/env";
 import { BRAND_CACHE_TAG, BRAND_COOKIE, listBrands } from "./active-brand";
 
@@ -22,7 +22,8 @@ export async function chooseBrand(input: unknown): Promise<void> {
     path: "/",
     httpOnly: true,
     sameSite: "lax",
-    secure: serverEnv().COOKIE_SECURE,
+    // An action has no request URL; behind a TLS-terminating proxy, X-Forwarded-Proto says HTTPS.
+    secure: cookieIsSecure(serverEnv().COOKIE_SECURE, { headers: await headers() }),
     maxAge: ONE_YEAR_SECONDS,
   });
 }

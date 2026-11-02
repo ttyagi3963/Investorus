@@ -28,7 +28,7 @@ beforeAll(async () => {
     storageDir: mkdtempSync(join(tmpdir(), "sandbox-int-")),
     signingKey: "test-signing-key",
     internalToken: TOKEN,
-    webOrigin: "http://localhost:3000",
+    webOrigins: ["http://localhost:3000"],
     now: () => new Date(),
     store,
     slowDelayMs: SLOW_MS,

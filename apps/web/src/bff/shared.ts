@@ -1,6 +1,7 @@
 // What the BFF's routes share: the CSRF check (a state-changing request must come from this site's
-// own pages, research R12), reading the session token from the cookie, and the trace headers
-// (T283). Pure functions over the standard Request, so they can be tested without Next.
+// own pages, research R12), reading the session token from the cookie, whether a cookie is Secure
+// (T372), and the trace headers (T283). Pure functions over the standard Request, so they can be
+// tested without Next.
 import { newTraceId, toTraceparent, traceIdFrom } from "@clever/contracts/common";
 
 export const SESSION_COOKIE = "session";
@@ -17,6 +18,24 @@ export function sameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
   const host = request.headers.get("host");
   return origin !== null && host !== null && URL.parse(origin)?.host === host;
+}
+
+/** COOKIE_SECURE: `auto` follows the request; `true` and `false` force the Secure flag. */
+export type CookieSecure = "auto" | "true" | "false";
+
+/**
+ * Whether to mark a cookie Secure. In `auto` it is Secure when the browser reached this site over
+ * HTTPS: the request URL says so, or a TLS-terminating proxy's X-Forwarded-Proto does. A Secure
+ * cookie set over plain HTTP on any host but localhost is dropped by the browser, so sign-in would
+ * never stick there.
+ */
+export function cookieIsSecure(
+  setting: CookieSecure,
+  request: { url?: string; headers: Pick<Headers, "get"> },
+): boolean {
+  if (setting !== "auto") return setting === "true";
+  const forwarded = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  return forwarded === "https" || URL.parse(request.url ?? "")?.protocol === "https:";
 }
 
 export function forbidden(): Response {

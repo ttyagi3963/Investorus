@@ -30,6 +30,24 @@ To stop: `Ctrl+C`, or `docker compose down`. To start over with an empty databas
 Settings come from the committed [.env](.env) file. It holds demo values only, and they protect
 nothing real.
 
+### Open it from another machine
+
+Signing in works over plain HTTP from any address, for example `http://<server-ip>:3000`. The
+browser uploads photos and CSV files straight to the sandbox, so for uploads from another
+address change these two lines in `.env` (demo values only) to that host's addresses, then run
+`docker compose up --build` again:
+
+```sh
+PUBLIC_SANDBOX_URL=http://<server-ip>:4100
+WEB_ORIGIN=http://<server-ip>:3000,http://localhost:3000
+```
+
+Or keep the defaults, tunnel both ports from your machine, and open http://localhost:3000:
+
+```sh
+ssh -L 3000:localhost:3000 -L 4100:localhost:4100 <server>
+```
+
 ## Demo accounts
 
 Every demo account uses the password **`demo1234`**. The seed creates them automatically. On the
@@ -127,8 +145,9 @@ The bucket needs:
   }
   ```
 
-- **A CORS rule** that allows `PUT` and `GET` from `http://localhost:3000` with the
-  `Content-Type` header, because the browser uploads straight to the bucket.
+- **A CORS rule** that allows `PUT` and `GET` from `http://localhost:3000` and
+  `http://partner.localhost:3000` with the `Content-Type` header, because the browser uploads
+  straight to the bucket.
 - **An IAM user** with `s3:PutObject` and `s3:GetObject` on `<bucket>/*`, and `s3:ListBucket`
   on the bucket. Without `s3:ListBucket`, S3 answers 403 instead of 404 for an object that was
   never uploaded.

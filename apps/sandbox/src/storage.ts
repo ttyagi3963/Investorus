@@ -15,7 +15,8 @@ export type StorageConfig = {
   storageDir: string;
   signingKey: string;
   internalToken: string;
-  webOrigin: string;
+  /** The web app's origins, one per brand host, that may upload from the browser. */
+  webOrigins: string[];
   now: () => Date;
 };
 
@@ -42,10 +43,13 @@ export function storageRoutes(config: StorageConfig): Router {
     return sameSecret(sig, expected);
   };
 
-  // The browser uploads cross-origin (port 3000 to 4100), so only WEB_ORIGIN gets CORS headers.
+  // The browser uploads cross-origin (port 3000 to 4100), so only a listed web origin (WEB_ORIGIN)
+  // gets CORS headers, naming that origin; the answer varies by Origin, so caches must not share it.
   router.use("/storage/objects", (req, res, next) => {
-    if (req.headers.origin === config.webOrigin) {
-      res.set("Access-Control-Allow-Origin", config.webOrigin);
+    res.vary("Origin");
+    const origin = req.headers.origin;
+    if (origin !== undefined && config.webOrigins.includes(origin)) {
+      res.set("Access-Control-Allow-Origin", origin);
       res.set("Access-Control-Allow-Methods", "PUT, GET, OPTIONS");
       res.set("Access-Control-Allow-Headers", "Content-Type");
     }

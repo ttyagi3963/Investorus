@@ -1,7 +1,8 @@
 // Guards the matching run (T292; FR-022, XII): one Match per matched investor naming every box that
 // matched, one notification per newly matched investor with no seller detail, one audited decision
-// per matched investor; a re-run adds nothing; after a material edit, matched investors hear once
-// that the listing changed and new ones that it matches; and a stale job does nothing.
+// per matched investor; a re-run adds nothing; after a material edit, an investor matched before
+// hears that it changed only if a field their boxes check changed, even when it no longer fits them,
+// and new ones hear that it matches (T366); and a stale job does nothing.
 import type { Actor } from "@clever/contracts/auth";
 import type { BuyBox } from "@clever/contracts/buy-box";
 import type { CreateListingPackageInput } from "@clever/contracts/listing-package";
@@ -214,39 +215,39 @@ describe("MatchingWorkflow", () => {
     expect(actions(uow, "MATCH_DECISION")).toHaveLength(2);
   });
 
-  it("after a material edit, tells matched investors once that it changed and new ones that it matches", async () => {
+  it("after a material edit, tells a notified investor only when a field their boxes check changed, even if they no longer match", async () => {
     const { uow, packages, pkg, matching } = await published();
-    await matching.evaluatePackage({
-      packageId: pkg.id,
-      round: 1,
-      listingVersion: 1,
-      trigger: "PUBLISH",
-    });
-    const { package: edited } = await packages.update(avery, pkg.id, {
-      version: pkg.version,
-      priceExpectationMax: 275_000,
-    });
-    await matching.evaluatePackage({
-      packageId: pkg.id,
-      round: 1,
-      listingVersion: edited.listingVersion,
-      trigger: "PACKAGE_EDIT",
-    });
-    await matching.evaluatePackage({
-      packageId: pkg.id,
-      round: 1,
-      listingVersion: edited.listingVersion,
-      trigger: "PACKAGE_EDIT",
-    });
+    const run = (listingVersion: number, trigger: "PUBLISH" | "PACKAGE_EDIT") =>
+      matching.evaluatePackage({ packageId: pkg.id, round: 1, listingVersion, trigger });
+    const edit = async (priceExpectationMax: number) => {
+      const current = (await uow.repos.packages.findById(pkg.id))!;
+      const { package: edited } = await packages.update(avery, pkg.id, {
+        version: current.version,
+        priceExpectationMax,
+      });
+      await run(edited.listingVersion, "PACKAGE_EDIT");
+      await run(edited.listingVersion, "PACKAGE_EDIT");
+    };
+    const told = (from: number) =>
+      uow.repos.notifications.rows.slice(from).map((n) => [n.userId, n.type]);
+    await run(1, "PUBLISH");
 
-    expect(uow.repos.notifications.rows.slice(2).map((n) => [n.userId, n.type])).toEqual([
+    // Price lowered: summit's Texas box checks price, harbor's box checks nothing, ridge now fits.
+    await edit(275_000);
+    expect(told(2)).toEqual([
       ["user-summit", "PACKAGE_CHANGED"],
-      ["user-harbor", "PACKAGE_CHANGED"],
       ["user-ridge", "PACKAGE_MATCHED"],
     ]);
     expect(uow.repos.matches.rows.find((m) => m.investorId === "investor-ridge")?.trigger).toBe(
       "PACKAGE_EDIT",
     );
+
+    // Price raised past ridge's maximum: ridge no longer matches but is told; harbor still is not.
+    await edit(290_000);
+    expect(told(4)).toEqual([
+      ["user-summit", "PACKAGE_CHANGED"],
+      ["user-ridge", "PACKAGE_CHANGED"],
+    ]);
   });
 
   it("does nothing for an older listing version or a withdrawn package", async () => {

@@ -1391,6 +1391,7 @@ passed"): fix the defects found in review, each with a test that fails without t
 merged by Claude when every check is green.
 
 - [X] T365 A promoted backup that is withdrawn or expires is released and can never be reconfirmed (tests first): reconfirm locks the package, re-reads the offer, and requires a live, unexpired BACKUP; withdrawal and offer expiry decline the promoted backup's pending deal in the same transaction and tell the agent, who can promote another at once; a Postgres test races reconfirm against withdrawal (FR-043, FR-054, FR-057, FR-059)
+- [X] T366 After a material edit, tell an investor matched before only when a field their buy boxes check changed since the version they were last told about, including when the listing no longer fits them; newly matched investors get the match notice; a replay of the same version sends nothing (tests first; FR-022)
 
 **Checkpoint**: every fix has a test that fails without it; all checks green.
 

@@ -1,19 +1,27 @@
 // One matching run (T293; FR-020, FR-022, XII): a listing version against every active buy box,
 // in one change. Stage 1 (the repository) narrows to the boxes that could match; stage 2 (the
 // evaluator) decides every criterion. Each matched investor gets one Match naming every box that
-// matched, one notification per listing version (a match, or "this listing changed"), and one
-// audited decision. A run for a stale version or a closed package does nothing, so a retried or
+// matched and one audited decision. After a material edit, an investor matched before is told of the
+// change only if a field their boxes check changed, even if the listing no longer fits them (FR-022,
+// T366). A run for a stale version or a closed package does nothing, so a retried or
 // late job is harmless. A saved buy box is matched the other way round (T321, FR-023): one box
 // against every package still taking offers; a package it newly shares is a match like any other,
 // and an investor already matched gets the box added and no second notice.
-import { CRITERION_KEYS, type BuyBox, type CriterionKey } from "@clever/contracts/buy-box";
+import {
+  CRITERIA,
+  CRITERION_KEYS,
+  MATERIAL_FIELDS,
+  type BuyBox,
+  type CriterionKey,
+} from "@clever/contracts/buy-box";
 import type { MatchBuyBoxPayload, MatchPackagePayload } from "@clever/contracts/jobs";
 import type { ListingPackage } from "@clever/contracts/listing-package";
 import type { Property } from "@clever/contracts/property";
 import type { IClock } from "../../providers/clock/IClock.js";
 import { evaluateBuyBox, type BuyBoxEvaluation } from "../../registry/evaluate-buy-box.js";
-import { EVALUATOR_VERSION } from "../../registry/evaluators.js";
-import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
+import { EVALUATORS, EVALUATOR_VERSION } from "../../registry/evaluators.js";
+import type { ListingFacts } from "../../registry/listing-facts.js";
+import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { placeOf } from "../notice-text.js";
 import { notifyInvestor, type InvestorNotice } from "../../outbox/notify-investor.js";
 
@@ -76,36 +84,58 @@ export class MatchingWorkflow implements IMatchingWorkflow {
       }
 
       const property = await repos.properties.findById(pkg.propertyId);
+      const earlier = new Map(
+        (await repos.matches.listByPackage(packageId, round)).map((m) => [m.investorId, m]),
+      );
+      // Investors matched in this round before this version: told of the change only if a field
+      // their boxes check changed since the version they were last told about, whether or not
+      // they still match (FR-022). Newly matched investors are handled below.
+      for (const [investorId, prior] of earlier) {
+        const lastTold = prior.lastNotifiedListingVersion;
+        // Already told about this version (a re-run), or never told: nothing to compare.
+        if (lastTold === null || lastTold >= listingVersion) continue;
+        const stillMatched = byInvestor.get(investorId) ?? [];
+        if (stillMatched.length > 0) {
+          await repos.matches.upsert({
+            packageId,
+            investorId,
+            round,
+            matchedBuyBoxIds: stillMatched.map(({ box }) => box.id),
+            trigger,
+          });
+        }
+        const seen = await repos.listingVersions.find(packageId, lastTold);
+        if (!seen) throw new Error(`Listing version ${lastTold} of ${packageId} is missing`);
+        const boxes = await boxesOf(repos, prior.matchedBuyBoxIds, stillMatched);
+        if (!changedFieldChecked(boxes, seen.snapshot, facts, today)) continue;
+        await notifyInvestor(
+          repos,
+          investorId,
+          changedNotice(pkg, property, stillMatched.length > 0),
+        );
+        await repos.matches.markNotified(prior.id, listingVersion);
+        if (stillMatched.length > 0) {
+          await repos.audit.append({
+            ...systemEntry(packageId, "MATCH_DECISION"),
+            details: decisionDetails(investorId, round, listingVersion, stillMatched),
+          });
+        }
+      }
+
       for (const [investorId, matched] of byInvestor) {
-        const { match, created } = await repos.matches.upsert({
+        if (earlier.has(investorId)) continue;
+        const { match } = await repos.matches.upsert({
           packageId,
           investorId,
           round,
           matchedBuyBoxIds: matched.map(({ box }) => box.id),
           trigger,
         });
-        // Already told about this version: a re-run adds nothing.
-        if (!created && (match.lastNotifiedListingVersion ?? 0) >= listingVersion) continue;
-
-        await notifyInvestor(
-          repos,
-          investorId,
-          created ? matchedNotice(pkg, property, matched) : changedNotice(pkg, property),
-        );
+        await notifyInvestor(repos, investorId, matchedNotice(pkg, property, matched));
         await repos.matches.markNotified(match.id, listingVersion);
         await repos.audit.append({
           ...systemEntry(packageId, "MATCH_DECISION"),
-          details: {
-            investorId,
-            round,
-            listingVersion,
-            evaluatorVersion: EVALUATOR_VERSION,
-            buyBoxes: matched.map(({ box, evaluation }) => ({
-              id: box.id,
-              version: box.version,
-              criteria: evaluation.results,
-            })),
-          },
+          details: decisionDetails(investorId, round, listingVersion, matched),
         });
       }
       await repos.audit.append({
@@ -202,11 +232,75 @@ function matchedNotice(
   };
 }
 
-function changedNotice(pkg: ListingPackage, property: Property | null): InvestorNotice {
+function changedNotice(
+  pkg: ListingPackage,
+  property: Property | null,
+  stillMatches: boolean,
+): InvestorNotice {
   return {
     type: "PACKAGE_CHANGED",
     packageId: pkg.id,
     title: "A matched listing changed",
-    body: `The listing in ${placeOf(property)} was updated. Review it before you make or revise an offer.`,
+    body: stillMatches
+      ? `The listing in ${placeOf(property)} was updated. Review it before you make or revise an offer.`
+      : `The listing in ${placeOf(property)} was updated and no longer fits your buy boxes. Review it before you make or revise an offer.`,
   };
+}
+
+const decisionDetails = (
+  investorId: string,
+  round: number,
+  listingVersion: number,
+  matched: MatchedBox[],
+) => ({
+  investorId,
+  round,
+  listingVersion,
+  evaluatorVersion: EVALUATOR_VERSION,
+  buyBoxes: matched.map(({ box, evaluation }) => ({
+    id: box.id,
+    version: box.version,
+    criteria: evaluation.results,
+  })),
+});
+
+/** The boxes that matched the investor before, as they are now, plus those that match now. */
+async function boxesOf(
+  repos: UnitOfWorkRepositories,
+  earlierIds: readonly string[],
+  stillMatched: MatchedBox[],
+): Promise<BuyBox[]> {
+  const boxes = new Map(stillMatched.map(({ box }) => [box.id, box]));
+  for (const id of earlierIds) {
+    if (boxes.has(id)) continue;
+    const box = await repos.buyBoxes.findById(id);
+    if (box) boxes.set(id, box);
+  }
+  return [...boxes.values()];
+}
+
+/**
+ * Whether any listing field that changed between the two versions is one the boxes check. A box
+ * checks a criterion it sets (the registry's evaluator names an expected value; "any" names none),
+ * and a criterion reads the listing fields the Criterion Registry lists for it (FR-022).
+ */
+function changedFieldChecked(
+  boxes: BuyBox[],
+  before: ListingFacts,
+  after: ListingFacts,
+  today: string,
+): boolean {
+  const changed = new Set(
+    MATERIAL_FIELDS.filter(
+      (field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]),
+    ),
+  );
+  if (changed.size === 0) return false;
+  return boxes.some((box) =>
+    CRITERION_KEYS.some(
+      (key) =>
+        EVALUATORS[key](box, after, today).expected !== null &&
+        CRITERIA[key].listingFields.some((field) => changed.has(field)),
+    ),
+  );
 }

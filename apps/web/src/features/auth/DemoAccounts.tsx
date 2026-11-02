@@ -4,12 +4,31 @@
 import { Button } from "@clever/ui";
 
 export const DEMO_PASSWORD = "demo1234";
+// Each line says what that account shows, in the README's words (T425).
 export const DEMO_ACCOUNTS = [
   { email: "avery@example.com", role: "Agent", shows: "builds and publishes listing packages" },
-  { email: "blake@example.com", role: "Agent", shows: "compares four offers and tracks the deal" },
-  { email: "summit@example.com", role: "Investor", shows: "two buy boxes that match the sample" },
-  { email: "harbor@example.com", role: "Investor", shows: "one broad buy box" },
-  { email: "ridge@example.com", role: "Investor", shows: "a narrow buy box that does not match" },
+  {
+    email: "blake@example.com",
+    role: "Agent",
+    shows: "compares four offers on West Adams and tracks the Inglewood deal",
+  },
+  {
+    email: "summit@example.com",
+    role: "Investor",
+    shows: "two buy boxes, and the backup offer on Inglewood",
+  },
+  { email: "harbor@example.com", role: "Investor", shows: "one broad buy box: any home but land" },
+  {
+    email: "ridge@example.com",
+    role: "Investor",
+    shows: "a narrow buy box (Westside condos) with one match",
+  },
+  {
+    email: "cobalt@example.com",
+    role: "Investor",
+    shows: "won the Inglewood deal, so sees the seller's contact",
+  },
+  { email: "dune@example.com", role: "Investor", shows: "one of four offers on West Adams" },
   { email: "morgan@example.com", role: "Operations", shows: "the operations console" },
 ] as const;
 

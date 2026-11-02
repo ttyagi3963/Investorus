@@ -8,8 +8,9 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 
 - **Auth**: `Authorization: Bearer <session JWT>` on every route except `POST /sessions`,
   `GET /health`, `GET /brands`, and `GET /brands/:brandId/theme` (the sign-in page renders a brand),
-  matched as the router matches them: with a trailing slash and in any letter case (T392). A token is accepted only while its user is active and, for
-  an investor, the investor is ACTIVE, checked on every request; otherwise 401 (T370). The role is
+  matched as the router matches them: with a trailing slash and in any letter case (T392). A token is accepted only while its user is active
+  (operations' ban), checked on every request; otherwise 401 (T370). An investor marked INACTIVE
+  keeps access and is only kept out of matching (T398). The role is
   checked in the service (III), not the route.
 - **Idempotency (XX.2)**: every POST, PUT, and PATCH from a signed-in user requires an
   `Idempotency-Key` header (up to 255 characters). Keys are per user,

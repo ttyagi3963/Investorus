@@ -44,7 +44,7 @@ export type DealParts = {
 export type BackupView = {
   offer: OfferView;
   investorName: string;
-  /** False once operations deactivated the investor: shown, flagged, and not promotable (T370). */
+  /** False once operations marked the investor inactive: shown, flagged, still promotable (T398). */
   investorActive: boolean;
   netProceeds: number;
   breakdown: NetProceedsLine[];

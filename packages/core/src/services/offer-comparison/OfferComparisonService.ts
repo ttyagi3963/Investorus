@@ -1,7 +1,7 @@
 // The agent's offer comparison (T308; FR-050, FR-051): every offer still in play on the package's
 // current round (active, countered, or backup), with the investor's name, the estimated net
-// proceeds and their breakdown, the certainty rank, whether operations deactivated the investor
-// (flagged, not hidden; T370), and whether the seller can accept it now. The
+// proceeds and their breakdown, the certainty rank, whether operations marked the investor inactive
+// (flagged, not hidden, still acceptable; T370, T398), and whether the seller can accept it now. The
 // fee assumptions come from config and are returned with the rows. Only the package's agent sees it.
 import type { Actor } from "@clever/contracts/auth";
 import { NotFoundError } from "@clever/contracts/common";
@@ -75,11 +75,7 @@ export class OfferComparisonService implements IOfferComparisonService {
           ...computeNetProceeds(offer, assumptions),
           certaintyRank: certaintyRank(offer),
           expired,
-          acceptable:
-            offer.status === "ACTIVE" &&
-            !expired &&
-            !inactive.has(offer.investorId) &&
-            pkg.status === "ACCEPTING_OFFERS",
+          acceptable: offer.status === "ACTIVE" && !expired && pkg.status === "ACCEPTING_OFFERS",
         };
       });
       // Ties keep the order offers came in, so the list never shuffles between loads.

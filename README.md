@@ -118,8 +118,8 @@ in the database. Two brands are seeded, Clever Offers and a fictional partner, L
   changes every page at once.
 
 A new brand is a folder in [seed/brands/](seed/brands/) (`tokens.json`, `content.json`,
-`hosts.json`) and a logo in `apps/web/public/brands/<id>/`; see
-[the design token contract](specs/001-investor-platform-prototype/contracts/design-tokens.md).
+`hosts.json`) and a logo in `apps/web/public/brands/<id>/`. Each brand's tokens are checked when
+the brand is loaded (required variables, contrast, safe logo paths), so a broken brand is refused.
 
 ## Using S3 (optional)
 
@@ -215,8 +215,7 @@ Every answer carries an `X-Request-Id`, which also appears in the logs and in er
 
 ## Prototype Shortcuts
 
-What the prototype does more simply than production would, and the production approach. The same
-table is in [plan.md](specs/001-investor-platform-prototype/plan.md).
+What the prototype does more simply than production would, and the production approach.
 
 | Shortcut | Production approach |
 | --- | --- |
@@ -277,5 +276,10 @@ and exits 1 if a limit is broken (for memory, a total over 2,048 MiB).
 `scripts/submission/rehearse.sh <zip>` checks the same limits in a simulated 2 GB, 2-core machine;
 CI runs it on every push to `main` and on pull requests that change code or the build.
 
-The specification, plan, and task list are in
-[specs/001-investor-platform-prototype](specs/001-investor-platform-prototype/).
+### How it was built
+
+The project was built spec-first with GitHub Spec Kit (specification, plan, task list) under a
+written engineering constitution, by an engineering lead directing AI agents. The key decisions,
+their alternatives, and their trade-offs are in [docs/adr](docs/adr/). The spec documents, task
+log, and constitution are kept private and are available on request. Comments in the code cite
+them by task number (for example `T367`) and constitution principle (for example `XII`).

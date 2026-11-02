@@ -31,7 +31,9 @@ MAX_UNZIPPED_BYTES = 500 * MB
 MAX_FILE_BYTES = 5 * MB  # "large media": the seed photos are under 5 MB in total (T138)
 FORBIDDEN_DIRS = {"node_modules", "dist", ".next", ".turbo", "coverage"}
 FORBIDDEN_FILES = {"assignment.md", "teams.md", "forgemini.md", ".env.local", "settings.local.json"}
-PRIVATE_DIRS = {"study-notes", "worktrees"}
+PRIVATE_DIRS = {"study-notes", "worktrees", ".claude", ".specify", "specs"}
+# The owner's private engineering process stays local (T412).
+PRIVATE_PATHS = ("CLAUDE.md", "scripts/board/", ".github/workflows/claude", ".github/pull_request_template.md")
 
 
 def human(n: float) -> str:
@@ -74,6 +76,8 @@ def main(path: str) -> int:
             failures.append(f"confidential file included: {n}")
         if PRIVATE_DIRS.intersection(parts[:-1] if not n.endswith("/") else parts):
             failures.append(f"private folder included: {n}")
+        if n.startswith(PRIVATE_PATHS):
+            failures.append(f"private file included: {n}")
     for i in infos:
         if i.file_size > MAX_FILE_BYTES:
             failures.append(f"large file ({human(i.file_size)} > {human(MAX_FILE_BYTES)}): {i.filename}")

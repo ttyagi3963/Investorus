@@ -54,7 +54,7 @@ export async function saveBrandTokens(input: unknown): Promise<SaveTokensResult>
     return {
       ok: false,
       status: 400,
-      body: { error: "Some fields are invalid", code: "VALIDATION_ERROR", details: { fields } },
+      body: { error: "Some fields are invalid", code: "VALIDATION_FAILED", details: { fields } },
     };
   }
   const { brandId, tokens, tokenVersion } = parsed.data;

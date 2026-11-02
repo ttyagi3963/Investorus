@@ -43,7 +43,7 @@ describe("saveBrandTokens", () => {
     expect(result).toMatchObject({
       ok: false,
       status: 400,
-      body: { details: { fields: [{ field: "tokenVersion" }] } },
+      body: { code: "VALIDATION_FAILED", details: { fields: [{ field: "tokenVersion" }] } },
     });
     expect(fetch).not.toHaveBeenCalled();
   });

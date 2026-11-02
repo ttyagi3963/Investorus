@@ -250,6 +250,28 @@ describe("MatchingWorkflow", () => {
     ]);
   });
 
+  it("tells an investor matched but never told that the listing matches, when it is next evaluated (T373)", async () => {
+    const { uow, pkg, matching } = await published();
+    // A match recorded without a notice, as the deal demo's seed once wrote them.
+    await uow.repos.matches.upsert({
+      packageId: pkg.id,
+      investorId: "investor-harbor",
+      round: 1,
+      matchedBuyBoxIds: ["Anywhere"],
+      trigger: "PUBLISH",
+    });
+
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
+
+    const harbor = uow.repos.notifications.rows.filter((n) => n.userId === "user-harbor");
+    expect(harbor.map((n) => n.type)).toEqual(["PACKAGE_MATCHED"]);
+  });
+
   it("does nothing for an older listing version or a withdrawn package", async () => {
     const { uow, packages, pkg, matching } = await published();
     const { package: edited } = await packages.update(avery, pkg.id, {

@@ -1,14 +1,19 @@
 // The deal demo the reviewer opens as blake@example.com (T314): one published package in Austin,
 // matched to four investors whose buy boxes really fit it, each with an offer that differs in
 // price, payment, contingencies, and closing date, so the comparison and the decision work at once.
-// It is written through the app's own repositories, so the seller is encrypted and the deadline and
-// expiry jobs are queued as a real publish would; it runs once (skipped when Blake has a package).
+// The package is written through the app's own repositories (the seller encrypted, the deadline job
+// queued). It is then matched by the real MatchingWorkflow, so each match has its stored decision
+// (the ops console's "Why?"), its notice, and the version its investor was told about; and the offers
+// are made through the real OfferService, so each writes its CRM event and expiry job (T373). It
+// runs once (skipped when Blake has a package).
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 import type { AddressHasher, IPiiCipher } from "../../providers/pii-cipher/IPiiCipher.js";
 import { EVALUATOR_VERSION } from "../../registry/evaluators.js";
 import { toListingFacts } from "../../registry/listing-facts.js";
+import { OfferService } from "../../services/offer/OfferService.js";
 import { PrismaUnitOfWorkImpl } from "../../unit-of-work/PrismaUnitOfWorkImpl.js";
-import { scheduleOfferExpiry, scheduleRoundClose } from "../../workflows/offer-round/schedule.js";
+import { MatchingWorkflow } from "../../workflows/matching/MatchingWorkflow.js";
+import { scheduleRoundClose } from "../../workflows/offer-round/schedule.js";
 
 const DAY = 86_400_000;
 
@@ -65,13 +70,11 @@ export async function seedDealDemo(
   const now = deps.now ?? new Date();
   const at = (days: number) => new Date(now.getTime() + days * DAY);
   const date = (days: number) => at(days).toISOString().slice(0, 10);
-  const investors = await prisma.investor.findMany({
-    where: { email: { in: OFFERS.map((o) => o.investor) } },
-  });
   const users = await prisma.user.findMany({ where: { agentId: blake.id } });
+  const clock = { now: () => now };
 
   const uow = new PrismaUnitOfWorkImpl(prisma, deps.cipher);
-  await uow.run(async (repos) => {
+  const pkg = await uow.run(async (repos) => {
     const seller = await repos.sellers.create({
       fullName: "Jordan Rivera",
       email: "jordan.rivera@example.net",
@@ -121,7 +124,7 @@ export async function seedDealDemo(
       evaluatorVersion: EVALUATOR_VERSION,
     });
     await scheduleRoundClose(repos, pkg);
-    const entry = (action: "PACKAGE_CREATED" | "PACKAGE_PUBLISHED" | "OFFER_SUBMITTED") => ({
+    const entry = (action: "PACKAGE_CREATED" | "PACKAGE_PUBLISHED") => ({
       actorType: "USER" as const,
       actorId: users[0]?.id ?? null,
       action,
@@ -132,40 +135,39 @@ export async function seedDealDemo(
     await repos.audit.append(entry("PACKAGE_CREATED"));
     await repos.audit.append({ ...entry("PACKAGE_PUBLISHED"), details: { listingVersion: 1 } });
 
-    for (const terms of OFFERS) {
-      const investor = investors.find((i) => i.email === terms.investor);
-      if (!investor) throw new Error(`seed: investor ${terms.investor} is missing`);
-      // Each of these investors has a buy box that matches the listing (seed.ts).
-      await repos.matches.upsert({
-        packageId: pkg.id,
-        investorId: investor.id,
-        round: 1,
-        matchedBuyBoxIds: (
-          await prisma.buyBox.findMany({ where: { investorId: investor.id }, select: { id: true } })
-        ).map((box) => box.id),
-        trigger: "PUBLISH",
-      });
-      const offer = await repos.offers.create({
-        packageId: pkg.id,
-        investorId: investor.id,
-        round: 1,
+    return pkg;
+  });
+
+  // Matched as a real publish is: decisions, notices, and the version each investor was told about.
+  await new MatchingWorkflow(uow, { clock }).evaluatePackage({
+    packageId: pkg.id,
+    round: 1,
+    listingVersion: 1,
+    trigger: "PUBLISH",
+  });
+
+  // Each offer as its investor makes it: the CRM event, the agent's notice, the expiry job.
+  const offers = new OfferService(uow, { clock });
+  for (const terms of OFFERS) {
+    const investor = await prisma.user.findFirst({
+      where: { role: "INVESTOR", investor: { email: terms.investor } },
+      select: { id: true, investorId: true },
+    });
+    if (!investor?.investorId) throw new Error(`seed: investor ${terms.investor} has no login`);
+    await offers.create(
+      { userId: investor.id, role: "INVESTOR", investorId: investor.investorId },
+      pkg.id,
+      {
         price: terms.price,
         paymentType: terms.paymentType,
         contingencies: [...terms.contingencies],
         closingDate: date(terms.closingInDays),
         earnestMoney: terms.earnestMoney,
         feesAndConcessions: terms.feesAndConcessions,
-        expiresAt: at(terms.expiresInDays),
-      });
-      await scheduleOfferExpiry(repos, offer);
-      await repos.audit.append({
-        ...entry("OFFER_SUBMITTED"),
-        actorId: null,
-        actorType: "SYSTEM",
-        details: { offerId: offer.id, revision: 1, price: offer.price },
-      });
-    }
-  });
+        expiresAt: at(terms.expiresInDays).toISOString(),
+      },
+    );
+  }
 }
 
 /** The settings the comparison and backup promotions read (constitution IX); ops edits come later. */

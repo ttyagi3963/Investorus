@@ -84,16 +84,20 @@ export class MatchingWorkflow implements IMatchingWorkflow {
       }
 
       const property = await repos.properties.findById(pkg.propertyId);
+      // Investors matched and told in this round before. A match never told about the listing is
+      // not among them: it is treated as new below and gets the match notice (T373).
       const earlier = new Map(
-        (await repos.matches.listByPackage(packageId, round)).map((m) => [m.investorId, m]),
+        (await repos.matches.listByPackage(packageId, round)).flatMap((m) =>
+          m.lastNotifiedListingVersion === null ? [] : [[m.investorId, m] as const],
+        ),
       );
       // Investors matched in this round before this version: told of the change only if a field
       // their boxes check changed since the version they were last told about, whether or not
       // they still match (FR-022). Newly matched investors are handled below.
       for (const [investorId, prior] of earlier) {
-        const lastTold = prior.lastNotifiedListingVersion;
-        // Already told about this version (a re-run), or never told: nothing to compare.
-        if (lastTold === null || lastTold >= listingVersion) continue;
+        const lastTold = prior.lastNotifiedListingVersion!;
+        // Already told about this version: a re-run adds nothing.
+        if (lastTold >= listingVersion) continue;
         const stillMatched = byInvestor.get(investorId) ?? [];
         if (stillMatched.length > 0) {
           await repos.matches.upsert({

@@ -34,11 +34,13 @@ try {
   await seedBrands(prisma, env.data.SEED_BRANDS_DIR);
   await seedDemoAccounts(prisma);
   await seedConfig(prisma);
+  // Buy box versions first: matching the deal demo, and the console's "Why?", judge each box by the
+  // version it had when the listing was matched (T373).
+  await seedBuyBoxVersions(prisma);
   await seedDealDemo(prisma, {
     cipher: new AesGcmPiiCipherImpl(env.data.PII_ENCRYPTION_KEY),
     addressHash: createAddressHasher(env.data.ADDRESS_HASH_KEY),
   });
-  await seedBuyBoxVersions(prisma);
   process.stdout.write("seed: brands, demo accounts, config, and the deal demo ready\n");
 } finally {
   await prisma.$disconnect();

@@ -62,11 +62,20 @@ table { border-collapse: collapse; margin-bottom: 2rem; width: 100%; }
 caption { text-align: left; padding-bottom: 0.5rem; }
 th, td { border: 1px solid #888; padding: 0.25rem 0.5rem; text-align: left; vertical-align: top; }
 td { white-space: pre-wrap; }
+.notice { background: #fff4d6; color: #5c3d00; border: 2px solid #e0a800; border-radius: 0.5rem;
+  padding: 0.75rem 1rem; margin: 1rem 0 1.5rem; }
 </style>
 </head>
 <body>
 <main>
 <h1>Sandbox</h1>
+<p class="notice" role="note"><strong>This is a stand-in, not a real service.</strong> It shows what the
+platform would send if a real CRM, email, and SMS provider were connected. Everything here is live: each
+record and message appears as you act in the platform. Nothing leaves this machine.<br>
+<strong>Why a stand-in:</strong> the prototype starts with one command and needs no outside accounts or
+keys, so it talks to these instead. They behave like the real services, including outages: switch a
+service to down, slow, or garbage below and watch the platform retry, set deliveries aside for
+operations, and recover once it is back up.</p>
 <p>The stand-in CRM, email and SMS, and storage the platform talks to. This page refreshes every 5 seconds.</p>
 <section aria-labelledby="modes">
 <h2 id="modes">Outage modes</h2>

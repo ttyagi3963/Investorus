@@ -1,8 +1,10 @@
 // What the offer round's timers do when they run (T306; FR-044, FR-059). At the deadline, a round
 // with no open offers moves the package to NO_OFFERS_RECEIVED and tells the agent; a round with
 // offers stays open for the seller's decision (new offers are already refused after the deadline).
-// At an offer's expiry, a still-open offer becomes EXPIRED and its investor is told. Each run
+// At an offer's expiry, a still-open offer becomes EXPIRED and its investor is told; a promoted
+// backup's deal waiting for reconfirmation is released with it (T365). Each run
 // re-reads the rows and does nothing when its job is stale, so a late or repeated job is harmless.
+import { releasePromotedBackup } from "../deal-lifecycle/release-promoted-backup.js";
 import type { CloseOfferRoundPayload, ExpireOfferPayload } from "@clever/contracts/jobs";
 import { OPEN_OFFER_STATUSES } from "../../repositories/offer/IOfferRepository.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
@@ -70,7 +72,10 @@ export class OfferRoundWorkflow implements IOfferRoundWorkflow {
       ) {
         return;
       }
-      await repos.offers.updateStatus(offerId, offer.version, "EXPIRED");
+      // The package lock orders this expiry against a reconfirmation of the same offer (T365).
+      await repos.packages.lock(offer.packageId);
+      const expired = await repos.offers.updateStatus(offerId, offer.version, "EXPIRED");
+      await releasePromotedBackup(repos, expired, "EXPIRED", null);
       const pkg = await repos.packages.findById(offer.packageId);
       const property = pkg && (await repos.properties.findById(pkg.propertyId));
       await notifyInvestor(repos, offer.investorId, {

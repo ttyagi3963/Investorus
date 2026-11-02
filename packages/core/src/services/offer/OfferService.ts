@@ -30,6 +30,7 @@ import {
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import type { AuditAction } from "@clever/contracts/audit";
 import { placeOf } from "../../workflows/notice-text.js";
+import { releasePromotedBackup } from "../../workflows/deal-lifecycle/release-promoted-backup.js";
 import { scheduleOfferExpiry } from "../../workflows/offer-round/schedule.js";
 import { checkOfferDates, termsOf } from "./offer-terms.js";
 import { investorOf } from "../investor-package/InvestorPackageQueryService.js";
@@ -124,6 +125,8 @@ export class OfferService implements IOfferService {
       await repos.packages.lock(current.packageId);
       const offer = await repos.offers.updateStatus(offerId, version, "WITHDRAWN");
       await audit(repos, actor, offer, "OFFER_WITHDRAWN");
+      // A promoted backup that withdraws stops waiting to reconfirm (T365).
+      await releasePromotedBackup(repos, offer, "WITHDRAWN", actor);
       // The CRM's offer count goes back down in the same change (FR-077).
       const pkg = await repos.packages.findById(offer.packageId);
       if (pkg) {

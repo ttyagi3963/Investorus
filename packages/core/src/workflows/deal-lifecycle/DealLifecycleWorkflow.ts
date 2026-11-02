@@ -203,8 +203,11 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
     const investorId = investorOf(actor);
     const { action } = reconfirmationSchema.parse(input);
     return this.uow.run(async (repos) => {
-      const offer = await repos.offers.findById(offerId);
-      if (!offer || offer.investorId !== investorId) throw new NotFoundError("Offer not found");
+      const found = await repos.offers.findById(offerId);
+      if (!found || found.investorId !== investorId) throw new NotFoundError("Offer not found");
+      // Orders this against a withdrawal or expiry of the same offer, then reads it again (T365).
+      await repos.packages.lock(found.packageId);
+      const offer = (await repos.offers.findById(offerId))!;
       const deal = await repos.deals.findByOffer(offerId);
       if (deal?.status !== "PENDING_RECONFIRMATION") {
         throw new BusinessRuleError(
@@ -214,6 +217,17 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
       }
       if (this.deps.clock.now() >= deal.reconfirmBy!) {
         throw new BusinessRuleError("The time to reconfirm has passed", "RECONFIRM_EXPIRED");
+      }
+      // Only a live backup can become the accepted offer; withdrawal and expiry release the deal,
+      // and this also catches an offer past its expiry whose expiry job has not run yet (T365).
+      if (offer.status !== "BACKUP") {
+        throw new BusinessRuleError(
+          "This offer is not waiting for your reconfirmation",
+          "NOT_PROMOTED",
+        );
+      }
+      if (action === "CONFIRM" && offer.expiresAt <= this.deps.clock.now()) {
+        throw new BusinessRuleError("This offer has expired", "OFFER_EXPIRED");
       }
       const pkg = (await repos.packages.findById(offer.packageId))!;
       if (action === "DECLINE") return this.declineReconfirmation(repos, deal, offer, pkg, actor);

@@ -1384,6 +1384,18 @@ tests; `scripts/verify-limits.sh` reports the build and start times within the l
 
 ---
 
+## Sprint 9: Review Fixes
+
+**Goal** (owner, 2026-11-01: "ill give u more bugs to fix then u combine them in 1 pr and merge if
+passed"): fix the defects found in review, each with a test that fails without the fix, in one PR
+merged by Claude when every check is green.
+
+- [X] T365 A promoted backup that is withdrawn or expires is released and can never be reconfirmed (tests first): reconfirm locks the package, re-reads the offer, and requires a live, unexpired BACKUP; withdrawal and offer expiry decline the promoted backup's pending deal in the same transaction and tell the agent, who can promote another at once; a Postgres test races reconfirm against withdrawal (FR-043, FR-054, FR-057, FR-059)
+
+**Checkpoint**: every fix has a test that fails without it; all checks green.
+
+---
+
 ## After Sprint 1: Production Storage Adapter (owner-scheduled)
 
 **Purpose**: show that storage is swappable by adding the production adapter that

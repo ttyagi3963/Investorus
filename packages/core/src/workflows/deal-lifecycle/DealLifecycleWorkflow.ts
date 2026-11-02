@@ -5,12 +5,7 @@
 // makes it the accepted offer, and no or the timeout (a durable job) frees the agent to promote
 // another. Every step is audited and its investor or agent is told, in the same change.
 import type { Actor } from "@clever/contracts/auth";
-import {
-  BusinessRuleError,
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-} from "@clever/contracts/common";
+import { BusinessRuleError, ConflictError, NotFoundError } from "@clever/contracts/common";
 import {
   fallThroughInputSchema,
   milestoneInputSchema,
@@ -25,9 +20,10 @@ import type { ExpireReconfirmationPayload } from "@clever/contracts/jobs";
 import type { ListingPackage } from "@clever/contracts/listing-package";
 import type { Offer } from "@clever/contracts/offer";
 import type { IClock } from "../../providers/clock/IClock.js";
+import { required } from "../../errors/required.js";
 import { readConfig } from "../../repositories/config/read-config.js";
 import type { NewNotification } from "../../repositories/notification/INotificationRepository.js";
-import { investorOf } from "../../services/investor-package/InvestorPackageQueryService.js";
+import { agentOf, investorOf } from "../../services/actor-guards.js";
 import { computeNetProceeds } from "../../services/offer-comparison/net-proceeds.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { placeOf } from "../notice-text.js";
@@ -52,6 +48,7 @@ const NEXT: Partial<Record<DealStatus, DealMilestone>> = {
 const allowedNext = (status: DealStatus): DealMilestone[] => (NEXT[status] ? [NEXT[status]] : []);
 
 const NOT_FOUND = "Deal not found";
+const AGENT_ONLY = "Only the package's agent manages its deal";
 const HOUR = 3_600_000;
 
 type Notice = Omit<NewNotification, "userId">;
@@ -63,7 +60,7 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
   ) {}
 
   async get(actor: Actor, packageId: string): Promise<DealParts> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENT_ONLY);
     return this.uow.run(async (repos) => {
       const pkg = await repos.packages.findForAgent(agentId, packageId);
       const deal = pkg && (await repos.deals.findLatestByPackage(packageId));
@@ -73,7 +70,7 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
   }
 
   async recordMilestone(actor: Actor, dealId: string, input: unknown): Promise<DealParts> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENT_ONLY);
     const { milestone, version } = milestoneInputSchema.parse(input);
     return this.uow.run(async (repos) => {
       const { deal, pkg } = await this.ownDeal(repos, agentId, dealId);
@@ -98,7 +95,7 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
           });
         }
       }
-      const offer = (await repos.offers.findById(deal.offerId))!;
+      const offer = required(await repos.offers.findById(deal.offerId), `Offer ${deal.offerId}`);
       await this.notifyInvestor(repos, offer.investorId, {
         type: "DEAL_MILESTONE",
         packageId: pkg.id,
@@ -111,7 +108,7 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
   }
 
   async fallThrough(actor: Actor, dealId: string, input: unknown): Promise<DealParts> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENT_ONLY);
     const { reason, version } = fallThroughInputSchema.parse(input);
     return this.uow.run(async (repos) => {
       const { deal, pkg } = await this.ownDeal(repos, agentId, dealId);
@@ -125,7 +122,7 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
         status: "FELL_THROUGH",
         fellThroughReason: reason,
       });
-      const offer = (await repos.offers.findById(deal.offerId))!;
+      const offer = required(await repos.offers.findById(deal.offerId), `Offer ${deal.offerId}`);
       await repos.offers.updateStatus(offer.id, offer.version, "FELL_THROUGH");
       const updated = await repos.packages.update(pkg.id, pkg.version, { status: "FELL_THROUGH" });
       // The reason is the agent's words and may name the seller, so the buyer is not shown it.
@@ -141,7 +138,7 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
   }
 
   async promoteBackup(actor: Actor, packageId: string, input: unknown): Promise<DealParts> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENT_ONLY);
     const { offerId, version } = promoteBackupSchema.parse(input);
     const now = this.deps.clock.now();
     return this.uow.run(async (repos) => {
@@ -203,14 +200,14 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
   }
 
   async reconfirm(actor: Actor, offerId: string, input: unknown): Promise<Offer> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, "Only investors see matched packages");
     const { action } = reconfirmationSchema.parse(input);
     return this.uow.run(async (repos) => {
       const found = await repos.offers.findById(offerId);
       if (!found || found.investorId !== investorId) throw new NotFoundError("Offer not found");
       // Orders this against a withdrawal or expiry of the same offer, then reads it again (T365).
       await repos.packages.lock(found.packageId);
-      const offer = (await repos.offers.findById(offerId))!;
+      const offer = required(await repos.offers.findById(offerId), `Offer ${offerId}`);
       const deal = await repos.deals.findByOffer(offerId);
       if (deal?.status !== "PENDING_RECONFIRMATION") {
         throw new BusinessRuleError(
@@ -232,7 +229,10 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
       if (action === "CONFIRM" && offer.expiresAt <= this.deps.clock.now()) {
         throw new BusinessRuleError("This offer has expired", "OFFER_EXPIRED");
       }
-      const pkg = (await repos.packages.findById(offer.packageId))!;
+      const pkg = required(
+        await repos.packages.findById(offer.packageId),
+        `The offer's package ${offer.packageId}`,
+      );
       if (action === "DECLINE") return this.declineReconfirmation(repos, deal, offer, pkg, actor);
 
       await repos.deals.update(deal.id, deal.version, {
@@ -258,11 +258,14 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
       if (!found) return;
       // Ordered against the investor's answer, a withdrawal, or an expiry, then read again (T376).
       await repos.packages.lock(found.packageId);
-      const deal = (await repos.deals.findById(dealId))!;
+      const deal = required(await repos.deals.findById(dealId), `Deal ${dealId}`);
       // The investor already answered, or the offer was withdrawn or expired: nothing to time out.
       if (deal.status !== "PENDING_RECONFIRMATION") return;
-      const offer = (await repos.offers.findById(deal.offerId))!;
-      const pkg = (await repos.packages.findById(deal.packageId))!;
+      const offer = required(await repos.offers.findById(deal.offerId), `Offer ${deal.offerId}`);
+      const pkg = required(
+        await repos.packages.findById(deal.packageId),
+        `The deal's package ${deal.packageId}`,
+      );
       await this.declineReconfirmation(repos, deal, offer, pkg, null);
     });
   }
@@ -320,7 +323,7 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
     deal: Deal,
   ): Promise<DealParts> {
     const now = this.deps.clock.now();
-    const offer = (await repos.offers.findById(deal.offerId))!;
+    const offer = required(await repos.offers.findById(deal.offerId), `Offer ${deal.offerId}`);
     const backups = (await repos.offers.listByPackage(pkg.id, pkg.round)).filter(
       (o) => o.status === "BACKUP" && o.id !== offer.id,
     );
@@ -345,12 +348,6 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
         }))
         .sort((a, b) => b.netProceeds - a.netProceeds),
     };
-  }
-
-  private agentOf(actor: Actor): string {
-    if (actor.role !== "AGENT")
-      throw new ForbiddenError("Only the package's agent manages its deal");
-    return actor.agentId;
   }
 
   private async ownDeal(repos: UnitOfWorkRepositories, agentId: string, dealId: string) {

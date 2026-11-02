@@ -11,8 +11,9 @@ import {
   type DeliveryView,
 } from "@clever/contracts/ops";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
-import { assertOps } from "./assert-ops.js";
+import { assertOps } from "../actor-guards.js";
 
+const OPS_ONLY = "Only operations can use the console";
 const LIST_LIMIT = 200;
 
 export interface IDeliveryOpsService {
@@ -25,7 +26,7 @@ export class DeliveryOpsService implements IDeliveryOpsService {
   constructor(private readonly uow: IUnitOfWork) {}
 
   async list(actor: Actor, query: unknown): Promise<DeliveryView[]> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const { status } = deliveryListQuerySchema.parse(query);
     return this.uow.run(async (repos) => {
       const rows = await repos.opsQuery.listDeliveries({ status }, LIST_LIMIT);
@@ -49,7 +50,7 @@ export class DeliveryOpsService implements IDeliveryOpsService {
   }
 
   async retry(actor: Actor, deliveryId: string): Promise<void> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     await this.uow.run(async (repos) => {
       if (!(await repos.deliveries.findWithEvent(deliveryId))) {
         throw new NotFoundError("Delivery not found");
@@ -65,7 +66,7 @@ export class DeliveryOpsService implements IDeliveryOpsService {
   }
 
   async retryAll(actor: Actor, input: unknown): Promise<{ count: number }> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const { target, packageId } = retryAllInputSchema.parse(input);
     return this.uow.run(async (repos) => {
       // One statement, so a backlog of any size resets well inside the transaction's time limit.

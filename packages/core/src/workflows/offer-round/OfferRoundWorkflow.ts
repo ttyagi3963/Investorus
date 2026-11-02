@@ -7,6 +7,7 @@
 // marker, T368), so a late or repeated job is harmless.
 import { releasePromotedBackup } from "../deal-lifecycle/release-promoted-backup.js";
 import type { CloseOfferRoundPayload, ExpireOfferPayload } from "@clever/contracts/jobs";
+import { required } from "../../errors/required.js";
 import { OPEN_OFFER_STATUSES } from "../../repositories/offer/IOfferRepository.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
 import { placeOf } from "../notice-text.js";
@@ -81,7 +82,7 @@ export class OfferRoundWorkflow implements IOfferRoundWorkflow {
       // The package lock orders this expiry against a decision, a withdrawal, or a reconfirmation
       // of the same offer (T365); the offer is read again as they left it (T376).
       await repos.packages.lock(found.packageId);
-      const offer = (await repos.offers.findById(offerId))!;
+      const offer = required(await repos.offers.findById(offerId), `Offer ${offerId}`);
       // A newer revision has its own expiry, and a decided offer no longer expires.
       if (offer.currentRevision !== revision || !OPEN_OFFER_STATUSES.includes(offer.status)) {
         return;

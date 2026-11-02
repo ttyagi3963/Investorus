@@ -6,13 +6,13 @@
 // schedules the next one at ConfigEntry["matchDigest"].hourUtc, keyed by date so it is queued once.
 // The worker calls ensureScheduled at startup; operations can run one now.
 import type { Actor } from "@clever/contracts/auth";
-import { ForbiddenError } from "@clever/contracts/common";
 import type { OutboxEventInput } from "@clever/contracts/events";
 import type { SendMatchDigestsPayload } from "@clever/contracts/jobs";
 import type { Match } from "@clever/contracts/match";
 import { writeEvent } from "../../outbox/write-event.js";
 import type { IClock } from "../../providers/clock/IClock.js";
 import { readConfig } from "../../repositories/config/read-config.js";
+import { assertOps } from "../../services/actor-guards.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 
 type DigestEvent = Extract<OutboxEventInput, { type: "investor.match_digest" }>;
@@ -71,7 +71,7 @@ export class MatchDigestWorkflow implements IMatchDigestWorkflow {
   }
 
   async sendNow(actor: Actor): Promise<{ jobId: string }> {
-    if (actor.role !== "OPS") throw new ForbiddenError("Only operations can send the digest");
+    assertOps(actor, "Only operations can send the digest");
     const now = this.deps.clock.now();
     const job = await this.uow.run((repos) =>
       repos.jobs.enqueue({

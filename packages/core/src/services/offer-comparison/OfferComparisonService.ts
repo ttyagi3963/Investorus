@@ -4,7 +4,7 @@
 // (flagged, not hidden; T370), and whether the seller can accept it now. The
 // fee assumptions come from config and are returned with the rows. Only the package's agent sees it.
 import type { Actor } from "@clever/contracts/auth";
-import { ForbiddenError, NotFoundError } from "@clever/contracts/common";
+import { NotFoundError } from "@clever/contracts/common";
 import type { NetProceedsAssumptions } from "@clever/contracts/config";
 import {
   comparisonQuerySchema,
@@ -15,6 +15,7 @@ import {
 import type { IClock } from "../../providers/clock/IClock.js";
 import { readConfig } from "../../repositories/config/read-config.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
+import { agentOf } from "../actor-guards.js";
 import { certaintyRank, computeNetProceeds } from "./net-proceeds.js";
 
 /** A comparison row before the route maps the offer to its view. */
@@ -52,12 +53,11 @@ export class OfferComparisonService implements IOfferComparisonService {
   ) {}
 
   async compare(actor: Actor, packageId: string, query: unknown) {
-    if (actor.role !== "AGENT")
-      throw new ForbiddenError("Only the package's agent compares offers");
+    const agentId = agentOf(actor, "Only the package's agent compares offers");
     const { sort } = comparisonQuerySchema.parse(query);
     const now = this.deps.clock.now();
     return this.uow.run(async (repos) => {
-      const pkg = await repos.packages.findForAgent(actor.agentId, packageId);
+      const pkg = await repos.packages.findForAgent(agentId, packageId);
       if (!pkg) throw new NotFoundError("Package not found");
       const assumptions = await readConfig(repos.config, "netProceeds");
       const offers = (await repos.offers.listByPackage(packageId, pkg.round)).filter((o) =>

@@ -20,6 +20,7 @@ class StatusEventsPackageRepository implements IListingPackageRepository {
   findForAgent: IListingPackageRepository["findForAgent"] = (agentId, id) =>
     this.inner.findForAgent(agentId, id);
   findById: IListingPackageRepository["findById"] = (id) => this.inner.findById(id);
+  findByIds: IListingPackageRepository["findByIds"] = (ids) => this.inner.findByIds(ids);
   listByAgent: IListingPackageRepository["listByAgent"] = (agentId) =>
     this.inner.listByAgent(agentId);
   listOpenForOffers: IListingPackageRepository["listOpenForOffers"] = (now) =>

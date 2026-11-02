@@ -19,11 +19,12 @@ import type {
 import { evaluateBuyBox } from "../../registry/evaluate-buy-box.js";
 import { EVALUATOR_VERSION } from "../../registry/evaluators.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
-import { assertOps } from "./assert-ops.js";
+import { assertOps } from "../actor-guards.js";
 import { auditAddressRead } from "./audit-address-read.js";
 import { auditSummary, deliverySummary } from "./timeline-text.js";
 
 const NOT_FOUND = "Package not found";
+const OPS_ONLY = "Only operations can use the console";
 
 type CriterionResults = Partial<
   Record<CriterionKey, { passed: boolean; expected: unknown; actual: unknown }>
@@ -52,7 +53,7 @@ export class OpsQueryService implements IOpsQueryService {
   constructor(private readonly uow: IUnitOfWork) {}
 
   async listPackages(actor: Actor): Promise<OpsPackageRow[]> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const rows = await this.uow.run(async (repos) => {
       const packages = await repos.opsQuery.listPackages();
       await auditAddressRead(
@@ -70,7 +71,7 @@ export class OpsQueryService implements IOpsQueryService {
   }
 
   async trace(actor: Actor, packageId: string): Promise<PackageTrace> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     return this.uow.run(async (repos) => {
       const pkg = await repos.opsQuery.findPackage(packageId);
       if (!pkg) throw new NotFoundError(NOT_FOUND);
@@ -180,7 +181,7 @@ export class OpsQueryService implements IOpsQueryService {
     packageId: string,
     investorId: string,
   ): Promise<MatchExplanation> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     return this.uow.run(async (repos) => {
       const pkg = await repos.opsQuery.findPackage(packageId);
       if (!pkg) throw new NotFoundError(NOT_FOUND);

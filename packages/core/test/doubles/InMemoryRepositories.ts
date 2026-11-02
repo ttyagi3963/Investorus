@@ -207,6 +207,14 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
   async findById(id: string) {
     return this.rows.get(id) ?? null;
   }
+  async findByIds(ids: string[]) {
+    return new Map<string, ListingPackage>(
+      ids.flatMap((id) => {
+        const row = this.rows.get(id);
+        return row ? [[id, row] as const] : [];
+      }),
+    );
+  }
   async listByAgent(agentId: string) {
     return [...this.rows.values()].filter((r) => r.agentId === agentId);
   }
@@ -504,6 +512,14 @@ export class InMemoryOfferRepository implements IOfferRepository {
       (r) => r.packageId === packageId && r.investorId === investorId && r.round === round,
     );
     return mine.find((r) => LIVE_OFFER_STATUSES.includes(r.status)) ?? mine.at(-1) ?? null;
+  }
+  async findLatestForInvestor(investorId: string, packages: { id: string; round: number }[]) {
+    const latest = new Map<string, Offer>();
+    for (const { id, round } of packages) {
+      const offer = await this.findLatest(id, investorId, round);
+      if (offer) latest.set(id, offer);
+    }
+    return latest;
   }
   async listByPackage(packageId: string, round: number) {
     return this.rows.filter((r) => r.packageId === packageId && r.round === round);

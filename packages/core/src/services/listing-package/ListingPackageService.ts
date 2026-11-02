@@ -8,7 +8,6 @@ import type { AuditAction, AuditEntry } from "@clever/contracts/audit";
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
-  ForbiddenError,
   NotFoundError,
   ValidationError,
   type FieldError,
@@ -16,12 +15,11 @@ import {
 import {
   createListingPackageInputSchema,
   updateListingPackageInputSchema,
+  type AgentPackageParts,
+  type AgentPackageSummaryParts,
   type ListingPackage,
   type UpdateListingPackageInput,
 } from "@clever/contracts/listing-package";
-import type { Photo } from "@clever/contracts/photo";
-import type { Property } from "@clever/contracts/property";
-import type { Seller } from "@clever/contracts/seller";
 import type { IClock } from "../../providers/clock/IClock.js";
 import type { IGeoProvider, ZipInfo } from "../../providers/geo/IGeoProvider.js";
 import type { AddressHasher } from "../../providers/pii-cipher/IPiiCipher.js";
@@ -31,18 +29,11 @@ import { snapshotAndQueueMatching } from "../../workflows/matching/queue-matchin
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { matchSummaryOf } from "./match-summary.js";
 import { assertEditable, missingToPublish } from "./publish-rules.js";
-import type { AgentPackageSummaryParts, MatchSummary } from "@clever/contracts/listing-package";
+import { agentOf } from "../actor-guards.js";
 
 /** A package with everything its agent sees: the seller, the property, the photos, how many
  * investors it matched in its current round, and how the last matching run went, as counts. */
-export type AgentPackage = {
-  package: ListingPackage;
-  seller: Seller;
-  property: Property;
-  photos: Photo[];
-  matchedCount: number;
-  matchSummary: MatchSummary | null;
-};
+export type AgentPackage = AgentPackageParts;
 
 export interface IListingPackageService {
   create(actor: Actor, input: unknown): Promise<AgentPackage>;
@@ -59,6 +50,7 @@ type Deps = { geo: IGeoProvider; addressHash: AddressHasher; clock: IClock };
 
 const invalid = (fields: FieldError[]) => new ValidationError("Some fields are invalid", fields);
 const NOT_FOUND = "Package not found";
+const AGENTS_ONLY = "Only agents work on listing packages";
 
 const definedFields = <T extends object>(patch: T): Partial<T> =>
   Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as Partial<T>;
@@ -84,7 +76,7 @@ export class ListingPackageService implements IListingPackageService {
   ) {}
 
   async create(actor: Actor, input: unknown): Promise<AgentPackage> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const data = createListingPackageInputSchema.parse(input);
     const { seller, property } = data;
     const errors: FieldError[] = [];
@@ -143,7 +135,7 @@ export class ListingPackageService implements IListingPackageService {
 
   async get(actor: Actor, id: string): Promise<AgentPackage> {
     if (actor.role === "OPS") return this.getForOps(actor, id);
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     return this.uow.run(async (repos) => {
       const pkg = await repos.packages.findForAgent(agentId, id);
       if (!pkg) throw new NotFoundError(NOT_FOUND);
@@ -152,16 +144,15 @@ export class ListingPackageService implements IListingPackageService {
   }
 
   async list(actor: Actor): Promise<AgentPackageSummaryParts[]> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     return this.uow.run(async (repos) => {
       const pkgs = await repos.packages.listByAgent(agentId);
       // A list row shows no seller and no match summary; its properties, photos, and match counts
-      // each come in one query, whatever the number of rows (T386, T396).
-      const [properties, photos, counts] = await Promise.all([
-        repos.properties.findByIds(pkgs.map((pkg) => pkg.propertyId)),
-        repos.photos.listByPackages(pkgs.map((pkg) => pkg.id)),
-        repos.matches.countByPackages(pkgs),
-      ]);
+      // each come in one query, whatever the number of rows (T386, T396), one after another: a
+      // transaction has one connection, so overlapping queries on it only queue (T399).
+      const properties = await repos.properties.findByIds(pkgs.map((pkg) => pkg.propertyId));
+      const photos = await repos.photos.listByPackages(pkgs.map((pkg) => pkg.id));
+      const counts = await repos.matches.countByPackages(pkgs);
       return pkgs.map((pkg) => {
         const property = properties.get(pkg.propertyId);
         if (!property) throw new NotFoundError(NOT_FOUND);
@@ -190,7 +181,7 @@ export class ListingPackageService implements IListingPackageService {
   }
 
   async update(actor: Actor, id: string, input: unknown): Promise<AgentPackage> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const data = updateListingPackageInputSchema.parse(input);
     return this.uow.run(async (repos) => {
       const current = await repos.packages.findForAgent(agentId, id);
@@ -309,7 +300,7 @@ export class ListingPackageService implements IListingPackageService {
   }
 
   async timeline(actor: Actor, id: string): Promise<AuditEntry[]> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     return this.uow.run(async (repos) => {
       if (!(await repos.packages.findForAgent(agentId, id))) throw new NotFoundError(NOT_FOUND);
       const entries = await repos.audit.listForEntity("ListingPackage", id);
@@ -327,11 +318,6 @@ export class ListingPackageService implements IListingPackageService {
       entityId: packageId,
       outcome: "SUCCESS",
     };
-  }
-
-  private agentOf(actor: Actor): string {
-    if (actor.role !== "AGENT") throw new ForbiddenError("Only agents work on listing packages");
-    return actor.agentId;
   }
 
   private place(zip: string, errors: FieldError[]): ZipInfo | null {
@@ -373,13 +359,12 @@ export async function loadAgentPackage(
   repos: UnitOfWorkRepositories,
   pkg: ListingPackage,
 ): Promise<AgentPackage> {
-  const [seller, property, photos, matchedCount, matchSummary] = await Promise.all([
-    repos.sellers.findById(pkg.sellerId),
-    repos.properties.findById(pkg.propertyId),
-    repos.photos.listByPackage(pkg.id),
-    repos.matches.countByPackage(pkg.id, pkg.round),
-    matchSummaryOf(repos, pkg.id, pkg.round),
-  ]);
+  // One after another: the transaction's one connection runs a query at a time anyway.
+  const seller = await repos.sellers.findById(pkg.sellerId);
+  const property = await repos.properties.findById(pkg.propertyId);
+  const photos = await repos.photos.listByPackage(pkg.id);
+  const matchedCount = await repos.matches.countByPackage(pkg.id, pkg.round);
+  const matchSummary = await matchSummaryOf(repos, pkg.id, pkg.round);
   if (!seller || !property) throw new NotFoundError(NOT_FOUND);
   return { package: pkg, seller, property, photos, matchedCount, matchSummary };
 }

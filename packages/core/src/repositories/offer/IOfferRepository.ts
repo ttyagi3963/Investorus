@@ -24,6 +24,11 @@ export interface IOfferRepository {
   findById(id: string): Promise<Offer | null>;
   /** The investor's live offer in the round, or else their newest one. */
   findLatest(packageId: string, investorId: string, round: number): Promise<Offer | null>;
+  /** The same for each package at its own round, in one query (T399); none is absent. */
+  findLatestForInvestor(
+    investorId: string,
+    packages: { id: string; round: number }[],
+  ): Promise<Map<string, Offer>>;
   listByPackage(packageId: string, round: number): Promise<Offer[]>;
   /**
    * Replaces the terms and writes the next revision (by the investor unless `author` says the

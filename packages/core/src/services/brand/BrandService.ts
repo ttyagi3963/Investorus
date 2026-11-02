@@ -14,23 +14,17 @@ import {
   type BrandThemeView,
   type BrandTokensView,
 } from "@clever/contracts/brand";
-import {
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-  ValidationError,
-} from "@clever/contracts/common";
+import { ConflictError, NotFoundError, ValidationError } from "@clever/contracts/common";
 import { z } from "zod";
 import { InfrastructureError } from "../../errors/InfrastructureError.js";
 import type { BrandRecord } from "../../repositories/brand/IBrandRepository.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
+import { assertOps } from "../actor-guards.js";
 
 const NOT_FOUND = "Brand not found";
 const themeInputSchema = z.object({ tokens: z.unknown(), tokenVersion: z.int().min(1) });
 
-function requireOps(actor: Actor): void {
-  if (actor.role !== "OPS") throw new ForbiddenError("Only operations can change a brand");
-}
+const OPS_ONLY = "Only operations can change a brand";
 
 /** The theme the web app renders from a stored brand. */
 function themeView(brand: BrandRecord): BrandThemeView {
@@ -71,14 +65,14 @@ export class BrandService implements IBrandService {
   }
 
   async getTokens(actor: Actor, brandId: string): Promise<BrandTokensView> {
-    requireOps(actor);
+    assertOps(actor, OPS_ONLY);
     const brand = await this.uow.run((repos) => repos.brands.findById(brandId));
     if (!brand) throw new NotFoundError(NOT_FOUND);
     return { brandId, tokenVersion: brand.tokenVersion, tokens: brand.tokens };
   }
 
   async updateTheme(actor: Actor, brandId: string, input: unknown): Promise<BrandThemeView> {
-    requireOps(actor);
+    assertOps(actor, OPS_ONLY);
     const { tokens, tokenVersion: loaded } = themeInputSchema.parse(input);
     const checked = validateBrandTokens(tokens);
     if (!checked.ok) {

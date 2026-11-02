@@ -1,12 +1,14 @@
 // Checks the offer rules that need a real Postgres (T296; FR-042): two submits racing for the same
 // investor and package leave exactly one offer, the loser told to revise; and a revise keeps every
-// earlier set of terms as its own revision.
+// earlier set of terms as its own revision; the investor's list reads their packages and offers in
+// one query each (T399).
 import { randomBytes } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPrismaClient, type PrismaClient } from "../src/infra/prisma-client.js";
 import { AesGcmPiiCipherImpl } from "../src/providers/pii-cipher/AesGcmPiiCipherImpl.js";
+import { InvestorPackageQueryService } from "../src/services/investor-package/InvestorPackageQueryService.js";
 import { OfferService } from "../src/services/offer/OfferService.js";
 import { PrismaUnitOfWorkImpl } from "../src/unit-of-work/PrismaUnitOfWorkImpl.js";
 import { startMigratedDatabase } from "./database.js";
@@ -15,6 +17,7 @@ let db: pg.Client;
 let prisma: PrismaClient;
 let stop: () => Promise<void>;
 const summit: Actor = { userId: "user-summit", role: "INVESTOR", investorId: "summit" };
+const cipher = new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`);
 
 beforeAll(async () => {
   let url: string;
@@ -52,10 +55,7 @@ const terms = (price: number) => ({
 
 describe("offers", () => {
   it("keeps one offer when two submits race, and every revision of its terms", async () => {
-    const uow = new PrismaUnitOfWorkImpl(
-      prisma,
-      new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`),
-    );
+    const uow = new PrismaUnitOfWorkImpl(prisma, cipher);
     const offers = new OfferService(uow, { clock: { now: () => new Date() } });
     const results = await Promise.allSettled([
       offers.create(summit, "package-1", terms(280_000)),
@@ -73,5 +73,22 @@ describe("offers", () => {
               (SELECT array_agg((terms->>'price')::int ORDER BY revision) FROM "OfferRevision") AS prices`,
     );
     expect(rows.rows[0]).toEqual({ offers: 1, prices: [expect.any(Number), 290_000] });
+  });
+
+  it("lists the investor's matched package with their latest offer on it", async () => {
+    // The list decrypts the street, so the row needs a real ciphertext under this test's key.
+    await db.query(`UPDATE "Property" SET "streetLine" = $1`, [cipher.encrypt("12 Elm St")]);
+    const offer = await db.query<{ id: string }>(`SELECT id FROM "Offer"`);
+
+    const list = await new InvestorPackageQueryService(
+      new PrismaUnitOfWorkImpl(prisma, cipher),
+    ).listMatched(summit);
+
+    expect(list).toEqual([
+      expect.objectContaining({
+        package: expect.objectContaining({ id: "package-1" }),
+        myOffer: expect.objectContaining({ id: offer.rows[0]!.id, price: 290_000 }),
+      }),
+    ]);
   });
 });

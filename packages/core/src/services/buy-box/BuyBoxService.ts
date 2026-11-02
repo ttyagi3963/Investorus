@@ -11,15 +11,11 @@ import {
   type BuyBox,
   type BuyBoxInput,
 } from "@clever/contracts/buy-box";
-import {
-  ForbiddenError,
-  NotFoundError,
-  ValidationError,
-  type FieldError,
-} from "@clever/contracts/common";
+import { NotFoundError, ValidationError, type FieldError } from "@clever/contracts/common";
 import type { IClock } from "../../providers/clock/IClock.js";
 import type { IGeoProvider } from "../../providers/geo/IGeoProvider.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
+import { investorOf } from "../actor-guards.js";
 import { checkZips } from "./check-zips.js";
 import { keepVersionAndMatch, matchingTermsOf } from "./keep-version.js";
 
@@ -32,10 +28,7 @@ export interface IBuyBoxService {
 
 const NOT_FOUND = "Buy box not found";
 
-function investorOf(actor: Actor): string {
-  if (actor.role !== "INVESTOR") throw new ForbiddenError("Only investors manage buy boxes");
-  return actor.investorId;
-}
+const INVESTORS_ONLY = "Only investors manage buy boxes";
 
 export class BuyBoxService implements IBuyBoxService {
   constructor(
@@ -44,17 +37,17 @@ export class BuyBoxService implements IBuyBoxService {
   ) {}
 
   async list(actor: Actor): Promise<BuyBox[]> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     return this.uow.run((repos) => repos.buyBoxes.listForInvestor(investorId));
   }
 
   async get(actor: Actor, id: string): Promise<BuyBox> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     return this.uow.run((repos) => this.own(repos, investorId, id));
   }
 
   async create(actor: Actor, input: unknown): Promise<BuyBox> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const box = this.check(buyBoxInputSchema.parse(input));
     return this.uow.run(async (repos) => {
       const created = await repos.buyBoxes.create(investorId, box);
@@ -64,7 +57,7 @@ export class BuyBoxService implements IBuyBoxService {
   }
 
   async update(actor: Actor, id: string, input: unknown): Promise<BuyBox> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const { version, ...box } = updateBuyBoxInputSchema.parse(input);
     this.check(box);
     return this.uow.run(async (repos) => {

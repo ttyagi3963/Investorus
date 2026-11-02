@@ -36,6 +36,8 @@ export interface IListingPackageRepository {
   findForAgent(agentId: string, id: string): Promise<ListingPackage | null>;
   /** For the system (matching), never for a request: it does not check the agent. */
   findById(id: string): Promise<ListingPackage | null>;
+  /** Several packages in one query, by ID, for an investor's list (T399); like findById, unchecked. */
+  findByIds(ids: string[]): Promise<Map<string, ListingPackage>>;
   listByAgent(agentId: string): Promise<ListingPackage[]>;
   /** For the system (matching a saved buy box): packages taking offers whose deadline is after `now`. */
   listOpenForOffers(now: Date): Promise<ListingPackage[]>;

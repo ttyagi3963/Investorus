@@ -53,6 +53,11 @@ export class PrismaListingPackageRepositoryImpl implements IListingPackageReposi
     return row ? toListingPackage(row) : null;
   }
 
+  async findByIds(ids: string[]): Promise<Map<string, ListingPackage>> {
+    const rows = await this.db.listingPackage.findMany({ where: { id: { in: ids } } });
+    return new Map(rows.map((row) => [row.id, toListingPackage(row)]));
+  }
+
   async listByAgent(agentId: string): Promise<ListingPackage[]> {
     const rows = await this.db.listingPackage.findMany({
       where: { agentId },

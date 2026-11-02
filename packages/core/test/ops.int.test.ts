@@ -3,7 +3,8 @@
 // matched, not as the investor edited it later, while a match returns the stored decision; the trace
 // counts what was matched, sent, and set aside, and lists who was not matched; and only a delivery
 // set aside can be retried, by one or by target, each retry audited; a backlog far past what the
-// old row-by-row reset finished inside the 5 s transaction limit resets in one call (T386).
+// old row-by-row reset finished inside the 5 s transaction limit resets in one call (T386); the CRM
+// comparison finds each package's unsent CRM delivery in one query (T399).
 import { randomBytes } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
 import type { BuyBoxInput } from "@clever/contracts/buy-box";
@@ -19,6 +20,7 @@ import { BuyBoxService } from "../src/services/buy-box/BuyBoxService.js";
 import { ListingPackageService } from "../src/services/listing-package/ListingPackageService.js";
 import { DeliveryOpsService } from "../src/services/ops/DeliveryOpsService.js";
 import { OpsQueryService } from "../src/services/ops/OpsQueryService.js";
+import { OutsideServicesService } from "../src/services/ops/OutsideServicesService.js";
 import { PrismaUnitOfWorkImpl } from "../src/unit-of-work/PrismaUnitOfWorkImpl.js";
 import { DealLifecycleWorkflow } from "../src/workflows/deal-lifecycle/DealLifecycleWorkflow.js";
 import { MatchingWorkflow } from "../src/workflows/matching/MatchingWorkflow.js";
@@ -160,6 +162,26 @@ describe("operations console", () => {
       expect.objectContaining({ key: "price", passed: false }),
     );
     expect(matched).toMatchObject({ source: "STORED", matched: true });
+  });
+
+  it("explains a CRM difference by the package's CRM delivery not yet sent", async () => {
+    const crm = await db.query<{ id: string }>(`SELECT id FROM "Delivery" WHERE target = 'CRM'`);
+    const outside = new OutsideServicesService(uow, {
+      crm: { listListings: async () => [] },
+      simulation: {
+        get: () => Promise.reject(new Error("unused")),
+        set: () => Promise.reject(new Error("unused")),
+      },
+    });
+
+    expect(await outside.crmComparison(ops)).toEqual([
+      expect.objectContaining({
+        packageId,
+        crmStatus: null,
+        inSync: false,
+        pendingDelivery: { id: crm.rows[0]!.id, status: "PENDING" },
+      }),
+    ]);
   });
 
   it("traces who matched, what was sent or set aside, and who was not matched", async () => {

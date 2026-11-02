@@ -9,7 +9,6 @@
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
-  ForbiddenError,
   NotFoundError,
   ValidationError,
   type FieldError,
@@ -29,6 +28,7 @@ import {
   type AgentPackage,
 } from "../../services/listing-package/ListingPackageService.js";
 import { earliestToday } from "../../providers/clock/earliest-today.js";
+import { agentOf } from "../../services/actor-guards.js";
 import { missingToPublish } from "../../services/listing-package/publish-rules.js";
 import { isMaterialChange, toListingFacts } from "../../registry/listing-facts.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
@@ -58,6 +58,7 @@ const HOUR = 3_600_000;
 const DEFAULT_OFFER_WINDOW_HOURS = 72;
 const MAX_OFFER_WINDOW_DAYS = 30;
 const NOT_FOUND = "Package not found";
+const AGENTS_ONLY = "Only agents publish listing packages";
 
 export class PublicationWorkflow implements IPublicationWorkflow {
   constructor(
@@ -66,7 +67,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
   ) {}
 
   async publish(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const data = publishInputSchema.parse(input);
     const now = this.deps.clock.now();
     const offerDeadline = data.offerDeadline
@@ -105,7 +106,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
   }
 
   async withdraw(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const data = withdrawInputSchema.parse(input);
 
     return this.uow.run(async (repos) => {
@@ -134,7 +135,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
   }
 
   async reopen(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const data = offerDeadlineInputSchema.parse(input);
     const offerDeadline = this.checkDeadline(data.offerDeadline);
 
@@ -179,7 +180,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
   }
 
   async extendDeadline(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const data = offerDeadlineInputSchema.parse(input);
     const offerDeadline = this.checkDeadline(data.offerDeadline);
 
@@ -243,11 +244,6 @@ export class PublicationWorkflow implements IPublicationWorkflow {
       throw new ValidationError("Some fields are invalid", [{ field: "offerDeadline", message }]);
     }
     return deadline;
-  }
-
-  private agentOf(actor: Actor): string {
-    if (actor.role !== "AGENT") throw new ForbiddenError("Only agents publish listing packages");
-    return actor.agentId;
   }
 
   private async ownPackage(repos: UnitOfWorkRepositories, agentId: string, id: string) {

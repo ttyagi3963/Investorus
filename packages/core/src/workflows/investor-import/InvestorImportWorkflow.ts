@@ -9,7 +9,6 @@ import type { Actor } from "@clever/contracts/auth";
 import {
   ConflictError,
   DomainError,
-  ForbiddenError,
   NotFoundError,
   ValidationError,
 } from "@clever/contracts/common";
@@ -25,6 +24,7 @@ import type { UploadInstruction } from "@clever/contracts/photo";
 import type { IClock } from "../../providers/clock/IClock.js";
 import type { IGeoProvider } from "../../providers/geo/IGeoProvider.js";
 import type { IStorageProvider } from "../../providers/storage/IStorageProvider.js";
+import { assertOps } from "../../services/actor-guards.js";
 import { keepVersionAndMatch, matchingTermsOf } from "../../services/buy-box/keep-version.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { FileRefusedError, parseLegacyCsv, type ParsedRow } from "./parse-legacy-csv.js";
@@ -47,9 +47,7 @@ export interface IInvestorImportWorkflow {
 
 const CSV = "text/csv";
 
-function assertOps(actor: Actor) {
-  if (actor.role !== "OPS") throw new ForbiddenError("Only operations import investors");
-}
+const OPS_ONLY = "Only operations import investors";
 
 export class InvestorImportWorkflow implements IInvestorImportWorkflow {
   constructor(
@@ -58,14 +56,14 @@ export class InvestorImportWorkflow implements IInvestorImportWorkflow {
   ) {}
 
   async requestUpload(actor: Actor, input: unknown) {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const { sizeBytes } = importUploadRequestSchema.parse(input);
     const storageKey = `imports/${randomUUID()}.csv`;
     return { storageKey, upload: await this.deps.storage.createUpload(storageKey, CSV, sizeBytes) };
   }
 
   async start(actor: Actor, input: unknown) {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const { storageKey, fileName } = startImportSchema.parse(input);
     const stored = await this.deps.storage.stat(storageKey);
     if (!stored) {
@@ -145,7 +143,7 @@ export class InvestorImportWorkflow implements IInvestorImportWorkflow {
   }
 
   async getBatch(actor: Actor, batchId: string): Promise<ImportBatchDetail> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const found = await this.uow.run((repos) => repos.imports.findBatch(batchId));
     if (!found) throw new NotFoundError("Import not found");
     return found;

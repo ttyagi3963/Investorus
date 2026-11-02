@@ -6,12 +6,7 @@
 // Removing a photo that is already gone is done, so a retried DELETE succeeds (T392).
 import { randomUUID } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
-import {
-  BusinessRuleError,
-  ForbiddenError,
-  NotFoundError,
-  ValidationError,
-} from "@clever/contracts/common";
+import { BusinessRuleError, NotFoundError, ValidationError } from "@clever/contracts/common";
 import {
   MAX_PHOTO_BYTES,
   PHOTO_CONTENT_TYPES,
@@ -23,8 +18,10 @@ import {
 } from "@clever/contracts/photo";
 import type { IStorageProvider } from "../../providers/storage/IStorageProvider.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
+import { agentOf } from "../actor-guards.js";
 import { assertEditable } from "../listing-package/publish-rules.js";
 
+const AGENTS_ONLY = "Only agents work on listing packages";
 const MAX_PHOTOS = 20;
 const keyField = (message: string) =>
   new ValidationError(message, [{ field: "storageKey", message }]);
@@ -54,7 +51,7 @@ export class PhotoService implements IPhotoService {
   ) {}
 
   async requestUpload(actor: Actor, packageId: string, input: unknown): Promise<PhotoUpload> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const { contentType, sizeBytes } = createPhotoUploadInputSchema.parse(input);
     await this.uow.run(async (repos) => {
       await this.editablePackage(repos, agentId, packageId);
@@ -72,7 +69,7 @@ export class PhotoService implements IPhotoService {
   }
 
   async attach(actor: Actor, packageId: string, input: unknown): Promise<Photo> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const { storageKey, position } = addPhotoInputSchema.parse(input);
     await this.uow.run((repos) => this.editablePackage(repos, agentId, packageId));
     if (!storageKey.startsWith(`packages/${packageId}/`)) {
@@ -121,7 +118,7 @@ export class PhotoService implements IPhotoService {
   }
 
   async remove(actor: Actor, packageId: string, photoId: string): Promise<void> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     await this.uow.run(async (repos) => {
       const pkg = await this.editablePackage(repos, agentId, packageId);
       const photos = await repos.photos.listByPackage(packageId);
@@ -136,11 +133,6 @@ export class PhotoService implements IPhotoService {
       }
       await repos.photos.remove(packageId, photoId);
     });
-  }
-
-  private agentOf(actor: Actor): string {
-    if (actor.role !== "AGENT") throw new ForbiddenError("Only agents work on listing packages");
-    return actor.agentId;
   }
 
   /** The agent's own package, held until the change ends so its status and photo count hold. */

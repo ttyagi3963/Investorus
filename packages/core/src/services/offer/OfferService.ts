@@ -36,7 +36,8 @@ import { placeOf } from "../../workflows/notice-text.js";
 import { releasePromotedBackup } from "../../workflows/deal-lifecycle/release-promoted-backup.js";
 import { scheduleOfferExpiry } from "../../workflows/offer-round/schedule.js";
 import { checkOfferDates, termsOf } from "./offer-terms.js";
-import { investorOf } from "../investor-package/InvestorPackageQueryService.js";
+import { investorOf } from "../actor-guards.js";
+import { required } from "../../errors/required.js";
 import { crmSnapshot } from "../../outbox/crm-snapshot.js";
 import { writeEvent } from "../../outbox/write-event.js";
 
@@ -54,6 +55,7 @@ export interface IOfferService {
 }
 
 const NOT_FOUND = "Package not found";
+const INVESTORS_ONLY = "Only investors see matched packages";
 
 export class OfferService implements IOfferService {
   constructor(
@@ -62,7 +64,7 @@ export class OfferService implements IOfferService {
   ) {}
 
   async create(actor: Actor, packageId: string, input: unknown): Promise<Offer> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const terms = checkOfferDates(createOfferInputSchema.parse(input), this.deps.clock.now());
     return this.uow.run(async (repos) => {
       // Offers on one package are made one at a time, so each CRM offer count includes the others.
@@ -97,7 +99,7 @@ export class OfferService implements IOfferService {
   }
 
   async revise(actor: Actor, offerId: string, input: unknown): Promise<Offer> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const { version, ...rest } = reviseOfferInputSchema.parse(input);
     const now = this.deps.clock.now();
     return this.uow.run(async (repos) => {
@@ -121,7 +123,7 @@ export class OfferService implements IOfferService {
   }
 
   async withdraw(actor: Actor, offerId: string, input: unknown): Promise<Offer> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const { version } = withdrawOfferInputSchema.parse(input);
     return this.uow.run(async (repos) => {
       const current = await repos.offers.findById(offerId);
@@ -153,7 +155,7 @@ export class OfferService implements IOfferService {
   }
 
   async respondToCounter(actor: Actor, offerId: string, input: unknown): Promise<Offer> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const { action, version } = counterResponseSchema.parse(input);
     return this.uow.run(async (repos) => {
       const current = await this.lockedOffer(repos, offerId, investorId);
@@ -171,7 +173,10 @@ export class OfferService implements IOfferService {
       const terms =
         action === "ACCEPT"
           ? termsOf(current)
-          : (await repos.offers.findLastTerms(offerId, "INVESTOR"))!;
+          : required(
+              await repos.offers.findLastTerms(offerId, "INVESTOR"),
+              `The investor's own terms on offer ${offerId}`,
+            );
       // Terms that have already expired cannot come back to life; a revision sets new ones.
       if (terms.expiresAt <= this.deps.clock.now()) {
         throw new BusinessRuleError(
@@ -216,7 +221,7 @@ export class OfferService implements IOfferService {
     if (!found || found.investorId !== investorId) throw new NotFoundError("Offer not found");
     await repos.packages.lock(found.packageId);
     // Offers are never deleted, so it is still there.
-    return (await repos.offers.findById(offerId))!;
+    return required(await repos.offers.findById(offerId), `Offer ${offerId}`);
   }
 
   /** A backup offer can only last longer: its expiry may move later, and nothing else changes. */

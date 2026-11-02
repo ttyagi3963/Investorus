@@ -1,7 +1,8 @@
 // Guards the photo rules (T113): an upload is trusted only after storage confirms it, with the type
 // and size storage holds, never the browser's claim; a package cannot attach another package's
 // upload; at most 20 photos, one per position; and only the owning agent can change them, only
-// while the package is editable, never removing a published package's last photo (T375).
+// while the package is editable, never removing a published package's last photo (T375); and the
+// stored bytes must start like the image type stored (T384).
 import type { Actor } from "@clever/contracts/auth";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@clever/contracts/common";
 import { describe, expect, it } from "vitest";
@@ -30,16 +31,21 @@ async function setup() {
   return { photos: new PhotoService(uow, storage), uow, storage, packageId: pkg.id };
 }
 
-/** Requests an upload and pretends the browser stored `stored` under the returned key. */
+/** The first bytes of every JPEG file. */
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+
+/** Requests an upload and pretends the browser stored `stored` (`bytes`) under the returned key. */
 async function upload(
   s: Awaited<ReturnType<typeof setup>>,
   stored = { contentType: "image/jpeg", sizeBytes: 2_000 },
+  bytes = JPEG,
 ) {
   const { storageKey } = await s.photos.requestUpload(avery, s.packageId, {
     contentType: "image/jpeg",
     sizeBytes: 2_000,
   });
   s.storage.objects.set(storageKey, stored);
+  s.storage.files.set(storageKey, bytes);
   return storageKey;
 }
 
@@ -73,6 +79,14 @@ describe("PhotoService", () => {
     await expect(
       s.photos.attach(avery, s.packageId, { storageKey: "packages/other/x.jpg", position: 0 }),
     ).rejects.toBeInstanceOf(ValidationError);
+  });
+
+  it("refuses a file whose bytes are not the image type it was stored as (T384)", async () => {
+    const s = await setup();
+    const page = await upload(s, undefined, Buffer.from("<html><script>alert(1)</script>"));
+    await expect(
+      s.photos.attach(avery, s.packageId, { storageKey: page, position: 0 }),
+    ).rejects.toMatchObject({ details: { fields: [{ field: "storageKey" }] } });
   });
 
   it("allows at most 20 photos, one per position", async () => {

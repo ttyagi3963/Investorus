@@ -1,5 +1,5 @@
 // A storage stand-in for service tests: `objects` holds what was "uploaded", so a test decides what
-// `stat` finds without a sandbox, and `files` the bytes `read` returns.
+// `stat` finds without a sandbox, and `files` the bytes `read` and `readHead` return.
 import type { UploadInstruction } from "@clever/contracts/photo";
 import type {
   IStorageProvider,
@@ -35,5 +35,9 @@ export class FakeStorageProvider implements IStorageProvider {
 
   async read(key: string): Promise<Buffer | null> {
     return this.files.get(key) ?? null;
+  }
+
+  async readHead(key: string, bytes: number): Promise<Buffer | null> {
+    return this.files.get(key)?.subarray(0, bytes) ?? null;
   }
 }

@@ -2,8 +2,8 @@
 // the sample file imports 26 investors, each with one default box and its first version, and
 // rejects 4 rows; importing it again updates the 26 and adds no investor, box, or version; a row
 // the database refuses is rejected and leaves nothing behind; a retried job skips the rows it
-// already recorded; a second run of the same batch at the same time aborts neither (T378); and
-// only operations can import.
+// already recorded; a second run of the same batch at the same time aborts neither (T378); a stored
+// file that is not a CSV is refused before a batch is queued (T384); and only operations can import.
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Actor } from "@clever/contracts/auth";
@@ -157,6 +157,16 @@ describe("InvestorImportWorkflow", () => {
       `SELECT count(*)::int AS n FROM "Investor" WHERE "externalRef" LIKE 'LEG-91%'`,
     );
     expect(investors.rows[0].n).toBe(3);
+  });
+
+  it("refuses to start on a stored file that is not a CSV (T384)", async () => {
+    storage.objects.set("imports/garbled.csv", {
+      contentType: "application/json; charset=utf-8",
+      sizeBytes: 16,
+    });
+    await expect(start("imports/garbled.csv")).rejects.toMatchObject({
+      details: { fields: [{ field: "storageKey" }] },
+    });
   });
 
   it("lets only operations import", async () => {

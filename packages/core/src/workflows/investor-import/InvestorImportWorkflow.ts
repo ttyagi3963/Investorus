@@ -73,6 +73,12 @@ export class InvestorImportWorkflow implements IInvestorImportWorkflow {
         { field: "storageKey", message: "No file was uploaded under this key" },
       ]);
     }
+    // The upload link allows only a CSV, so anything else is not the file that was uploaded (T384).
+    if (stored.contentType !== CSV) {
+      throw new ValidationError("Upload the file as a CSV", [
+        { field: "storageKey", message: "The stored file is not a CSV" },
+      ]);
+    }
     if (stored.sizeBytes > MAX_IMPORT_BYTES) {
       throw new ValidationError("The file is larger than 5 MB");
     }
@@ -98,7 +104,7 @@ export class InvestorImportWorkflow implements IInvestorImportWorkflow {
     if (!found || found.batch.finishedAt) return;
     const { batch } = found;
 
-    const file = await this.deps.storage.read(batch.storageKey);
+    const file = await this.deps.storage.read(batch.storageKey, MAX_IMPORT_BYTES);
     let parsed;
     try {
       if (!file) throw new FileRefusedError("The uploaded file is missing");

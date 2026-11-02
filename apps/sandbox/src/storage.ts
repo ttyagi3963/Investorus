@@ -4,7 +4,8 @@
 // public, like the S3 bucket's policy; anything else, such as an import file, is not. The api checks
 // an upload, and the worker reads an uploaded file, on the internal routes with the shared token.
 // Objects are files on the SANDBOX_STORAGE_DIR volume, named by a hash of the key so no key can
-// reach outside it. An outage mode for storage is applied in front of these routes (simulation.ts).
+// reach outside it. An outage mode for storage is applied in front of these routes (simulation.ts);
+// the internal answers name their object (x-object-key), so core can tell a garbled one (T384).
 import { createHash, createHmac } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -24,6 +25,12 @@ type Meta = { contentType: string; sizeBytes: number };
 
 /** Listing photos; the only objects anyone may read without the internal token. */
 const PUBLIC_PREFIX = "packages/";
+
+/** Served files are data: never sniffed into another type, never run as a page (T384). */
+const SERVED_FILE_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "Content-Security-Policy": "default-src 'none'; sandbox",
+};
 
 export function storageRoutes(config: StorageConfig): Router {
   const router = Router();
@@ -91,8 +98,21 @@ export function storageRoutes(config: StorageConfig): Router {
     if (!meta) return void res.status(404).json({ error: "Not found" });
     res
       .status(200)
+      .set(SERVED_FILE_HEADERS)
       .type(meta.contentType)
       .send(await readFile(file(key)));
+  });
+
+  // Registered before the GET below, which Express would otherwise also run for a HEAD.
+  router.head("/internal/storage/objects/:key", async (req, res) => {
+    if (!sameSecret(String(req.headers["x-sandbox-token"] ?? ""), config.internalToken)) {
+      return void res.status(401).end();
+    }
+    const key = String(req.params.key);
+    const meta = await readMeta(key);
+    if (!meta) return void res.status(404).end();
+    res.set("Content-Type", meta.contentType).set("Content-Length", String(meta.sizeBytes));
+    res.set("x-object-key", encodeURIComponent(key)).status(200).end();
   });
 
   router.get("/internal/storage/objects/:key", async (req, res) => {
@@ -104,18 +124,9 @@ export function storageRoutes(config: StorageConfig): Router {
     if (!meta) return void res.status(404).end();
     res
       .status(200)
+      .set("x-object-key", encodeURIComponent(key))
       .type(meta.contentType)
       .send(await readFile(file(key)));
-  });
-
-  router.head("/internal/storage/objects/:key", async (req, res) => {
-    if (!sameSecret(String(req.headers["x-sandbox-token"] ?? ""), config.internalToken)) {
-      return void res.status(401).end();
-    }
-    const meta = await readMeta(String(req.params.key));
-    if (!meta) return void res.status(404).end();
-    res.set("Content-Type", meta.contentType).set("Content-Length", String(meta.sizeBytes));
-    res.status(200).end();
   });
 
   return router;

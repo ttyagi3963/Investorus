@@ -1,6 +1,7 @@
-// Guards the sandbox storage rules (T252, T275, T372): only a valid, unexpired link for that exact
-// object, type, and size may upload (like a presigned S3 PUT), the internal routes need the shared
-// token, and only the listed web origins (every brand's address) may upload from the browser.
+// Guards the sandbox storage rules (T252, T275, T372, T384): only a valid, unexpired link for that
+// exact object, type, and size may upload (like a presigned S3 PUT), the internal routes need the
+// shared token and name the object they answer for, only the listed web origins (every brand's
+// address) may upload from the browser, and a served photo can never run as a page.
 import { createHmac } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -86,6 +87,9 @@ describe("sandbox storage", () => {
       .get(`/storage/objects/${encodeURIComponent("packages/p1/f.jpg")}`)
       .expect(200);
     expect(photo.headers["content-type"]).toBe("image/jpeg");
+    // Served as the stored type only, and never as a page that could run script (T384).
+    expect(photo.headers["x-content-type-options"]).toBe("nosniff");
+    expect(photo.headers["content-security-policy"]).toMatch(/default-src 'none'.*sandbox/);
     await request(app)
       .get(`/storage/objects/${encodeURIComponent("imports/i2.csv")}`)
       .expect(403);
@@ -105,6 +109,8 @@ describe("sandbox storage", () => {
       .expect(200);
     expect(res.headers["content-type"]).toBe("image/jpeg");
     expect(res.headers["content-length"]).toBe("2000");
+    // Names the object, so an answer that is not about it (garbage mode) is seen as garbled (T384).
+    expect(res.headers["x-object-key"]).toBe(encodeURIComponent("packages/p1/d.jpg"));
   });
 
   it("returns a stored object's bytes on the internal route, only with the token", async () => {

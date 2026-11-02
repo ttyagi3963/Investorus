@@ -1,9 +1,9 @@
 // Guards the S3 storage rules (T274): an upload link is signed over the content type and the exact
 // length, so the browser cannot change either; `stat` reads HeadObject and treats a 404 as "nothing
-// uploaded"; and an S3 failure surfaces as an InfrastructureError. Signing runs offline with fake
-// credentials, and `send` is stubbed, so no AWS account is touched.
+// uploaded"; and an S3 failure, or no answer within 5 s (T384), surfaces as an InfrastructureError.
+// Signing runs offline with fake credentials, and `send` is stubbed, so no AWS account is touched.
 import { S3Client } from "@aws-sdk/client-s3";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { InfrastructureError } from "../../errors/InfrastructureError.js";
 import { S3StorageProviderImpl } from "./S3StorageProviderImpl.js";
 
@@ -25,6 +25,10 @@ const s3Error = (status: number) =>
   Object.assign(new Error(`S3 ${status}`), { $metadata: { httpStatusCode: status } });
 
 describe("S3StorageProviderImpl", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("signs an upload link over the content type and the exact length, for ten minutes", async () => {
     const { storage } = setup();
 
@@ -68,5 +72,16 @@ describe("S3StorageProviderImpl", () => {
     vi.spyOn(client, "send").mockRejectedValue(s3Error(503) as never);
 
     await expect(storage.stat("packages/p1/a")).rejects.toBeInstanceOf(InfrastructureError);
+  });
+
+  it("gives up on S3 after 5 s with an InfrastructureError", async () => {
+    vi.useFakeTimers();
+    const { client, storage } = setup();
+    // S3 that never answers.
+    vi.spyOn(client, "send").mockReturnValue(new Promise(() => {}) as never);
+
+    const check = expect(storage.stat("packages/p1/a")).rejects.toBeInstanceOf(InfrastructureError);
+    await vi.advanceTimersByTimeAsync(5_000);
+    await check;
   });
 });

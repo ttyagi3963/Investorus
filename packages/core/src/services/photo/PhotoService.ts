@@ -1,8 +1,8 @@
 // The photo rules (T124): the agent asks for an upload link, the browser uploads straight to
 // storage, then the agent attaches it. Attaching trusts storage, not the browser: the type and size
-// recorded are what storage holds, the key must belong to this package, and a package has at most
-// 20 photos, one per position. Photos change only while the package is editable, and a published
-// package keeps at least one (T375, FR-012).
+// recorded are what storage holds, the file's first bytes must match that type (T384), the key
+// must belong to this package, and a package has at most 20 photos, one per position. Photos change
+// only while the package is editable, and a published package keeps at least one (T375, FR-012).
 import { randomUUID } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
 import {
@@ -29,6 +29,16 @@ const keyField = (message: string) =>
   new ValidationError(message, [{ field: "storageKey", message }]);
 const isAllowed = (type: string): type is PhotoContentType =>
   (PHOTO_CONTENT_TYPES as readonly string[]).includes(type);
+
+/** How each allowed image type's file begins (its magic bytes), checked on the first 12 bytes. */
+const HEAD_BYTES = 12;
+const STARTS_AS: Record<PhotoContentType, (head: Buffer) => boolean> = {
+  "image/jpeg": (head) => head.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])),
+  "image/png": (head) =>
+    head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  "image/webp": (head) =>
+    head.toString("latin1", 0, 4) === "RIFF" && head.toString("latin1", 8, 12) === "WEBP",
+};
 
 export interface IPhotoService {
   requestUpload(actor: Actor, packageId: string, input: unknown): Promise<PhotoUpload>;
@@ -77,6 +87,12 @@ export class PhotoService implements IPhotoService {
       throw keyField("Use a JPEG, PNG, or WebP image up to 10 MB");
     }
     const contentType = stored.contentType;
+    // The browser named the type; the bytes must agree, or the "photo" is something else (T384).
+    const head = await this.storage.readHead(storageKey, HEAD_BYTES);
+    if (!head) throw keyField("Upload the file before attaching it");
+    if (!STARTS_AS[contentType](head)) {
+      throw keyField("This file is not the image type it claims to be");
+    }
     return this.uow.run(async (repos) => {
       // Checked again: the status may have changed while storage was asked.
       await this.editablePackage(repos, agentId, packageId);

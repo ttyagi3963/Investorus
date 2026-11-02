@@ -82,11 +82,11 @@ describe("a deadline job that runs again after its worker died", () => {
     await db.query(`UPDATE "Job" SET "lockedAt" = now() - interval '1 hour' WHERE id = $1`, [
       first.id,
     ]);
-    expect(await uow.run((repos) => repos.jobs.reclaimStale(60))).toBe(1);
+    expect(await uow.run((repos) => repos.jobs.reclaimStale(60))).toHaveLength(1);
     const again = (await uow.run((repos) => repos.jobs.claimNext("worker-2", clock.now())))!;
     expect(again.id).toBe(first.id);
     await handlers[again.type](again.payload);
-    await uow.run((repos) => repos.jobs.complete(again.id));
+    await uow.run((repos) => repos.jobs.complete(again.id, "worker-2"));
 
     const told = await db.query(`SELECT count(*) FROM "Notification" WHERE "userId" = 'user-a'`);
     const audited = await db.query(

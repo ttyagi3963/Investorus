@@ -530,13 +530,16 @@ export class InMemoryJobRepository implements IJobRepository {
   claimNext(): Promise<Job | null> {
     throw new Error("not used by the services");
   }
-  reclaimStale(): Promise<number> {
+  renewLease(): Promise<boolean> {
     throw new Error("not used by the services");
   }
-  complete(): Promise<void> {
+  reclaimStale(): Promise<Job[]> {
     throw new Error("not used by the services");
   }
-  fail(): Promise<Job> {
+  complete(): Promise<boolean> {
+    throw new Error("not used by the services");
+  }
+  fail(): Promise<Job | null> {
     throw new Error("not used by the services");
   }
 }

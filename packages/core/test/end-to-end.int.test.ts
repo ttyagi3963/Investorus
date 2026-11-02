@@ -173,7 +173,7 @@ beforeAll(async () => {
       const job = await uow.run((repos) => repos.jobs.claimNext("worker", clock.now()));
       if (!job) break;
       await handlers[job.type](job.payload);
-      await uow.run((repos) => repos.jobs.complete(job.id));
+      await uow.run((repos) => repos.jobs.complete(job.id, "worker"));
     }
     await relay.tick();
     for (let id = queued.shift(); id; id = queued.shift()) {

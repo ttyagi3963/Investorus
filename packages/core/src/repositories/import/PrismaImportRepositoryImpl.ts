@@ -1,5 +1,5 @@
 // The investor import port over Prisma (T322): the only file with ImportBatch and ImportRowResult
-// queries.
+// queries. A row's first result stands, so a second run of the batch cannot abort on it (T378).
 import type { ImportBatch, ImportRowResult } from "@clever/contracts/investor";
 import type { JobStatus } from "@clever/contracts/jobs";
 import type { Prisma } from "../../generated/prisma/client.js";
@@ -36,7 +36,10 @@ export class PrismaImportRepositoryImpl implements IImportRepository {
   }
 
   async addRowResult(batchId: string, result: ImportRowResult): Promise<void> {
-    await this.db.importRowResult.create({ data: { batchId, ...result } });
+    await this.db.importRowResult.createMany({
+      data: [{ batchId, ...result }],
+      skipDuplicates: true,
+    });
   }
 
   async finish(batchId: string, finish: ImportBatchFinish): Promise<void> {

@@ -434,7 +434,7 @@ Partial unique: `(packageId)` where status not in (`FELL_THROUGH`, `CLOSED`, `RE
 | payload / result | JSONB | validated per type with Zod on read (VI) |
 | error | string? | redacted |
 | retryCount / maxRetries | int | default 0 / 3 |
-| lockedAt / lockedBy | timestamptz? / string? | reclaimed when older than 60 s |
+| lockedAt / lockedBy | timestamptz? / string? | the lease: renewed every 20 s by the running worker, reclaimed when older than 60 s (a used try; FAILED once retries are used); only `lockedBy` can complete or fail the job (T378) |
 
 Partial unique `(type, dedupeKey)` where status in (`QUEUED`, `PROCESSING`) (VIII).
 Index: `(status, runAt)`.

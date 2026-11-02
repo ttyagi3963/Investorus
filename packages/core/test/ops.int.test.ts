@@ -104,7 +104,7 @@ beforeAll(async () => {
       const job = await uow.run((repos) => repos.jobs.claimNext("worker", new Date()));
       if (!job) return;
       await handlers[job.type](job.payload);
-      await uow.run((repos) => repos.jobs.complete(job.id));
+      await uow.run((repos) => repos.jobs.complete(job.id, "worker"));
     }
   };
   await drain();

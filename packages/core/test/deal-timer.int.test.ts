@@ -86,7 +86,7 @@ describe("the reconfirmation timer", () => {
     const job = await claim(later);
     expect(job).toMatchObject({ type: "EXPIRE_RECONFIRMATION" });
     await worker.handlers[job!.type](job!.payload);
-    await worker.uow.run((repos) => repos.jobs.complete(job!.id));
+    await worker.uow.run((repos) => repos.jobs.complete(job!.id, "worker-b"));
     expect(await claim(later)).toBeNull();
 
     const rows = await db.query(

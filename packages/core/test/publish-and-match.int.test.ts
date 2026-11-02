@@ -109,7 +109,7 @@ describe("publish and match", () => {
     expect(published).toMatchObject({ status: "ACCEPTING_OFFERS", listingVersion: 1 });
     const job = await uow.run((repos) => repos.jobs.claimNext("worker-a", new Date()));
     await handlers[job!.type](job!.payload);
-    await uow.run((repos) => repos.jobs.complete(job!.id));
+    await uow.run((repos) => repos.jobs.complete(job!.id, "worker-a"));
 
     const matches = await db.query(`SELECT "investorId", "matchedBuyBoxIds" FROM "Match"`);
     expect(matches.rows).toEqual([{ investorId: "summit", matchedBuyBoxIds: ["summit-box"] }]);

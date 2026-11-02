@@ -1,7 +1,9 @@
 // Checks the durable job rules against a real Postgres (T289; constitution VIII): one live job per
 // dedupe key, carrying the trace ID of the request that queued it; two workers never claim the same
 // job; a job scheduled for later waits for its time on the worker's clock; a failure is retried
-// until maxRetries, then FAILED; and a job whose worker died is reclaimed.
+// until maxRetries, then FAILED; a job whose worker renews its lease is never taken over, one whose
+// worker died is reclaimed as a used try, then FAILED; and a worker that lost the lease changes
+// nothing (T378).
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -67,30 +69,65 @@ describe("Job repository", () => {
   });
 
   it("re-queues a failed job until it has been retried maxRetries times, then marks it FAILED", async () => {
+    await db.query(`UPDATE "Job" SET status = 'COMPLETED' WHERE status <> 'FAILED'`);
+    // Past every backoff, so each try is due at once.
+    const later = new Date(Date.now() + 3_600_000);
+    const runOnce = async (id: string, retry: boolean) => {
+      await uow.run((repos) => repos.jobs.claimNext("worker-a", later));
+      return (await uow.run((repos) => repos.jobs.fail(id, "worker-a", "boom", retry)))!.status;
+    };
     const job = await enqueue();
     const statuses: string[] = [];
-    for (let run = 0; run <= job.maxRetries; run += 1) {
-      statuses.push((await uow.run((repos) => repos.jobs.fail(job.id, "boom", true))).status);
-    }
+    for (let run = 0; run <= job.maxRetries; run += 1) statuses.push(await runOnce(job.id, true));
     expect(statuses).toEqual(["QUEUED", "QUEUED", "QUEUED", "FAILED"]);
-    const once = await enqueue();
-    expect((await uow.run((repos) => repos.jobs.fail(once.id, "bad payload", false))).status).toBe(
-      "FAILED",
-    );
+    expect(await runOnce((await enqueue()).id, false)).toBe("FAILED");
   });
 
-  it("reclaims a job whose worker has held it for more than 60 seconds", async () => {
+  it("keeps a job whose worker renews its lease, however long the run takes", async () => {
     await db.query(`UPDATE "Job" SET status = 'COMPLETED' WHERE status <> 'FAILED'`);
     const job = await enqueue();
     await uow.run((repos) => repos.jobs.claimNext("worker-a", new Date()));
-    expect(await uow.run((repos) => repos.jobs.reclaimStale(60))).toBe(0);
-    await db.query(
-      `UPDATE "Job" SET "lockedAt" = CURRENT_TIMESTAMP - interval '61 seconds' WHERE id = $1`,
-      [job.id],
-    );
-    expect(await uow.run((repos) => repos.jobs.reclaimStale(60))).toBe(1);
-    expect((await uow.run((repos) => repos.jobs.claimNext("worker-b", new Date())))?.id).toBe(
+    await age(job.id);
+    expect(await uow.run((repos) => repos.jobs.renewLease(job.id, "worker-a"))).toBe(true);
+    expect(await uow.run((repos) => repos.jobs.renewLease(job.id, "worker-b"))).toBe(false);
+    expect(await uow.run((repos) => repos.jobs.reclaimStale(60))).toEqual([]);
+  });
+
+  it("reclaims a job whose worker stopped renewing its lease as a used try, then FAILS it", async () => {
+    await db.query(`UPDATE "Job" SET status = 'COMPLETED' WHERE status <> 'FAILED'`);
+    const job = await enqueue();
+    const statuses: string[] = [];
+    for (let run = 0; run <= job.maxRetries; run += 1) {
+      await uow.run((repos) => repos.jobs.claimNext(`worker-${run}`, new Date()));
+      expect(await uow.run((repos) => repos.jobs.reclaimStale(60))).toEqual([]);
+      await age(job.id);
+      const [lost] = await uow.run((repos) => repos.jobs.reclaimStale(60));
+      statuses.push(lost!.status);
+    }
+    expect(statuses).toEqual(["QUEUED", "QUEUED", "QUEUED", "FAILED"]);
+  });
+
+  it("lets a worker that lost the lease change nothing", async () => {
+    await db.query(`UPDATE "Job" SET status = 'COMPLETED' WHERE status <> 'FAILED'`);
+    const job = await enqueue();
+    await uow.run((repos) => repos.jobs.claimNext("worker-a", new Date()));
+    await age(job.id);
+    await uow.run((repos) => repos.jobs.reclaimStale(60));
+    await uow.run((repos) => repos.jobs.claimNext("worker-b", new Date()));
+
+    expect(await uow.run((repos) => repos.jobs.complete(job.id, "worker-a"))).toBe(false);
+    expect(await uow.run((repos) => repos.jobs.fail(job.id, "worker-a", "late", true))).toBeNull();
+    const held = await db.query(`SELECT status, "lockedBy", error FROM "Job" WHERE id = $1`, [
       job.id,
-    );
+    ]);
+    expect(held.rows[0]).toMatchObject({ status: "PROCESSING", lockedBy: "worker-b" });
+    expect(await uow.run((repos) => repos.jobs.complete(job.id, "worker-b"))).toBe(true);
   });
 });
+
+/** Moves the job's lease back past the 60 s its worker has to renew it. */
+const age = (id: string) =>
+  db.query(
+    `UPDATE "Job" SET "lockedAt" = CURRENT_TIMESTAMP - interval '61 seconds' WHERE id = $1`,
+    [id],
+  );

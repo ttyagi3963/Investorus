@@ -2,7 +2,8 @@
 // the sample file imports 26 investors, each with one default box and its first version, and
 // rejects 4 rows; importing it again updates the 26 and adds no investor, box, or version; a row
 // the database refuses is rejected and leaves nothing behind; a retried job skips the rows it
-// already recorded; and only operations can import.
+// already recorded; a second run of the same batch at the same time aborts neither (T378); and
+// only operations can import.
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Actor } from "@clever/contracts/auth";
@@ -137,6 +138,25 @@ describe("InvestorImportWorkflow", () => {
       `SELECT email FROM "Investor" WHERE email IN ('first@example.com', 'second@example.com')`,
     );
     expect(emails.rows).toEqual([{ email: "second@example.com" }]);
+  });
+
+  it("lets a second run of the same batch at the same time finish without aborting either", async () => {
+    const key = uploadRows(
+      "imports/twice.csv",
+      "LEG-9101,North Buyers,No,north@example.com,Wholesaler,TX,SFR,1,2",
+      "LEG-9102,South Buyers,So,south@example.com,Wholesaler,TX,SFR,1,2",
+      "LEG-9103,West Buyers,We,west@example.com,Wholesaler,TX,SFR,1,2",
+    );
+    const { batchId } = await start(key);
+
+    await Promise.all([imports.run({ batchId }), imports.run({ batchId })]);
+
+    const { batch } = await imports.getBatch(morgan, batchId);
+    expect(batch).toMatchObject({ imported: 3, updated: 0, rejected: 0 });
+    const investors = await db.query(
+      `SELECT count(*)::int AS n FROM "Investor" WHERE "externalRef" LIKE 'LEG-91%'`,
+    );
+    expect(investors.rows[0].n).toBe(3);
   });
 
   it("lets only operations import", async () => {

@@ -93,8 +93,11 @@ below are the planning baseline.
 - **Job types**: `MATCH_PACKAGE`, `IMPORT_INVESTORS`, `CLOSE_OFFER_ROUND` (scheduled at the
   deadline), `EXPIRE_OFFER` (at expiration), `EXPIRE_RECONFIRMATION` (48 hours after promotion).
 - **Rationale**: Scheduled jobs in the database survive restarts, which satisfies FR-059 and
-  FR-072. A stale lock (`lockedAt` older than 60 seconds) is reclaimed, so a crashed worker's
-  job is picked up again. Handlers are written to be safely re-runnable.
+  FR-072. A claim is a 60-second lease the running worker renews every 20 seconds, so a long
+  run (a large import) is never taken over. A lease nobody renewed (`lockedAt` older than 60
+  seconds) is reclaimed, so a crashed worker's job is picked up again; the lost run counts as a
+  try, so a job that kills its worker every time ends FAILED. Only the worker holding the lease
+  can complete or fail the job (T378). Handlers are written to be safely re-runnable.
 - **Alternatives considered**: BullMQ delayed jobs for timers (Redis is not the system of record
   for workflow state; VIII and XVIII.3 assign that to PostgreSQL); pg-boss (good library, but the
   constitution wants a generic envelope the team owns, and the table is small).

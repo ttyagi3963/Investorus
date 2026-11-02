@@ -222,7 +222,7 @@ table is in [plan.md](specs/001-investor-platform-prototype/plan.md).
 | The web app's Content-Security-Policy forbids framing, plugins, and outside form posts, but not inline scripts or styles (T362) | A nonce-based CSP set per request in proxy.ts (`script-src 'nonce-…' 'strict-dynamic'`), with the brand's style element carrying the nonce |
 | No rate limiting. CSRF is covered by a SameSite=Lax cookie plus an `Origin`/`Host` check on every state-changing BFF route (meets XII), but there are no synchronizer tokens. | Edge rate limits and a WAF; add double-submit CSRF tokens if the BFF is ever exposed cross-site |
 | Plain HTTP (no TLS) on localhost and the Compose network (see Complexity Tracking) | TLS at the load balancer or ingress; mTLS between services |
-| No horizontal scaling tests | Multiple worker replicas are already safe (`SKIP LOCKED`, unique constraints); load test before launch |
+| No horizontal scaling tests | Multiple worker replicas are already safe (`SKIP LOCKED`, a job lease the running worker renews, unique constraints); load test before launch |
 | "Why not matched?" replays non-matches with the current evaluator and flags `replayedWithNewerRules` when the rules changed since matching ran | Keep every released `EVALUATOR_VERSION` runnable (versioned evaluator modules) so old decisions replay exactly |
 | A buy box save re-matches against every package still accepting offers in one job; the near-miss summary replays recent listings in memory on request | Incremental matching by changed criteria, and near-miss counts precomputed in a reporting table |
 

@@ -382,7 +382,8 @@ below are the planning baseline.
 - **Guardrails**:
   - A Zod schema requires every semantic token to be mapped (FR-091).
   - A contrast checker computes WCAG ratios for the declared text/background and focus pairs,
-    and fails seeding, saving, and tests when any pair is below AA (FR-095, SC-015).
+    and fails seeding, saving, and tests when any pair is below AA (FR-095, SC-015): 4.5:1 for
+    text, headings included, and 3:1 for the input border and focus ring (SC 1.4.11, T385).
   - Lint bans Tailwind arbitrary values (`bg-[#…]`, `p-[13px]`), hex and rgb literals, and the
     default palette classes in `apps/web` and `packages/ui`. Only semantic utilities pass
     (SC-014).

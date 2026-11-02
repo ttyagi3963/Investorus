@@ -5,7 +5,7 @@
 // proceeds with Promote (a deactivated investor's backup is flagged and cannot be promoted, T370).
 // While no promoted backup is deciding, the agent can instead reopen the package for a new round or
 // withdraw it, declining any backups left (T377). Nothing changes on screen until the api answers
-// (never optimistic, XIII).
+// (never optimistic, XIII); the fall-through and reopen dialogs stay open on a refusal (T385).
 import type { DealView } from "@clever/contracts/deal";
 import type { AgentPackageView } from "@clever/contracts/listing-package";
 import {
@@ -24,9 +24,11 @@ import { DEAL_STATUS_LABELS, formatUsd } from "@/features/listing-package/labels
 import { packageKeys } from "@/features/listing-package/queries";
 import { deals, listingPackages } from "@/lib/bff-client";
 import { useAction } from "@/lib/use-action";
+import { whenDone } from "@/lib/when-done";
 
 const STEPS = ["OFFER_ACCEPTED", "UNDER_CONTRACT", "INSPECTION", "CLOSING", "CLOSED"] as const;
 const OPEN = ["OFFER_ACCEPTED", "UNDER_CONTRACT", "INSPECTION", "CLOSING"];
+const CHANGE_FAILED = "That change could not be saved. Try again.";
 const when = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 /** A `YYYY-MM-DD` date, read as that calendar day wherever the browser is. */
@@ -65,10 +67,7 @@ function Milestones({ current }: { current: number }) {
 }
 
 export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealView }) {
-  const { run, isBusy, error } = useAction(
-    "That change could not be saved. Try again.",
-    packageKeys.all,
-  );
+  const { run, isBusy, error } = useAction(CHANGE_FAILED, packageKeys.all);
   const current = STEPS.indexOf(deal.status as (typeof STEPS)[number]);
   const usable = deal.backups.filter((b) => !b.expired && b.investorActive);
   const decided = pkg.status === "FELL_THROUGH" && deal.status !== "PENDING_RECONFIRMATION";
@@ -128,11 +127,14 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
                 cancelLabel="Keep the deal"
                 isDisabled={isBusy}
                 onSubmit={(values) =>
-                  run(() =>
-                    deals.fallThrough(deal.id, {
-                      reason: String(values.get("reason") ?? ""),
-                      version: deal.version,
-                    }),
+                  whenDone(
+                    run,
+                    () =>
+                      deals.fallThrough(deal.id, {
+                        reason: String(values.get("reason") ?? ""),
+                        version: deal.version,
+                      }),
+                    CHANGE_FAILED,
                   )
                 }
               >
@@ -211,7 +213,11 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
                 triggerVariant={usable.length === 0 ? "primary" : "secondary"}
                 isDisabled={isBusy}
                 onSubmit={(offerDeadline) =>
-                  run(() => listingPackages.reopen(pkg.id, { version: pkg.version, offerDeadline }))
+                  whenDone(
+                    run,
+                    () => listingPackages.reopen(pkg.id, { version: pkg.version, offerDeadline }),
+                    CHANGE_FAILED,
+                  )
                 }
               />
               <ConfirmDialog

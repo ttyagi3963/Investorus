@@ -31,6 +31,7 @@ import { PageHeader } from "@/features/shell/PageHeader";
 import { listingPackages } from "@/lib/bff-client";
 import { describeError } from "@/lib/errors";
 import { useAction } from "@/lib/use-action";
+import { whenDone } from "@/lib/when-done";
 
 const SORTS = [
   { id: "netProceeds", label: "Net proceeds (highest first)" },
@@ -48,6 +49,7 @@ const LEADS: Record<ComparisonSort, string> = {
  * status, and the in-progress tone would vanish on the leading column's accent tint.
  */
 const LEAD_TONE: StatusTone = "closed";
+const DECISION_FAILED = "The decision could not be recorded. Try again.";
 const ROW_HEAD =
   "border-b border-subtle px-inset-lg py-inset-md text-left align-top text-label font-medium text-muted";
 const CELL = "border-b border-subtle px-inset-md py-inset-md text-left align-top text-body";
@@ -120,11 +122,11 @@ export default function ComparePage() {
   const [sort, setSort] = useState<ComparisonSort>("netProceeds");
   const pkg = usePackage(id);
   const comparison = useComparison(id, sort);
-  const { run, isBusy, error } = useAction(
-    "The decision could not be recorded. Try again.",
-    packageKeys.all,
-  );
+  const { run, isBusy, error } = useAction(DECISION_FAILED, packageKeys.all);
   const decide = (input: CreateDecisionInput) => run(() => listingPackages.decide(id, input));
+  /** For a dialog with typed terms: it stays open, keeping them, if the api refuses (T385). */
+  const decideAndWait = (input: CreateDecisionInput) =>
+    whenDone(run, () => listingPackages.decide(id, input), DECISION_FAILED);
   const open = pkg.data?.status === "ACCEPTING_OFFERS";
   const rows = comparison.data?.rows ?? [];
   const p = pkg.data;
@@ -184,7 +186,7 @@ export default function ComparePage() {
           onSelectionChange={(key) => setSort(key as ComparisonSort)}
         />
         {open && p && rows.length > 0 && (
-          <DeclineAllDialog version={p.version} onDecide={decide} isDisabled={isBusy} />
+          <DeclineAllDialog version={p.version} onDecide={decideAndWait} isDisabled={isBusy} />
         )}
       </div>
       {comparison.data && rows.length === 0 && (
@@ -301,7 +303,7 @@ export default function ComparePage() {
                         <CounterDialog
                           offer={row.offer}
                           investorName={row.investorName}
-                          onDecide={decide}
+                          onDecide={decideAndWait}
                           isDisabled={isBusy}
                         />
                       </div>

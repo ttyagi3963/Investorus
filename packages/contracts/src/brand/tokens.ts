@@ -69,7 +69,7 @@ function shadow(path: string, value: TokenGroup, aliases: Aliases): string {
     .join(" ");
 }
 
-/** The brand's tokens as CSS custom properties, every alias checked to point at a token. */
+/** The brand's tokens as CSS custom properties, every alias checked to reach a token, not a loop. */
 export function toCssVariables(tokens: TokenGroup): Record<string, string> {
   const variables: Record<string, string> = {};
   const aliases: Aliases = [];
@@ -111,7 +111,35 @@ export function toCssVariables(tokens: TokenGroup): Record<string, string> {
       throw new Error(`Token ${token} points at ${target}, which does not exist`);
     }
   }
+  const circular = firstCycle(variables);
+  if (circular) throw new Error(`The variable ${circular} refers back to itself through aliases`);
   return variables;
+}
+
+/**
+ * A variable whose var() references lead back to it, or null. The browser treats every variable on
+ * such a loop as unset, so a spacing or radius token caught in one would silently collapse (T385).
+ */
+function firstCycle(variables: Record<string, string>): string | null {
+  const done = new Set<string>();
+  const onPath = new Set<string>();
+  const visit = (name: string): string | null => {
+    if (onPath.has(name)) return name;
+    if (done.has(name)) return null;
+    onPath.add(name);
+    for (const [, next] of (variables[name] ?? "").matchAll(/var\((--[\w-]+)\)/g)) {
+      const found = visit(next!);
+      if (found) return found;
+    }
+    onPath.delete(name);
+    done.add(name);
+    return null;
+  };
+  for (const name of Object.keys(variables)) {
+    const found = visit(name);
+    if (found) return found;
+  }
+  return null;
 }
 
 /**

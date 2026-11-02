@@ -15,11 +15,13 @@ import { Button, Card, ConfirmDialog, FormDialog, TextField } from "@clever/ui";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { formatUsd } from "@/features/listing-package/labels";
 import { investor } from "@/lib/bff-client";
-import { toLocalInput } from "@/lib/local-time";
+import { checkLocalInput, toLocalInput } from "@/lib/local-time";
 import { useAction } from "@/lib/use-action";
+import { whenDone } from "@/lib/when-done";
 import { investorKeys } from "./queries";
 import { timeLeft, useNow } from "./time-left";
 
+const SAVE_FAILED = "That could not be saved. Try again.";
 const TERMS = "rounded-control bg-soft p-inset-md text-body";
 const lower = (code: string) => code.toLowerCase().replaceAll("_", " ");
 
@@ -38,7 +40,7 @@ function Terms({ offer }: { offer: OfferView | OwnTerms }) {
 }
 
 export function WithdrawOfferButton({ offer }: { offer: OfferView }) {
-  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
+  const { run, isBusy, error } = useAction(SAVE_FAILED, investorKeys.all);
   return (
     <div className="flex flex-col gap-stack-sm">
       <div>
@@ -58,7 +60,7 @@ export function WithdrawOfferButton({ offer }: { offer: OfferView }) {
 }
 
 export function CounterPanel({ offer, ownTerms }: { offer: OfferView; ownTerms: OwnTerms | null }) {
-  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
+  const { run, isBusy, error } = useAction(SAVE_FAILED, investorKeys.all);
   const now = useNow();
   // Expired terms cannot come back, so then the investor accepts or revises with a new expiry.
   const ownExpired = ownTerms !== null && Date.parse(ownTerms.expiresAt) <= now;
@@ -97,7 +99,7 @@ export function CounterPanel({ offer, ownTerms }: { offer: OfferView; ownTerms: 
 }
 
 export function BackupPanel({ offer }: { offer: OfferView }) {
-  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
+  const { run, isBusy, error } = useAction(SAVE_FAILED, investorKeys.all);
   return (
     <Card title="Your offer is a backup offer">
       <p className="text-body">
@@ -114,17 +116,20 @@ export function BackupPanel({ offer }: { offer: OfferView }) {
           cancelLabel="Cancel"
           isDisabled={isBusy}
           onSubmit={(values) =>
-            run(() =>
-              investor.reviseOffer(offer.id, {
-                price: offer.price,
-                paymentType: offer.paymentType,
-                closingDate: offer.closingDate,
-                earnestMoney: offer.earnestMoney,
-                contingencies: offer.contingencies,
-                feesAndConcessions: offer.feesAndConcessions,
-                expiresAt: new Date(String(values.get("expiresAt"))).toISOString(),
-                version: offer.version,
-              }),
+            whenDone(
+              run,
+              () =>
+                investor.reviseOffer(offer.id, {
+                  price: offer.price,
+                  paymentType: offer.paymentType,
+                  closingDate: offer.closingDate,
+                  earnestMoney: offer.earnestMoney,
+                  contingencies: offer.contingencies,
+                  feesAndConcessions: offer.feesAndConcessions,
+                  expiresAt: new Date(String(values.get("expiresAt"))).toISOString(),
+                  version: offer.version,
+                }),
+              SAVE_FAILED,
             )
           }
         >
@@ -133,6 +138,7 @@ export function BackupPanel({ offer }: { offer: OfferView }) {
             name="expiresAt"
             type="datetime-local"
             label="New expiry"
+            validate={checkLocalInput}
             defaultValue={toLocalInput(
               new Date(Date.parse(offer.expiresAt) + 7 * 86_400_000).toISOString(),
             )}
@@ -146,7 +152,7 @@ export function BackupPanel({ offer }: { offer: OfferView }) {
 }
 
 export function ReconfirmPanel({ offer, reconfirmBy }: { offer: OfferView; reconfirmBy: string }) {
-  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
+  const { run, isBusy, error } = useAction(SAVE_FAILED, investorKeys.all);
   const now = useNow();
   const answer = (action: "CONFIRM" | "DECLINE") =>
     run(() => investor.reconfirm(offer.id, { action }));

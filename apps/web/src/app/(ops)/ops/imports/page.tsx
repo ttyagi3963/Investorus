@@ -2,8 +2,10 @@
 // The investor import page (T325, T332; FR-061, contracts/investor-import.md): operations choose the
 // legacy CSV, which is uploaded and imported in the background; beside the upload card, the page
 // follows the batch and shows its counts, the columns it ignored, and every row's result with its
-// reason.
+// reason. The batch is read from the address, so the screen waits behind a Suspense boundary while
+// the page is prerendered.
 import { Card } from "@clever/ui";
+import { Suspense } from "react";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { ImportBatchCard } from "@/features/imports/ImportBatchCard";
 import { ImportUploadCard } from "@/features/imports/ImportUploadCard";
@@ -12,6 +14,14 @@ import { PageHeader } from "@/features/shell/PageHeader";
 import { describeError } from "@/lib/errors";
 
 export default function ImportInvestorsPage() {
+  return (
+    <Suspense fallback={<p role="status">Loading the imports…</p>}>
+      <ImportScreen />
+    </Suspense>
+  );
+}
+
+function ImportScreen() {
   const { upload, isUploading, error, batch } = useInvestorImport();
 
   return (

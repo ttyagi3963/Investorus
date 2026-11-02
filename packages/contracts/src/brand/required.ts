@@ -51,6 +51,7 @@ export const REQUIRED_BRAND_VARIABLES = [
   "--brand-semantic-color-status-offers-in-text",
   "--brand-semantic-color-status-open-background",
   "--brand-semantic-color-status-open-text",
+  "--brand-semantic-color-status-under-contract-background",
   "--brand-semantic-color-status-under-contract-text",
   "--brand-semantic-color-text-accent",
   "--brand-semantic-color-text-disabled",

@@ -3,7 +3,8 @@
 // confirmation, counter one with new terms, or decline every open offer with an optional note.
 // Each dialog moves focus in and back and works from the keyboard; nothing changes on screen until
 // the api answers (never optimistic, XIII). A counter may change any term the investor offered,
-// payment type and contingencies included (FR-041, FR-052; T377).
+// payment type and contingencies included (FR-041, FR-052; T377). The counter and decline dialogs
+// wait for the api, so a refusal keeps the terms or note typed in them (T385).
 import type { CreateDecisionInput } from "@clever/contracts/deal";
 import type { CreateOfferInput, OfferView } from "@clever/contracts/offer";
 import {
@@ -20,13 +21,15 @@ import {
   PAYMENT_TYPE_OPTIONS,
   formatUsd,
 } from "@/features/listing-package/labels";
-import { toLocalInput } from "@/lib/local-time";
+import { checkLocalInput, toLocalInput } from "@/lib/local-time";
 
 const USD = { style: "currency", currency: "USD", maximumFractionDigits: 0 } as const;
 const amount = (values: FormData, name: string) =>
   Number(String(values.get(name) ?? "").replace(/[^0-9.]/g, ""));
 
 type Decide = (input: CreateDecisionInput) => void;
+/** A decision the dialog waits for: it closes when the promise resolves, stays open when it rejects. */
+type DecideAndWait = (input: CreateDecisionInput) => Promise<unknown>;
 
 export function AcceptButton({
   offer,
@@ -61,7 +64,7 @@ export function CounterDialog({
 }: {
   offer: OfferView;
   investorName: string;
-  onDecide: Decide;
+  onDecide: DecideAndWait;
   isDisabled?: boolean;
 }) {
   return (
@@ -126,6 +129,7 @@ export function CounterDialog({
         name="expiresAt"
         type="datetime-local"
         label="Counter expires"
+        validate={checkLocalInput}
         defaultValue={toLocalInput(offer.expiresAt)}
         isRequired
       />
@@ -164,7 +168,7 @@ export function DeclineAllDialog({
   isDisabled,
 }: {
   version: number;
-  onDecide: Decide;
+  onDecide: DecideAndWait;
   isDisabled?: boolean;
 }) {
   return (
@@ -176,7 +180,7 @@ export function DeclineAllDialog({
       isDisabled={isDisabled}
       onSubmit={(values) => {
         const note = String(values.get("note") ?? "").trim();
-        onDecide({ type: "DECLINE_ALL", version, ...(note && { note }) });
+        return onDecide({ type: "DECLINE_ALL", version, ...(note && { note }) });
       }}
     >
       <p>Each investor is told their offer was declined.</p>

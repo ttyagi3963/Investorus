@@ -83,7 +83,8 @@ The addresses that open the brand, for example `["partner.localhost"]`. At least
 One validator, `validateBrandTokens` in `packages/contracts/src/brand/brand.ts`, used by the seed,
 the api's theme save, and the tests. It returns every failure as `{ field, message }`:
 
-1. Every alias points at an existing token. Names and values are allow-listed, because they are
+1. Every alias points at an existing token, and no chain of aliases loops back on itself (the
+   browser would drop every variable on the loop). Names and values are allow-listed, because they are
    written into the page's `<style>` element (`tokens.ts`): a token name is letters, digits, `-`,
    and `_`; a value is a hex color, `rgb()`/`hsl()` color, number, dimension, or keyword from
    letters, digits, spaces, and `# . , % + -`, so no quote, comment, `url()`, `;`, `}`, or `<`
@@ -96,6 +97,10 @@ the api's theme save, and the tests. It returns every failure as `{ field, messa
    backgrounds; text on the primary, success, and CTA actions; inverse text on the operations
    header; and each status's text on its own background. Field: the pair, for example
    `text-muted on background-surface`, with the ratio in the message.
+4. Contrast is at least 3:1 (WCAG 2.1 SC 1.4.11) for a control's outline on the surface and page
+   backgrounds: the input border (`border-input`, which also outlines checkboxes) and the focus
+   ring (`action-primary`). Both seed brands' input border is `#8f9091` for this; the site's
+   `#dddedf` was 1.35:1 on white (T385).
 
 ## Editing a brand (`/ops/brands`, T353)
 

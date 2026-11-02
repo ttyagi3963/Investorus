@@ -14,6 +14,7 @@ import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { PageHeader } from "@/features/shell/PageHeader";
 import { listingPackages } from "@/lib/bff-client";
 import { useAction } from "@/lib/use-action";
+import { whenDone } from "@/lib/when-done";
 import { DeadlineDialog } from "./DeadlineDialog";
 import { STATUS_LABELS } from "./labels";
 import { PublishBlockers } from "./PublishBlockers";
@@ -22,6 +23,7 @@ import { usePublication } from "./usePublication";
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+const ROUND_FAILED = "The offer round could not be changed. Try again.";
 const WITHDRAWABLE: PackageStatus[] = ["DRAFT", "ACCEPTING_OFFERS", "NO_OFFERS_RECEIVED"];
 const DEAL: PackageStatus[] = [
   "OFFER_ACCEPTED",
@@ -46,7 +48,7 @@ function contextLine(pkg: AgentPackageView): string {
 
 export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
   const { publish, withdraw, isBusy, blockers, error } = usePublication();
-  const round = useAction("The offer round could not be changed. Try again.", packageKeys.all);
+  const round = useAction(ROUND_FAILED, packageKeys.all);
   const target = { id: pkg.id, version: pkg.version };
   const busy = isBusy || round.isBusy;
 
@@ -70,8 +72,10 @@ export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
           note="Matched investors are told the new deadline. It must be later than the current one."
           isDisabled={busy}
           onSubmit={(offerDeadline) =>
-            round.run(() =>
-              listingPackages.extendDeadline(pkg.id, { version: pkg.version, offerDeadline }),
+            whenDone(
+              round.run,
+              () => listingPackages.extendDeadline(pkg.id, { version: pkg.version, offerDeadline }),
+              ROUND_FAILED,
             )
           }
         />
@@ -83,7 +87,11 @@ export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
           note="Matching runs again, and every matched investor is told about the new round."
           isDisabled={busy}
           onSubmit={(offerDeadline) =>
-            round.run(() => listingPackages.reopen(pkg.id, { version: pkg.version, offerDeadline }))
+            whenDone(
+              round.run,
+              () => listingPackages.reopen(pkg.id, { version: pkg.version, offerDeadline }),
+              ROUND_FAILED,
+            )
           }
         />
       )}

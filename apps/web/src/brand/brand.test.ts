@@ -14,7 +14,10 @@ const theme = readFileSync(
 
 describe("theme.css", () => {
   it("reads exactly the brand variables the validator requires", () => {
-    const read = [...new Set([...theme.matchAll(/var\((--brand-[\w-]+)\)/g)].map((m) => m[1]!))];
+    // A long name may be wrapped onto its own line inside var( ... ).
+    const read = [
+      ...new Set([...theme.matchAll(/var\(\s*(--brand-[\w-]+)\s*\)/g)].map((m) => m[1]!)),
+    ];
     expect(read.sort()).toEqual([...REQUIRED_BRAND_VARIABLES].sort());
   });
 });

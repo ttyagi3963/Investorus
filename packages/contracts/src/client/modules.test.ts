@@ -6,7 +6,7 @@ import { buyBoxesClient, investorImportsClient } from "./modules.js";
 
 describe("client paths", () => {
   it("encodes every ID into a single path segment", async () => {
-    const fetch = vi.fn(async () => new Response("{}", { status: 200 }));
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response("{}", { status: 200 }));
     const api = createApiClient({ baseUrl: "/bff", fetch });
     await investorImportsClient(api).get("../users");
     await buyBoxesClient(api).get("a/b");

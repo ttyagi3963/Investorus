@@ -1,7 +1,8 @@
 // The database port (T276): everything an app's composition root needs from a database, behind
-// one interface, so swapping the database (for example to MySQL) is a new implementation plus one
-// line in container.ts. Services still see only the unit of work; the api's idempotency middleware
-// uses the key store (T285).
+// one interface, so services and routes never see the ORM: an ORM or driver swap (Prisma to Drizzle
+// or raw pg) is a new implementation plus one line in container.ts. Leaving PostgreSQL is not: the
+// design relies on its guarantees (SKIP LOCKED, partial unique indexes, transaction IDs, triggers;
+// research.md). Services see only the unit of work; the idempotency middleware uses the key store.
 import type { IIdempotencyStore } from "../repositories/idempotency/IIdempotencyStore.js";
 import type { IUnitOfWork } from "./IUnitOfWork.js";
 

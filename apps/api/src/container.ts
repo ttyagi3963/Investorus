@@ -1,7 +1,7 @@
 // The api's composition root (T255, constitution I): the one place adapters are built and wired.
 // Everything is created once from validated settings; `dispose` closes the database pool on
-// shutdown. Swapping a vendor is a change here and nowhere else: the database is one line (any
-// IDatabase, T276), and STORAGE_PROVIDER picks the sandbox or S3 behind the storage port (T275).
+// shutdown. Swapping an adapter is a change here and nowhere else: the database layer is one line
+// (any IDatabase over PostgreSQL, T276), and STORAGE_PROVIDER picks the sandbox or S3 (T275).
 import {
   AuthService,
   BuyBoxService,

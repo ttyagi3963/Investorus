@@ -25,7 +25,7 @@ Ports are exported from `@clever/core`. Implementations are exported only from
 | `IClock` | `now()` | `SystemClockImpl` (`FakeClock` in tests) | all | — | `SystemClockImpl` |
 | `IPiiCipher` | `encrypt(text)`, `decrypt(blob)` | `AesGcmPiiCipherImpl` (key from validated env); injected into repository adapters | api, worker | — | KMS-backed impl |
 | `IUnitOfWork` | `run(work: (repos) => Promise<T>)` | `PrismaUnitOfWorkImpl` (one interactive transaction) | api, worker | — | same |
-| `IDatabase` (T276) | `uow` (the `IUnitOfWork` above), `check()`, `dispose()` | `PostgresDatabaseImpl` (the Prisma client, `PrismaUnitOfWorkImpl`, `SELECT 1`, disconnect); built in one line of each app's `container.ts` | api, worker | — | any database: a new `IDatabase` implementation plus that one line |
+| `IDatabase` (T276) | `uow` (the `IUnitOfWork` above), `check()`, `dispose()` | `PostgresDatabaseImpl` (the Prisma client, `PrismaUnitOfWorkImpl`, `SELECT 1`, disconnect); built in one line of each app's `container.ts` | api, worker | — | another ORM or driver over PostgreSQL: a new `IDatabase` implementation plus that one line (leaving PostgreSQL is a non-goal; research.md) |
 
 The api container never receives `ICrmProvider`, `IMessagingProvider`, or the delivery queue.
 Outbound calls happen only in the worker's delivery consumer, after the outbox (XVIII). The api's

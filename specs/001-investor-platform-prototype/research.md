@@ -492,7 +492,7 @@ import {
 
 export function createContainer(env: ApiEnv = apiEnvSchema.parse(process.env)) {
   const cipher = new AesGcmPiiCipherImpl(env.PII_ENCRYPTION_KEY);
-  const db = new PostgresDatabaseImpl(env.DATABASE_URL, cipher);  // IDatabase (T276): the one line a database swap changes
+  const db = new PostgresDatabaseImpl(env.DATABASE_URL, cipher);  // IDatabase (T276): the one line an ORM or driver swap changes
   const redis = createRedisClient(env.REDIS_URL);
   const clock = new SystemClockImpl();
   const { uow } = db;                                              // repos bound to one tx

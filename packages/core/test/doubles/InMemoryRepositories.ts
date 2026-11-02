@@ -168,16 +168,23 @@ export class InMemoryPropertyRepository implements IPropertyRepository {
 
 export class InMemoryListingPackageRepository implements IListingPackageRepository {
   readonly rows = new Map<string, ListingPackage & { addressHash: string }>();
-  async create(pkg: NewListingPackage) {
-    if (
-      [...this.rows.values()].some(
-        (r) =>
-          r.addressHash === pkg.addressHash &&
-          !(ADDRESS_FREEING_STATUSES as readonly string[]).includes(r.status),
-      )
-    ) {
-      throw new Error("unique constraint ListingPackage_one_active_per_address");
+  /** The partial unique index, answered as the Prisma repository answers it (T383, T403). */
+  private assertAddressFree(addressHash: string, exceptId?: string) {
+    const taken = [...this.rows.values()].some(
+      (r) =>
+        r.id !== exceptId &&
+        r.addressHash === addressHash &&
+        !(ADDRESS_FREEING_STATUSES as readonly string[]).includes(r.status),
+    );
+    if (taken) {
+      throw new BusinessRuleError(
+        "This address already has a listing package",
+        "DUPLICATE_ACTIVE_LISTING",
+      );
     }
+  }
+  async create(pkg: NewListingPackage) {
+    this.assertAddressFree(pkg.addressHash);
     const row: ListingPackage & { addressHash: string } = {
       id: nextId("package"),
       ...pkg,
@@ -222,6 +229,7 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
     const row = this.rows.get(id);
     if (!row || row.version !== version)
       throw new ConflictError("This package changed since you opened it.");
+    if (patch.addressHash !== undefined) this.assertAddressFree(patch.addressHash, id);
     const next = { ...apply(row, patch), version: row.version + 1 };
     this.rows.set(id, next);
     return next;

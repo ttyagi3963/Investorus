@@ -48,7 +48,7 @@ describe("useOfferForm", () => {
     makeOffer.mockReset();
     makeOffer.mockRejectedValue(
       new ApiError(400, {
-        error: "Some fields are invalid",
+        error: "Some fields need fixing. See the messages below.",
         code: "VALIDATION_FAILED",
         details: { fields: [{ field: "closingDate", message: "Cannot be in the past" }] },
       }),

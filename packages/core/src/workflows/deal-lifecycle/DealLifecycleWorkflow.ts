@@ -154,7 +154,10 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
         );
       }
       if (await repos.deals.findActiveByPackage(packageId)) {
-        throw new BusinessRuleError("A promoted backup is still deciding", "BACKUP_PENDING");
+        throw new BusinessRuleError(
+          "The backup buyer hasn't confirmed yet. Wait for their answer.",
+          "BACKUP_PENDING",
+        );
       }
       const offer = await repos.offers.findById(offerId);
       if (!offer || offer.packageId !== packageId || offer.round !== pkg.round) {

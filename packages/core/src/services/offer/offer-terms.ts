@@ -20,7 +20,8 @@ export function checkOfferDates(
   const expiresAt = new Date(input.expiresAt);
   if (expiresAt <= now)
     errors.push({ field: `${prefix}expiresAt`, message: "Must be in the future" });
-  if (errors.length > 0) throw new ValidationError("Some fields are invalid", errors);
+  if (errors.length > 0)
+    throw new ValidationError("Some fields need fixing. See the messages below.", errors);
   return { ...input, expiresAt };
 }
 

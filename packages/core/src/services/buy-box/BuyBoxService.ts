@@ -75,7 +75,8 @@ export class BuyBoxService implements IBuyBoxService {
     const errors: FieldError[] = (["yearBuiltMin", "yearBuiltMax"] as const)
       .filter((field) => (box[field] ?? 0) > latest)
       .map((field) => ({ field, message: "Must not be after next year" }));
-    if (errors.length > 0) throw new ValidationError("Some fields are invalid", errors);
+    if (errors.length > 0)
+      throw new ValidationError("Some fields need fixing. See the messages below.", errors);
     return box;
   }
 

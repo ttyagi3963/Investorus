@@ -3,11 +3,11 @@
 // The agent comes from the session, never from the body.
 import { z } from "zod";
 import { isoDate, isoDateTime } from "../common/dates.js";
+import { price } from "../common/fields.js";
 import { createPropertyInputSchema, updatePropertyInputSchema } from "../property/inputs.js";
 import { createSellerInputSchema, updateSellerInputSchema } from "../seller/inputs.js";
 import { OFFER_PROGRAMS } from "./programs.js";
 
-const price = z.number().int().positive();
 const minAtMostMax = {
   message: "Must be at least the minimum price",
   path: ["priceExpectationMax"],
@@ -30,8 +30,8 @@ export const createListingPackageInputSchema = z
   .object({
     seller: createSellerInputSchema,
     property: createPropertyInputSchema,
-    priceExpectationMin: price,
-    priceExpectationMax: price,
+    priceExpectationMin: price(),
+    priceExpectationMax: price(),
     closingWindowStart: terms.closingWindowStart.optional(),
     closingWindowEnd: terms.closingWindowEnd.optional(),
     currentlyListed: terms.currentlyListed.optional(),
@@ -51,8 +51,8 @@ export const updateListingPackageInputSchema = z
     version: z.number().int().positive(),
     seller: updateSellerInputSchema.optional(),
     property: updatePropertyInputSchema.optional(),
-    priceExpectationMin: price.optional(),
-    priceExpectationMax: price.optional(),
+    priceExpectationMin: price().optional(),
+    priceExpectationMax: price().optional(),
     closingWindowStart: terms.closingWindowStart.nullable().optional(),
     closingWindowEnd: terms.closingWindowEnd.nullable().optional(),
     currentlyListed: terms.currentlyListed.nullable().optional(),

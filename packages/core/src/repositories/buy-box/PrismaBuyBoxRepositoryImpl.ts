@@ -8,7 +8,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import { toBuyBox } from "./buy-box.mapper.js";
 import type { IBuyBoxRepository } from "./IBuyBoxRepository.js";
 
-const NAME_TAKEN = new ValidationError("Some fields are invalid", [
+const NAME_TAKEN = new ValidationError("Some fields need fixing. See the messages below.", [
   { field: "name", message: "You already have a buy box with this name" },
 ]);
 

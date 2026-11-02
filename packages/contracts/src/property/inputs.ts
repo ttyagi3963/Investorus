@@ -2,23 +2,28 @@
 // checked with Zod against the data-model rules; errors name the field. City and state are not
 // typed: the service derives them from the ZIP and rejects a ZIP outside the geo reference set.
 import { z } from "zod";
+import { dollars, wholeNumber } from "../common/fields.js";
 import { PROPERTY_CONDITIONS, PROPERTY_TYPES } from "./enums.js";
 
 const fields = {
-  streetLine: z.string().trim().min(1),
+  streetLine: z.string().trim().min(1, "Enter the street address"),
   zip: z.string().regex(/^\d{5}$/, "Use a 5-digit ZIP code"),
-  neighborhood: z.string().trim().min(1),
-  propertyType: z.enum(PROPERTY_TYPES),
-  beds: z.number().int().min(0).max(20),
-  baths: z.number().min(0).max(20).multipleOf(0.5),
-  sqft: z.number().int().min(100).max(20_000),
-  lotSqft: z.number().int().positive(),
-  units: z.number().int().min(2).max(500),
+  neighborhood: z.string().trim().min(1, "Enter the neighborhood"),
+  propertyType: z.enum(PROPERTY_TYPES, { message: "Choose a property type" }),
+  beds: wholeNumber("Enter a whole number from 0 to 20", 0, 20),
+  baths: z
+    .number({ message: "Use whole or half baths from 0 to 20, for example 2.5" })
+    .min(0, "Use whole or half baths from 0 to 20, for example 2.5")
+    .max(20, "Use whole or half baths from 0 to 20, for example 2.5")
+    .multipleOf(0.5, "Use whole or half baths from 0 to 20, for example 2.5"),
+  sqft: wholeNumber("Enter 100 to 20,000 square feet", 100, 20_000),
+  lotSqft: wholeNumber("Enter a lot size above 0", 1),
+  units: wholeNumber("A multi-family home has 2 to 500 units", 2, 500),
   // "Not in the future" needs today's date, so the database CHECK enforces it (and the service
   // will, with the clock port); a schema must not read the wall clock (constitution XV).
-  yearBuilt: z.number().int().min(1800),
-  condition: z.enum(PROPERTY_CONDITIONS),
-  repairEstimate: z.number().int().min(0),
+  yearBuilt: wholeNumber("Enter a year from 1800 on", 1800),
+  condition: z.enum(PROPERTY_CONDITIONS, { message: "Choose a condition" }),
+  repairEstimate: dollars(),
 };
 const unitsMessage = { message: "Units apply only to multi-family homes", path: ["units"] };
 

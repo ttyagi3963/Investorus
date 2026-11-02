@@ -79,7 +79,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
       await repos.packages.lock(packageId);
       const current = await this.ownPackage(repos, agentId, packageId);
       if (current.status !== "DRAFT") {
-        throw new BusinessRuleError("Only a draft can be published", "NOT_A_DRAFT");
+        throw new BusinessRuleError("This listing is already published", "NOT_A_DRAFT");
       }
       const { property, photos } = await loadAgentPackage(repos, current);
       const errors = publishBlockers(current, property, photos, offerDeadline, now);
@@ -112,7 +112,10 @@ export class PublicationWorkflow implements IPublicationWorkflow {
     return this.uow.run(async (repos) => {
       const current = await this.ownPackage(repos, agentId, packageId);
       if (!WITHDRAWABLE.includes(current.status)) {
-        throw new BusinessRuleError("This package cannot be withdrawn", "NOT_WITHDRAWABLE");
+        throw new BusinessRuleError(
+          "This listing can't be withdrawn once an offer is accepted, or after it has been withdrawn",
+          "NOT_WITHDRAWABLE",
+        );
       }
       await assertNoBackupDeciding(repos, packageId);
       const pkg = await repos.packages.update(packageId, data.version, { status: "WITHDRAWN" });
@@ -142,7 +145,10 @@ export class PublicationWorkflow implements IPublicationWorkflow {
     return this.uow.run(async (repos) => {
       const current = await this.ownPackage(repos, agentId, packageId);
       if (!REOPENABLE.includes(current.status)) {
-        throw new BusinessRuleError("This package cannot be reopened", "NOT_REOPENABLE");
+        throw new BusinessRuleError(
+          "Only a listing with no offers, or whose deal fell through, can be reopened",
+          "NOT_REOPENABLE",
+        );
       }
       await assertNoBackupDeciding(repos, packageId);
       const pkg = await repos.packages.update(packageId, data.version, {
@@ -187,10 +193,13 @@ export class PublicationWorkflow implements IPublicationWorkflow {
     return this.uow.run(async (repos) => {
       const current = await this.ownPackage(repos, agentId, packageId);
       if (!EXTENDABLE.includes(current.status)) {
-        throw new BusinessRuleError("This deadline cannot be extended", "NOT_EXTENDABLE");
+        throw new BusinessRuleError(
+          "The offer deadline can be extended only while the listing is published and no offer is accepted",
+          "NOT_EXTENDABLE",
+        );
       }
       if (current.offerDeadline && offerDeadline <= current.offerDeadline) {
-        throw new ValidationError("Some fields are invalid", [
+        throw new ValidationError("Some fields need fixing. See the messages below.", [
           { field: "offerDeadline", message: "Must be later than the current deadline" },
         ]);
       }
@@ -241,7 +250,9 @@ export class PublicationWorkflow implements IPublicationWorkflow {
           ? `Must be within ${MAX_OFFER_WINDOW_DAYS} days`
           : null;
     if (message) {
-      throw new ValidationError("Some fields are invalid", [{ field: "offerDeadline", message }]);
+      throw new ValidationError("Some fields need fixing. See the messages below.", [
+        { field: "offerDeadline", message },
+      ]);
     }
     return deadline;
   }
@@ -256,7 +267,10 @@ export class PublicationWorkflow implements IPublicationWorkflow {
 /** After a fall-through, a promoted backup's answer comes first (FR-057). */
 async function assertNoBackupDeciding(repos: UnitOfWorkRepositories, packageId: string) {
   if (await repos.deals.findActiveByPackage(packageId)) {
-    throw new BusinessRuleError("A promoted backup is still deciding", "BACKUP_PENDING");
+    throw new BusinessRuleError(
+      "The backup buyer hasn't confirmed yet. Wait for their answer.",
+      "BACKUP_PENDING",
+    );
   }
 }
 

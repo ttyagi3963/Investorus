@@ -22,7 +22,7 @@ describe("checkOfferDates", () => {
       "2026-11-01",
     );
     expect(() => checkOfferDates(terms("2026-10-31"), EVENING_IN_CALIFORNIA)).toThrow(
-      "Some fields are invalid",
+      "Some fields need fixing. See the messages below.",
     );
   });
 });

@@ -99,7 +99,15 @@ const apply = <T extends object>(target: T, patch: object): T => ({
 });
 
 export class InMemoryUserRepository implements IUserRepository {
-  constructor(private readonly credentials: UserCredentials[] = []) {}
+  constructor(
+    private readonly credentials: UserCredentials[] = [],
+    private readonly investors?: InMemoryInvestorRepository,
+  ) {}
+  async canAct(userId: string) {
+    const user = this.credentials.find((c) => c.user.id === userId)?.user;
+    if (!user?.active) return false;
+    return user.role !== "INVESTOR" || !this.investors?.inactive.has(user.investorId);
+  }
   async findByEmail(email: string) {
     return this.credentials.find((c) => c.user.email === email) ?? null;
   }
@@ -548,8 +556,13 @@ export class InMemoryConfigRepository implements IConfigRepository {
 export class InMemoryInvestorRepository implements IInvestorRepository {
   readonly names = new Map<string, string>();
   readonly contacts = new Map<string, { email: string; phone: string | null }>();
+  /** Investors operations deactivated; every other investor is ACTIVE. */
+  readonly inactive = new Set<string>();
   async findCompanyNames(ids: string[]) {
     return new Map(ids.map((id) => [id, this.names.get(id) ?? id]));
+  }
+  async findInactive(ids: string[]) {
+    return new Set(ids.filter((id) => this.inactive.has(id)));
   }
   async findContact(id: string) {
     return this.contacts.get(id) ?? null;
@@ -796,8 +809,9 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
   };
   constructor(users: UserCredentials[] = []) {
     const outbox = new InMemoryOutboxRepository();
+    const investors = new InMemoryInvestorRepository();
     this.repos = {
-      users: new InMemoryUserRepository(users),
+      users: new InMemoryUserRepository(users, investors),
       sellers: new InMemorySellerRepository(),
       properties: new InMemoryPropertyRepository(),
       packages: new InMemoryListingPackageRepository(),
@@ -810,7 +824,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       offers: new InMemoryOfferRepository(),
       jobs: new InMemoryJobRepository(),
       config: new InMemoryConfigRepository(),
-      investors: new InMemoryInvestorRepository(),
+      investors,
       decisions: new InMemoryDecisionRepository(),
       deals: new InMemoryDealRepository(),
       imports: new InMemoryImportRepository(),

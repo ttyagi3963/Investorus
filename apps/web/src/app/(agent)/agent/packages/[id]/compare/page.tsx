@@ -2,7 +2,8 @@
 // The offer comparison (T315, restyled in T330; FR-050 to FR-052): every offer still in play side by
 // side as columns, sortable by net proceeds, closing date, or certainty, the leading offer for the
 // sort highlighted, each net figure with a breakdown of what was subtracted, and the seller's
-// decision recorded from here. An expired, backup, or countered offer cannot be accepted directly.
+// decision recorded from here. An expired, backup, or countered offer cannot be accepted directly,
+// nor can the offer of an investor operations deactivated, which is flagged rather than hidden (T370).
 import type { CreateDecisionInput } from "@clever/contracts/deal";
 import type { ComparisonSort, OfferComparisonRow } from "@clever/contracts/offer";
 import {
@@ -55,7 +56,12 @@ const lower = (code: string) => code.toLowerCase().replaceAll("_", " ");
 const day = (date: string) =>
   new Date(date).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "UTC" });
 const moment = (iso: string) =>
-  new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
 function Breakdown({ row }: { row: OfferComparisonRow }) {
   return (
@@ -98,7 +104,10 @@ function AttributeRow({
         {label}
       </th>
       {rows.map((row, index) => (
-        <td key={row.offer.id} className={`${CELL} ${edge} ${index === 0 ? "bg-accent-subtle" : ""}`}>
+        <td
+          key={row.offer.id}
+          className={`${CELL} ${edge} ${index === 0 ? "bg-accent-subtle" : ""}`}
+        >
           {cell(row)}
         </td>
       ))}
@@ -200,12 +209,13 @@ export default function ComparePage() {
                       }`}
                     >
                       <span className="flex flex-col items-start gap-stack-xs">
-                        {index === 0 && (
-                          <StatusChip tone={LEAD_TONE}>{LEADS[sort]}</StatusChip>
-                        )}
+                        {index === 0 && <StatusChip tone={LEAD_TONE}>{LEADS[sort]}</StatusChip>}
                         <span className="font-heading text-body-lg font-semibold text-heading">
                           {row.investorName}
                         </span>
+                        {!row.investorActive && (
+                          <StatusChip tone="error">Investor deactivated</StatusChip>
+                        )}
                         <span className="text-helper font-regular text-muted">
                           Revision {row.offer.revision} · {moment(row.offer.updatedAt)}
                         </span>

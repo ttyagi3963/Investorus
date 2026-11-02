@@ -10,6 +10,7 @@ export {
   type OfferStatus,
   type OfferTerms,
   type OfferView,
+  type AgentOfferView,
   type PaymentType,
   type RevisionAuthor,
 } from "./offer.js";

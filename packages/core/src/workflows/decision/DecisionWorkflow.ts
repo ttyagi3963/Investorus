@@ -5,6 +5,7 @@
 // the outcome. A counter is an agent revision only that investor sees. Decline all closes every
 // open offer. Each decision is an append-only row and an audit entry, in one change; its note stays
 // with the agent (encrypted at rest, never in a notice or the audit details).
+import { assertInvestorActive } from "../assert-investor-active.js";
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -138,6 +139,7 @@ export class DecisionWorkflow implements IDecisionWorkflow {
     if (offer.status !== "ACTIVE") {
       throw new BusinessRuleError("Only an active offer can be accepted", "OFFER_NOT_ACCEPTABLE");
     }
+    await assertInvestorActive(repos, offer.investorId);
     if (offer.expiresAt <= now) {
       throw new BusinessRuleError("This offer has expired and cannot be accepted", "OFFER_EXPIRED");
     }

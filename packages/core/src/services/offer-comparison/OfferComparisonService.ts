@@ -1,6 +1,7 @@
 // The agent's offer comparison (T308; FR-050, FR-051): every offer still in play on the package's
 // current round (active, countered, or backup), with the investor's name, the estimated net
-// proceeds and their breakdown, the certainty rank, and whether the seller can accept it now. The
+// proceeds and their breakdown, the certainty rank, whether operations deactivated the investor
+// (flagged, not hidden; T370), and whether the seller can accept it now. The
 // fee assumptions come from config and are returned with the rows. Only the package's agent sees it.
 import type { Actor } from "@clever/contracts/auth";
 import { ForbiddenError, NotFoundError } from "@clever/contracts/common";
@@ -20,6 +21,7 @@ import { certaintyRank, computeNetProceeds } from "./net-proceeds.js";
 export type ComparisonEntry = {
   offer: Offer;
   investorName: string;
+  investorActive: boolean;
   netProceeds: number;
   breakdown: { label: string; amount: number }[];
   certaintyRank: number;
@@ -61,16 +63,23 @@ export class OfferComparisonService implements IOfferComparisonService {
       const offers = (await repos.offers.listByPackage(packageId, pkg.round)).filter((o) =>
         IN_PLAY.includes(o.status),
       );
-      const names = await repos.investors.findCompanyNames(offers.map((o) => o.investorId));
+      const investorIds = offers.map((o) => o.investorId);
+      const names = await repos.investors.findCompanyNames(investorIds);
+      const inactive = await repos.investors.findInactive(investorIds);
       const rows = offers.map((offer): ComparisonEntry => {
         const expired = offer.expiresAt <= now;
         return {
           offer,
           investorName: names.get(offer.investorId) ?? "Investor",
+          investorActive: !inactive.has(offer.investorId),
           ...computeNetProceeds(offer, assumptions),
           certaintyRank: certaintyRank(offer),
           expired,
-          acceptable: offer.status === "ACTIVE" && !expired && pkg.status === "ACCEPTING_OFFERS",
+          acceptable:
+            offer.status === "ACTIVE" &&
+            !expired &&
+            !inactive.has(offer.investorId) &&
+            pkg.status === "ACCEPTING_OFFERS",
         };
       });
       // Ties keep the order offers came in, so the list never shuffles between loads.

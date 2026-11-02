@@ -42,7 +42,11 @@ export interface IOfferService {
   revise(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
   withdraw(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
   respondToCounter(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
-  listForPackage(actor: Actor, packageId: string): Promise<Offer[]>;
+  /** The agent's offers, each with whether operations deactivated its investor (T370). */
+  listForPackage(
+    actor: Actor,
+    packageId: string,
+  ): Promise<{ offer: Offer; investorActive: boolean }[]>;
 }
 
 const NOT_FOUND = "Package not found";
@@ -229,13 +233,18 @@ export class OfferService implements IOfferService {
     return offer;
   }
 
-  async listForPackage(actor: Actor, packageId: string): Promise<Offer[]> {
+  async listForPackage(
+    actor: Actor,
+    packageId: string,
+  ): Promise<{ offer: Offer; investorActive: boolean }[]> {
     if (actor.role !== "AGENT")
       throw new ForbiddenError("Only the package's agent sees its offers");
     return this.uow.run(async (repos) => {
       const pkg = await repos.packages.findForAgent(actor.agentId, packageId);
       if (!pkg) throw new NotFoundError(NOT_FOUND);
-      return repos.offers.listByPackage(packageId, pkg.round);
+      const offers = await repos.offers.listByPackage(packageId, pkg.round);
+      const inactive = await repos.investors.findInactive(offers.map((o) => o.investorId));
+      return offers.map((offer) => ({ offer, investorActive: !inactive.has(offer.investorId) }));
     });
   }
 

@@ -63,6 +63,9 @@ export type OfferView = Omit<OfferTerms, "expiresAt"> & {
   updatedAt: string;
 };
 
+/** GET /listing-packages/:id/offers (the agent's list): flags an investor operations deactivated (T370). */
+export type AgentOfferView = OfferView & { investorActive: boolean };
+
 export function toOfferView(offer: Offer): OfferView {
   return {
     id: offer.id,

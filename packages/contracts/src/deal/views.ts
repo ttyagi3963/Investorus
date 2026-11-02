@@ -33,6 +33,7 @@ export type DealParts = {
   backups: {
     offer: Offer;
     investorName: string;
+    investorActive: boolean;
     netProceeds: number;
     breakdown: NetProceedsLine[];
     expired: boolean;
@@ -43,6 +44,8 @@ export type DealParts = {
 export type BackupView = {
   offer: OfferView;
   investorName: string;
+  /** False once operations deactivated the investor: shown, flagged, and not promotable (T370). */
+  investorActive: boolean;
   netProceeds: number;
   breakdown: NetProceedsLine[];
   expired: boolean;

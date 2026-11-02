@@ -1,5 +1,5 @@
-// The investor port (T308, T322): what the agent's offer comparison shows of each investor, their
-// company name; and the legacy import's writes, which find an investor by the spreadsheet's
+// The investor port (T308, T322, T370): what the agent's offer comparison shows of each investor,
+// their company name and whether operations deactivated them; and the legacy import's writes, which find an investor by the spreadsheet's
 // Investor ID or else by email, and create or update them.
 import type { Investor } from "@clever/contracts/investor";
 
@@ -9,6 +9,8 @@ export type InvestorFields = Omit<Investor, "id" | "createdAt" | "updatedAt">;
 export interface IInvestorRepository {
   /** Each investor's company name, by ID. */
   findCompanyNames(ids: string[]): Promise<Map<string, string>>;
+  /** Of these investors, the ones operations deactivated (status INACTIVE). */
+  findInactive(ids: string[]): Promise<Set<string>>;
   /** Where to reach an investor, read at send time so a changed address is used (T339). */
   findContact(id: string): Promise<{ email: string; phone: string | null } | null>;
   /** The investor with this external reference, else with this email, or null. */

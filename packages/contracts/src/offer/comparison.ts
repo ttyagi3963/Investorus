@@ -19,12 +19,14 @@ export type NetProceedsLine = { label: string; amount: number };
 export type OfferComparisonRow = {
   offer: OfferView;
   investorName: string;
+  /** False once operations deactivated the investor: the offer is shown, flagged, not acceptable. */
+  investorActive: boolean;
   netProceeds: number;
   breakdown: NetProceedsLine[];
   /** Lower is more certain: fewer contingencies, and cash ahead of financed on a tie. */
   certaintyRank: number;
   expired: boolean;
-  /** Whether the seller can accept it now: an active offer, unexpired, while offers are open. */
+  /** Whether the seller can accept it now: an active offer, unexpired, from an active investor, while offers are open. */
   acceptable: boolean;
 };
 

@@ -1,6 +1,7 @@
 // Guards the agent's comparison (T308; FR-050, FR-051): it sorts by net proceeds, closing date, or
 // certainty; it shows the offers still in play (active, countered, backup) and marks an expired one
-// as not acceptable; it returns the fee assumptions it used; and only the package's agent sees it.
+// as not acceptable; it flags the offer of an investor operations deactivated, which cannot be
+// accepted either (T370); it returns the fee assumptions it used; and only the package's agent sees it.
 import { describe, expect, it } from "vitest";
 import { avery, blake, investor, offer, world } from "../../../test/fixtures/published-package.js";
 import { OfferService } from "../offer/OfferService.js";
@@ -62,6 +63,17 @@ describe("OfferComparisonService", () => {
     ]);
     expect(rows[0]?.netProceeds).toBe(272_900);
     expect(assumptions).toEqual({ closingCostPct: 0.02, flatFees: 1_500 });
+  });
+
+  it("flags a deactivated investor's offer, rather than hiding it, and makes it not acceptable (T370)", async () => {
+    const { uow, pkg, comparison } = await setup();
+    uow.repos.investors.inactive.add("investor-summit");
+
+    const { rows } = await comparison.compare(avery, pkg.id, { sort: "netProceeds" });
+    const summit = rows.find((row) => row.offer.investorId === "investor-summit");
+    const ridge = rows.find((row) => row.offer.investorId === "investor-ridge");
+    expect(summit).toMatchObject({ investorActive: false, acceptable: false });
+    expect(ridge).toMatchObject({ investorActive: true, acceptable: true });
   });
 
   it("is the package's agent's only", async () => {

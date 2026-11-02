@@ -117,6 +117,17 @@ describe("DealLifecycleWorkflow fall-through and backups", () => {
     ).rejects.toMatchObject({ code: "BACKUP_PENDING" });
   });
 
+  it("refuses to promote the backup of an investor operations deactivated (T370)", async () => {
+    const { uow, harbor, ridge, fallThrough, promote } = await accepted();
+    await fallThrough();
+    uow.repos.investors.inactive.add("investor-ridge");
+
+    await expect(promote(ridge.id)).rejects.toMatchObject({ code: "INVESTOR_INACTIVE" });
+    await expect(promote(harbor.id)).resolves.toMatchObject({
+      deal: { status: "PENDING_RECONFIRMATION" },
+    });
+  });
+
   it("makes a reconfirmed backup the accepted offer", async () => {
     const { uow, pkg, deals, ridge, fallThrough, promote, status, notices } = await accepted();
     await fallThrough();

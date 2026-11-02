@@ -4,6 +4,7 @@
 // the agent can promote an unexpired backup, who must reconfirm within the configured hours: yes
 // makes it the accepted offer, and no or the timeout (a durable job) frees the agent to promote
 // another. Every step is audited and its investor or agent is told, in the same change.
+import { assertInvestorActive } from "../assert-investor-active.js";
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -163,6 +164,7 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
       if (offer.status !== "BACKUP") {
         throw new BusinessRuleError("Only a backup offer can be promoted", "NOT_A_BACKUP");
       }
+      await assertInvestorActive(repos, offer.investorId);
       if (offer.expiresAt <= now) {
         throw new BusinessRuleError("This backup offer has expired", "OFFER_EXPIRED");
       }
@@ -321,6 +323,7 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
       offer.investorId,
       ...backups.map((b) => b.investorId),
     ]);
+    const inactive = await repos.investors.findInactive(backups.map((b) => b.investorId));
     const assumptions = await readConfig(repos.config, "netProceeds");
     return {
       deal,
@@ -331,6 +334,7 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
         .map((backup) => ({
           offer: backup,
           investorName: names.get(backup.investorId) ?? "Investor",
+          investorActive: !inactive.has(backup.investorId),
           ...computeNetProceeds(backup, assumptions),
           expired: backup.expiresAt <= now,
         }))

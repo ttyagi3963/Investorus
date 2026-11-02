@@ -84,7 +84,7 @@ beforeAll(async () => {
 
   const clock = { now: () => new Date() };
   const geo = new StaticGeoProviderImpl();
-  const boxes = new BuyBoxService(uow, { geo });
+  const boxes = new BuyBoxService(uow, { geo, clock: { now: () => new Date() } });
   await boxes.create(
     summit,
     box({ name: "Austin flips", geographyMode: "ZIPS", geography: ["78704"] }),

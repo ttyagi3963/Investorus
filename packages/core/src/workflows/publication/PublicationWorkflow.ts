@@ -28,6 +28,7 @@ import {
   loadAgentPackage,
   type AgentPackage,
 } from "../../services/listing-package/ListingPackageService.js";
+import { earliestToday } from "../../providers/clock/earliest-today.js";
 import { missingToPublish } from "../../services/listing-package/publish-rules.js";
 import { isMaterialChange, toListingFacts } from "../../registry/listing-facts.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
@@ -273,7 +274,8 @@ function publishBlockers(
 ): FieldError[] {
   const errors = missingToPublish(pkg, property, photos.length);
   const need = (field: string, message: string) => errors.push({ field, message });
-  const today = now.toISOString().slice(0, 10);
+  // The agent's own today counts, wherever they are (T387).
+  const today = earliestToday(now);
 
   if (offerDeadline <= now) need("offerDeadline", "Must be in the future");
   else if (offerDeadline.getTime() > now.getTime() + MAX_OFFER_WINDOW_DAYS * 24 * HOUR) {

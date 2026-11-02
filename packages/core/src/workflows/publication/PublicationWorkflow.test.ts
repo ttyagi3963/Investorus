@@ -82,6 +82,34 @@ const fields = (err: unknown) =>
   ((err as ValidationError).details?.fields as { field: string }[]).map((f) => f.field).sort();
 
 describe("PublicationWorkflow", () => {
+  it("publishes with a closing window starting on the agent's own today in the US evening (T387)", async () => {
+    // 6:30 PM on 1 November in California; already 2 November in UTC.
+    const clock = { now: () => new Date("2026-11-02T02:30:00Z") };
+    const uow = new InMemoryUnitOfWork([summit]);
+    const packages = new ListingPackageService(uow, {
+      geo: new StaticGeoProviderImpl(),
+      addressHash: createAddressHasher("test-hash-key"),
+      clock,
+    });
+    const { package: pkg } = await packages.create(avery, {
+      ...ready,
+      closingWindowStart: "2026-11-01",
+    });
+    await uow.repos.photos.add({
+      packageId: pkg.id,
+      storageKey: "photos/0.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: 1_000,
+      position: 0,
+    });
+    const { package: published } = await new PublicationWorkflow(uow, { clock }).publish(
+      avery,
+      pkg.id,
+      { version: pkg.version },
+    );
+    expect(published.status).toBe("ACCEPTING_OFFERS");
+  });
+
   it("names every field that blocks a publish", async () => {
     const { publication, draft } = setup();
     const bare = await draft(

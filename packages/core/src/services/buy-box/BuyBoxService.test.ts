@@ -38,15 +38,28 @@ const austin: BuyBoxInput = {
   programsAccepted: null,
 };
 
-function setup() {
+function setup(now = new Date("2026-11-01T12:00:00Z")) {
   const uow = new InMemoryUnitOfWork();
-  const service = new BuyBoxService(uow, { geo: new StaticGeoProviderImpl() });
+  const service = new BuyBoxService(uow, {
+    geo: new StaticGeoProviderImpl(),
+    clock: { now: () => now },
+  });
   const matchJobs = () =>
     uow.repos.jobs.rows.filter((job) => job.type === "MATCH_BUY_BOX").map((job) => job.dedupeKey);
   return { uow, service, matchJobs };
 }
 
 describe("BuyBoxService", () => {
+  it("limits year built to next year by the injected clock, not the machine's (T387)", async () => {
+    const { service } = setup(new Date("2030-06-01T12:00:00Z"));
+    await expect(service.create(ridge, { ...austin, yearBuiltMax: 2031 })).resolves.toMatchObject({
+      yearBuiltMax: 2031,
+    });
+    await expect(
+      service.create(ridge, { ...austin, name: "Too new", yearBuiltMax: 2032 }),
+    ).rejects.toMatchObject({ details: { fields: [{ field: "yearBuiltMax" }] } });
+  });
+
   it("keeps each saved version, audits it, and queues matching for it", async () => {
     const { uow, service, matchJobs } = setup();
     const created = await service.create(ridge, austin);

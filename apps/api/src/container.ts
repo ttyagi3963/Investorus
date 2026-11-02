@@ -145,7 +145,7 @@ export function createContainer(env: ApiEnv): AppContainer {
     decisions: new DecisionWorkflow(uow, { clock }),
     deals: new DealLifecycleWorkflow(uow, { clock }),
     notifications: new NotificationService(uow, { clock }),
-    buyBoxes: new BuyBoxService(uow, { geo }),
+    buyBoxes: new BuyBoxService(uow, { geo, clock }),
     investorImports: new InvestorImportWorkflow(uow, { storage, geo, clock }),
     digests: new MatchDigestWorkflow(uow, { clock }),
     brands: new BrandService(uow),

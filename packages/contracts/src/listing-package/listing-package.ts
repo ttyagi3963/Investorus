@@ -18,6 +18,15 @@ export const PACKAGE_STATUSES = [
 ] as const;
 export type PackageStatus = (typeof PACKAGE_STATUSES)[number];
 
+/**
+ * The statuses that free a package's address for a new package (FR-013): every other status is
+ * active. The database's unique index "ListingPackage_one_active_per_address" uses the same list.
+ */
+export const ADDRESS_FREEING_STATUSES = [
+  "CLOSED",
+  "WITHDRAWN",
+] as const satisfies readonly PackageStatus[];
+
 export type ListingPackage = {
   id: string;
   agentId: string;

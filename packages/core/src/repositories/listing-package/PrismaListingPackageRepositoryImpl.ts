@@ -1,6 +1,6 @@
 // The listing-package port over Prisma (T247): the only file with ListingPackage queries.
 import { ConflictError } from "@clever/contracts/common";
-import type { ListingPackage } from "@clever/contracts/listing-package";
+import { ADDRESS_FREEING_STATUSES, type ListingPackage } from "@clever/contracts/listing-package";
 import type { Prisma } from "../../generated/prisma/client.js";
 import type {
   IListingPackageRepository,
@@ -52,7 +52,8 @@ export class PrismaListingPackageRepositoryImpl implements IListingPackageReposi
 
   async findByAddressHash(addressHash: string) {
     return this.db.listingPackage.findFirst({
-      where: { addressHash, status: { not: "WITHDRAWN" } },
+      // Active means not closed or withdrawn, as the unique index on the address says (T369).
+      where: { addressHash, status: { notIn: [...ADDRESS_FREEING_STATUSES] } },
       select: { id: true, agentId: true },
     });
   }

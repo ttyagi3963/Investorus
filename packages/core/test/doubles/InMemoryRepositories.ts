@@ -8,7 +8,7 @@ import { BusinessRuleError, ConflictError, ValidationError } from "@clever/contr
 import type { Deal, Decision } from "@clever/contracts/deal";
 import type { Investor } from "@clever/contracts/investor";
 import type { Job } from "@clever/contracts/jobs";
-import type { ListingPackage } from "@clever/contracts/listing-package";
+import { ADDRESS_FREEING_STATUSES, type ListingPackage } from "@clever/contracts/listing-package";
 import type { Match } from "@clever/contracts/match";
 import type { Notification } from "@clever/contracts/notification";
 import type { Offer, OfferStatus, OfferTerms, RevisionAuthor } from "@clever/contracts/offer";
@@ -159,7 +159,9 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
   async create(pkg: NewListingPackage) {
     if (
       [...this.rows.values()].some(
-        (r) => r.addressHash === pkg.addressHash && r.status !== "WITHDRAWN",
+        (r) =>
+          r.addressHash === pkg.addressHash &&
+          !(ADDRESS_FREEING_STATUSES as readonly string[]).includes(r.status),
       )
     ) {
       throw new Error("unique constraint ListingPackage_one_active_per_address");
@@ -196,7 +198,9 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
   }
   async findByAddressHash(addressHash: string) {
     const row = [...this.rows.values()].find(
-      (r) => r.addressHash === addressHash && r.status !== "WITHDRAWN",
+      (r) =>
+        r.addressHash === addressHash &&
+        !(ADDRESS_FREEING_STATUSES as readonly string[]).includes(r.status),
     );
     return row ? { id: row.id, agentId: row.agentId } : null;
   }

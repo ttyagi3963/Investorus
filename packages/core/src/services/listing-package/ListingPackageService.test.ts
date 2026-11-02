@@ -1,5 +1,6 @@
 // Guards the draft package rules (T258): an unknown ZIP or future year is refused on its field, city and state
-// come from the ZIP, one package per address across all agents (FR-013), an agent only reaches their
+// come from the ZIP, one active package per address across all agents, a closed or withdrawn one
+// freeing it (FR-013, T369), an agent only reaches their
 // own packages (FR-080), a stale edit is refused, an edit is checked on the merged result, and each
 // change is audited without seller PII (T282, XII).
 import type { Actor } from "@clever/contracts/auth";
@@ -99,6 +100,23 @@ describe("ListingPackageService", () => {
       property: { streetLine: "12 Elm St" },
     });
     await expect(moved).rejects.toMatchObject({ code: "DUPLICATE_ACTIVE_LISTING" });
+  });
+
+  it("frees an address once its package is closed or withdrawn (T369)", async () => {
+    const uow = new InMemoryUnitOfWork();
+    const s = service(uow);
+    for (const status of ["CLOSED", "WITHDRAWN"] as const) {
+      const ended = await s.create(avery, draft);
+      uow.repos.packages.rows.get(ended.package.id)!.status = status;
+      await expect(s.create(blake, draft)).resolves.toMatchObject({
+        package: { status: "DRAFT" },
+      });
+      await expect(s.create(avery, draft)).rejects.toMatchObject({
+        code: "DUPLICATE_ACTIVE_LISTING",
+      });
+      // The new package is active; end it too, so the next status starts from a free address.
+      for (const row of uow.repos.packages.rows.values()) row.status = "WITHDRAWN";
+    }
   });
 
   it("keeps an agent out of another agent's packages, and other roles out of drafts", async () => {

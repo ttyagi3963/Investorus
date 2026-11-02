@@ -1394,6 +1394,7 @@ merged by Claude when every check is green.
 - [X] T366 After a material edit, tell an investor matched before only when a field their buy boxes check changed since the version they were last told about, including when the listing no longer fits them; newly matched investors get the match notice; a replay of the same version sends nothing (tests first; FR-022)
 - [X] T367 Recoverable idempotency claims (tests first): a claim is a 30-second lease with its own token; the request's first write marks the claim committed in that write's own transaction, and only while the lease holds (a request that outlives it is rolled back); after a crash a retry runs the change if nothing committed and otherwise gets 409 IDEMPOTENCY_ALREADY_APPLIED; a 5xx after a commit no longer frees the key; migration adds claimToken, lockedUntil, committedAt (XX.2)
 - [X] T368 A deadline job that runs again after its worker died (its change committed, the job not yet marked done) tells the agent and audits the round once: an EffectMarker table with a unique key, claimed in the same transaction as the effect; the other job handlers were checked and already stop on a re-run (tests first; FR-072)
+- [X] T369 A closed package frees its address like a withdrawn one: the repository's duplicate-address query and the test double use one shared list (ADDRESS_FREEING_STATUSES), matching the database's unique index (tests first; FR-013)
 
 **Checkpoint**: every fix has a test that fails without it; all checks green.
 

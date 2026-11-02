@@ -1,5 +1,7 @@
-// Guards the two rules the listing-package queries enforce against a real Postgres: an agent can
-// only load their own package, and an edit based on a stale version is refused (T247).
+// Guards the rules the listing-package queries enforce against a real Postgres: an agent can only
+// load their own package, an edit based on a stale version is refused (T247), and an address is
+// taken only by an active package: a closed or withdrawn one frees it, as the database's unique
+// index does (FR-013, T369).
 import { randomBytes } from "node:crypto";
 import { ConflictError } from "@clever/contracts/common";
 import type pg from "pg";
@@ -54,6 +56,17 @@ afterAll(async () => {
 });
 
 describe("listing-package repository", () => {
+  it("treats an address as taken only while its package is active", async () => {
+    const taken = () => uow.run((repos) => repos.packages.findByAddressHash("hash-1"));
+    expect(await taken()).toMatchObject({ id: packageId });
+
+    for (const status of ["CLOSED", "WITHDRAWN"]) {
+      await db.query(`UPDATE "ListingPackage" SET status = $1 WHERE id = $2`, [status, packageId]);
+      expect(await taken()).toBeNull();
+    }
+    await db.query(`UPDATE "ListingPackage" SET status = 'DRAFT' WHERE id = $1`, [packageId]);
+  });
+
   it("finds a package only for the agent who owns it", async () => {
     await uow.run(async (repos) => {
       expect(await repos.packages.findForAgent("agent-a", packageId)).not.toBeNull();

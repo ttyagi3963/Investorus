@@ -1,13 +1,16 @@
 // @vitest-environment node
-// Guards the web app's response headers (T362, T389): no page can be framed by another site, the
-// browser never guesses a content type, a link out sends no path, a page loads only from this site
-// and the photo storage, and HSTS is sent only over HTTPS.
+// Guards the web app's response headers (T362, T389, T402): on every path Next serves, no page can
+// be framed by another site, the browser never guesses a content type, and a link out sends no
+// path; a page loads only from this site and the photo storage, and HSTS is sent only over HTTPS.
 import { describe, expect, it } from "vitest";
-import { SECURITY_HEADERS, pageSecurityHeaders } from "./security-headers";
+import nextConfig from "../next.config";
+import { pageSecurityHeaders } from "./security-headers";
 
-describe("SECURITY_HEADERS", () => {
-  it("forbid framing and type sniffing, and keep paths out of referrers", () => {
-    const header = (key: string) => SECURITY_HEADERS.find((h) => h.key === key)?.value;
+describe("next.config headers", () => {
+  it("forbid framing and type sniffing, and keep paths out of referrers, on every path", async () => {
+    const rules = (await nextConfig.headers?.()) ?? [];
+    const everyPath = rules.find((rule) => rule.source === "/:path*");
+    const header = (key: string) => everyPath?.headers.find((h) => h.key === key)?.value;
     expect(header("X-Frame-Options")).toBe("DENY");
     expect(header("X-Content-Type-Options")).toBe("nosniff");
     expect(header("Referrer-Policy")).toBe("strict-origin-when-cross-origin");

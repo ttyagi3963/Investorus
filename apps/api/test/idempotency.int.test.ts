@@ -4,48 +4,29 @@
 // 409, and a different body 422; a 5xx is not stored; keys are per user; a store outage fails
 // closed with 503; and the stored answer, which holds seller details, is encrypted at rest (XII).
 // The real container supplies the key store; the services are fakes.
-import { execFileSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { join } from "node:path";
 import type { Actor } from "@clever/contracts/auth";
 import { UnauthenticatedError } from "@clever/contracts/common";
 import type { AgentPackageView } from "@clever/contracts/listing-package";
 import type { AgentPackage } from "@clever/core";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import type { Express } from "express";
-import pg from "pg";
+import type pg from "pg";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
 import { createContainer, type AppContainer } from "../src/container.js";
-import { apiEnvSchema } from "../src/env.js";
+import { envFor, startMigratedDatabase } from "./database.js";
 
-const CORE = join(import.meta.dirname, "../../../packages/core");
 const ACTORS: Record<string, Actor> = {
   avery: { userId: "user-a", role: "AGENT", agentId: "agent-a" },
   blake: { userId: "user-b", role: "AGENT", agentId: "agent-b" },
 };
 
-let database: StartedPostgreSqlContainer;
 let db: pg.Client;
+let stopDb: () => Promise<void>;
 const containers: AppContainer[] = [];
 let calls = 0;
 /** What the fake create does next; by default it answers 201 at once. */
 let nextCreate: () => Promise<void> = async () => {};
-
-const envFor = (databaseUrl: string) =>
-  apiEnvSchema.parse({
-    DATABASE_URL: databaseUrl,
-    JWT_SECRET: randomBytes(32).toString("hex"),
-    PII_ENCRYPTION_KEY: `v1:${randomBytes(32).toString("base64")}`,
-    ADDRESS_HASH_KEY: "test-address-hash-key",
-    SANDBOX_URL: "http://sandbox.invalid",
-    PUBLIC_SANDBOX_URL: "http://sandbox.invalid",
-    SANDBOX_INTERNAL_TOKEN: "test-internal-token",
-    STORAGE_SIGNING_KEY: "test-storage-signing-key",
-    STORAGE_PROVIDER: "sandbox",
-    LOG_LEVEL: "silent",
-  });
 
 /** The api over a real key store at `databaseUrl`, with fake sign-in and package services. */
 function appOver(databaseUrl: string): Express {
@@ -81,16 +62,8 @@ const post = (as: string, key: string | undefined, body: object = { price: 1 }) 
 };
 
 beforeAll(async () => {
-  database = await new PostgreSqlContainer("postgres:17-alpine").start();
-  const url = database.getConnectionUri();
-  execFileSync("npx", ["prisma", "migrate", "deploy"], {
-    cwd: CORE,
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "ignore",
-    shell: process.platform === "win32",
-  });
-  db = new pg.Client({ connectionString: url });
-  await db.connect();
+  let url: string;
+  ({ db, url, stop: stopDb } = await startMigratedDatabase());
   await db.query(`
     INSERT INTO "Agent" (id, name, email, brokerage, "updatedAt") VALUES
       ('agent-a', 'Avery', 'avery@example.test', 'Demo Realty', now()),
@@ -103,9 +76,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db?.end();
   await Promise.all(containers.map((c) => c.dispose()));
-  await database?.stop();
+  await stopDb?.();
 });
 
 describe("idempotency", () => {

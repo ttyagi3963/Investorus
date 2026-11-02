@@ -3,7 +3,7 @@
 // and its payload redacted, and reported once retries run out; an expected one (a domain error or a
 // bad payload) fails at once and is never reported.
 import { Writable } from "node:stream";
-import { NotFoundError } from "@clever/contracts/common";
+import { ConflictError, NotFoundError } from "@clever/contracts/common";
 import type { Job } from "@clever/contracts/jobs";
 import { currentTraceId, type IUnitOfWork, type UnitOfWorkRepositories } from "@clever/core";
 import { pino } from "pino";
@@ -97,5 +97,18 @@ describe("runNextJob", () => {
     await run();
     expect(jobs.fail).toHaveBeenCalledWith("job-1", "Package not found", false);
     expect(report).not.toHaveBeenCalled();
+  });
+
+  it("retries a version conflict, since a retry reads the changed row again (T376)", async () => {
+    const { run, jobs } = setup(
+      () => Promise.reject(new ConflictError("This offer changed since you opened it.")),
+      "QUEUED",
+    );
+    await run();
+    expect(jobs.fail).toHaveBeenCalledWith(
+      "job-1",
+      "This offer changed since you opened it.",
+      true,
+    );
   });
 });

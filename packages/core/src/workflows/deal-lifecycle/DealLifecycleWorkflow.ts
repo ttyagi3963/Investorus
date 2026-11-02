@@ -146,6 +146,9 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
     const { offerId, version } = promoteBackupSchema.parse(input);
     const now = this.deps.clock.now();
     return this.uow.run(async (repos) => {
+      // Ordered against a withdrawal or expiry of the backup, so the offer read below is the one
+      // it left; a withdrawn backup is refused rather than promoted (T376).
+      await repos.packages.lock(packageId);
       const pkg = await repos.packages.findForAgent(agentId, packageId);
       if (!pkg) throw new NotFoundError("Package not found");
       if (pkg.status !== "FELL_THROUGH") {
@@ -253,9 +256,13 @@ export class DealLifecycleWorkflow implements IDealLifecycleWorkflow {
 
   async expireReconfirmation({ dealId }: ExpireReconfirmationPayload): Promise<void> {
     await this.uow.run(async (repos) => {
-      const deal = await repos.deals.findById(dealId);
-      // The investor already answered: nothing to time out.
-      if (deal?.status !== "PENDING_RECONFIRMATION") return;
+      const found = await repos.deals.findById(dealId);
+      if (!found) return;
+      // Ordered against the investor's answer, a withdrawal, or an expiry, then read again (T376).
+      await repos.packages.lock(found.packageId);
+      const deal = (await repos.deals.findById(dealId))!;
+      // The investor already answered, or the offer was withdrawn or expired: nothing to time out.
+      if (deal.status !== "PENDING_RECONFIRMATION") return;
       const offer = (await repos.offers.findById(deal.offerId))!;
       const pkg = (await repos.packages.findById(deal.packageId))!;
       await this.declineReconfirmation(repos, deal, offer, pkg, null);

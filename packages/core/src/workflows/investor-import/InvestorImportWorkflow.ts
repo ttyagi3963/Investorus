@@ -7,6 +7,7 @@
 import { randomUUID } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
 import {
+  ConflictError,
   DomainError,
   ForbiddenError,
   NotFoundError,
@@ -116,8 +117,9 @@ export class InvestorImportWorkflow implements IInvestorImportWorkflow {
           await repos.imports.addRowResult(batchId, await this.importRow(repos, row));
         });
       } catch (err) {
-        // A row the database refuses (an email another investor has) leaves nothing behind.
-        if (!(err instanceof DomainError)) throw err;
+        // A row the database refuses (an email another investor has) leaves nothing behind. A buy
+        // box saved while the row ran is no reason to refuse it: the job runs again (T376).
+        if (!(err instanceof DomainError) || err instanceof ConflictError) throw err;
         const fields = (err.details?.fields ?? []) as { message: string }[];
         await this.uow.run((repos) =>
           repos.imports.addRowResult(batchId, {

@@ -24,6 +24,8 @@ export class OfferRoundWorkflow implements IOfferRoundWorkflow {
 
   async closeRound({ packageId, round, offerDeadline }: CloseOfferRoundPayload): Promise<void> {
     await this.uow.run(async (repos) => {
+      // An offer made just before the deadline commits first and is counted below (T376).
+      await repos.packages.lock(packageId);
       const pkg = await repos.packages.findById(packageId);
       // A later deadline has its own job, and a decided or withdrawn package has no round to close.
       if (
@@ -74,17 +76,16 @@ export class OfferRoundWorkflow implements IOfferRoundWorkflow {
 
   async expireOffer({ offerId, revision }: ExpireOfferPayload): Promise<void> {
     await this.uow.run(async (repos) => {
-      const offer = await repos.offers.findById(offerId);
+      const found = await repos.offers.findById(offerId);
+      if (!found) return;
+      // The package lock orders this expiry against a decision, a withdrawal, or a reconfirmation
+      // of the same offer (T365); the offer is read again as they left it (T376).
+      await repos.packages.lock(found.packageId);
+      const offer = (await repos.offers.findById(offerId))!;
       // A newer revision has its own expiry, and a decided offer no longer expires.
-      if (
-        !offer ||
-        offer.currentRevision !== revision ||
-        !OPEN_OFFER_STATUSES.includes(offer.status)
-      ) {
+      if (offer.currentRevision !== revision || !OPEN_OFFER_STATUSES.includes(offer.status)) {
         return;
       }
-      // The package lock orders this expiry against a reconfirmation of the same offer (T365).
-      await repos.packages.lock(offer.packageId);
       const expired = await repos.offers.updateStatus(offerId, offer.version, "EXPIRED");
       await releasePromotedBackup(repos, expired, "EXPIRED", null);
       const pkg = await repos.packages.findById(offer.packageId);

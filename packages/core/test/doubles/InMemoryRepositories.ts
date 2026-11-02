@@ -3,7 +3,7 @@
 // version refusal, one package per address, stage 1 of matching, one match per investor and
 // round, and one live job per dedupe key. `run` does not roll back.
 import type { BuyBox, BuyBoxInput } from "@clever/contracts/buy-box";
-import type { AuditEntry } from "@clever/contracts/audit";
+import type { AuditAction, AuditEntry } from "@clever/contracts/audit";
 import { BusinessRuleError, ConflictError, ValidationError } from "@clever/contracts/common";
 import type { Deal, Decision } from "@clever/contracts/deal";
 import type { Investor } from "@clever/contracts/investor";
@@ -243,6 +243,14 @@ export class InMemoryPhotoRepository implements IPhotoRepository {
   async listByPackage(packageId: string) {
     return [...this.rows.values()].filter((r) => r.packageId === packageId);
   }
+  async listByPackages(packageIds: string[]) {
+    const byPackage = new Map<string, Photo[]>();
+    for (const id of packageIds) {
+      const photos = await this.listByPackage(id);
+      if (photos.length > 0) byPackage.set(id, photos);
+    }
+    return byPackage;
+  }
   async remove(packageId: string, photoId: string) {
     const row = this.rows.get(photoId);
     if (!row || row.packageId !== packageId) return false;
@@ -265,6 +273,22 @@ export class InMemoryAuditRepository implements IAuditRepository {
     return this.entries
       .filter((e) => e.entityType === entityType && e.entityId === entityId)
       .reverse();
+  }
+  async findLatest(
+    entityType: string,
+    entityId: string,
+    action: AuditAction,
+    details: Record<string, string | number>,
+  ) {
+    return (
+      this.entries.findLast(
+        (e) =>
+          e.entityType === entityType &&
+          e.entityId === entityId &&
+          e.action === action &&
+          Object.entries(details).every(([key, value]) => e.details?.[key] === value),
+      ) ?? null
+    );
   }
 }
 
@@ -390,6 +414,14 @@ export class InMemoryMatchRepository implements IMatchRepository {
   }
   async countByPackage(packageId: string, round: number) {
     return (await this.listByPackage(packageId, round)).length;
+  }
+  async countByPackages(packages: { id: string; round: number }[]) {
+    const counts = new Map<string, number>();
+    for (const { id, round } of packages) {
+      const count = await this.countByPackage(id, round);
+      if (count > 0) counts.set(id, count);
+    }
+    return counts;
   }
   readonly digestedAt = new Map<string, Date>();
   async claimUndigested(at: Date) {

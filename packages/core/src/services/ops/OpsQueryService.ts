@@ -114,7 +114,8 @@ export class OpsQueryService implements IOpsQueryService {
         };
       });
       const matchedIds = new Set(matches.map((m) => m.investorId));
-      const completed = audit.findLast(
+      // The audit is newest first, so this is the round's latest matching run (T396).
+      const completed = audit.find(
         (e) =>
           e.action === "MATCHING_COMPLETED" &&
           (e.details as { round?: number }).round === pkg.round,
@@ -187,6 +188,7 @@ export class OpsQueryService implements IOpsQueryService {
       const stored = this.decisions(audit, pkg.round, pkg.listingVersion).get(investorId);
       if (stored && stored.buyBoxes.length > 0) return this.fromStored(repos, stored);
       // The boxes are judged as they were when matching ran for this listing version.
+      // Newest first, so findLast is this version's first run: when its boxes were matched.
       const matchedAt = audit.findLast(
         (e) =>
           e.action === "MATCHING_COMPLETED" &&

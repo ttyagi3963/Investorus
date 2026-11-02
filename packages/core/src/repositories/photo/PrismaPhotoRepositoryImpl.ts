@@ -19,6 +19,19 @@ export class PrismaPhotoRepositoryImpl implements IPhotoRepository {
     return rows.map(toPhoto);
   }
 
+  async listByPackages(packageIds: string[]): Promise<Map<string, Photo[]>> {
+    const byPackage = new Map<string, Photo[]>();
+    if (packageIds.length === 0) return byPackage;
+    const rows = await this.db.photo.findMany({
+      where: { packageId: { in: packageIds } },
+      orderBy: { position: "asc" },
+    });
+    for (const photo of rows.map(toPhoto)) {
+      byPackage.set(photo.packageId, [...(byPackage.get(photo.packageId) ?? []), photo]);
+    }
+    return byPackage;
+  }
+
   async remove(packageId: string, photoId: string): Promise<boolean> {
     const { count } = await this.db.photo.deleteMany({ where: { id: photoId, packageId } });
     return count > 0;

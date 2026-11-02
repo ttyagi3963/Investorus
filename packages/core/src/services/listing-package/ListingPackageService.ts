@@ -155,19 +155,23 @@ export class ListingPackageService implements IListingPackageService {
     const agentId = this.agentOf(actor);
     return this.uow.run(async (repos) => {
       const pkgs = await repos.packages.listByAgent(agentId);
-      // A list row shows no seller and no match summary, and the properties come in one query.
-      const properties = await repos.properties.findByIds(pkgs.map((pkg) => pkg.propertyId));
-      return Promise.all(
-        pkgs.map(async (pkg) => {
-          const property = properties.get(pkg.propertyId);
-          if (!property) throw new NotFoundError(NOT_FOUND);
-          const [photos, matchedCount] = await Promise.all([
-            repos.photos.listByPackage(pkg.id),
-            repos.matches.countByPackage(pkg.id, pkg.round),
-          ]);
-          return { package: pkg, property, photos, matchedCount };
-        }),
-      );
+      // A list row shows no seller and no match summary; its properties, photos, and match counts
+      // each come in one query, whatever the number of rows (T386, T396).
+      const [properties, photos, counts] = await Promise.all([
+        repos.properties.findByIds(pkgs.map((pkg) => pkg.propertyId)),
+        repos.photos.listByPackages(pkgs.map((pkg) => pkg.id)),
+        repos.matches.countByPackages(pkgs),
+      ]);
+      return pkgs.map((pkg) => {
+        const property = properties.get(pkg.propertyId);
+        if (!property) throw new NotFoundError(NOT_FOUND);
+        return {
+          package: pkg,
+          property,
+          photos: photos.get(pkg.id) ?? [],
+          matchedCount: counts.get(pkg.id) ?? 0,
+        };
+      });
     });
   }
 

@@ -20,10 +20,10 @@ export async function matchSummaryOf(
   packageId: string,
   round: number,
 ): Promise<MatchSummary | null> {
-  const entries = await repos.audit.listForEntity("ListingPackage", packageId);
-  const latest = entries.findLast(
-    (e) => e.action === "MATCHING_COMPLETED" && (e.details as { round?: unknown }).round === round,
-  );
+  // The newest run of the round: a material edit is matched again (T396).
+  const latest = await repos.audit.findLatest("ListingPackage", packageId, "MATCHING_COMPLETED", {
+    round,
+  });
   const parsed = countsSchema.safeParse(latest?.details);
   if (!parsed.success) return null;
   const { evaluated, exclusions } = parsed.data;

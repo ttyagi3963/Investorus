@@ -25,11 +25,33 @@ export class PrismaAuditRepositoryImpl implements IAuditRepository {
       where: { entityType, entityId },
       orderBy: { occurredAt: "desc" },
     });
-    // `action` is text checked against AUDIT_ACTIONS when written; `details` is our own JSON.
-    return rows.map((row) => ({
-      ...row,
-      action: row.action as AuditAction,
-      details: row.details as Record<string, unknown>,
-    }));
+    return rows.map(toEntry);
+  }
+
+  async findLatest(
+    entityType: string,
+    entityId: string,
+    action: AuditAction,
+    details: Record<string, string | number>,
+  ): Promise<AuditEntry | null> {
+    const row = await this.db.auditLog.findFirst({
+      where: {
+        entityType,
+        entityId,
+        action,
+        AND: Object.entries(details).map(([key, value]) => ({
+          details: { path: [key], equals: value },
+        })),
+      },
+      orderBy: { occurredAt: "desc" },
+    });
+    return row && toEntry(row);
   }
 }
+
+// `action` is text checked against AUDIT_ACTIONS when written; `details` is our own JSON.
+const toEntry = (row: Prisma.AuditLogGetPayload<object>): AuditEntry => ({
+  ...row,
+  action: row.action as AuditAction,
+  details: row.details as Record<string, unknown>,
+});

@@ -48,6 +48,9 @@ export interface IListingPackageRepository {
    * Applies the patch and moves to the next version, only if the stored version is `version`;
    * otherwise throws ConflictError. An empty patch still moves the version (the seller or the
    * property changed). A new address an active package already has is DUPLICATE_ACTIVE_LISTING.
+   * Inside a unit of work, a patch that changes the status also writes `package.status_changed`
+   * with the CRM snapshot to the outbox, in the same change (outbox/with-outbox-events.ts, T337):
+   * callers never write that event themselves.
    */
   update(id: string, version: number, patch: ListingPackagePatch): Promise<ListingPackage>;
   /**

@@ -66,17 +66,24 @@ export class InvestorPackageQueryService implements IInvestorPackageQueryService
         // A match from an earlier round no longer grants access.
         if (pkg && pkg.round === match.round) current.push({ pkg, match });
       }
-      // A list row needs no deal or counter terms, and the properties come in one query (T386).
-      const properties = await repos.properties.findByIds(current.map(({ pkg }) => pkg.propertyId));
+      // A list row needs no deal or counter terms; its properties and photos each come in one
+      // query (T386, T396).
+      const [properties, photos] = await Promise.all([
+        repos.properties.findByIds(current.map(({ pkg }) => pkg.propertyId)),
+        repos.photos.listByPackages(current.map(({ pkg }) => pkg.id)),
+      ]);
       return Promise.all(
         current.map(async ({ pkg, match }) => {
           const property = properties.get(pkg.propertyId);
           if (!property) throw new NotFoundError(NOT_FOUND);
-          const [photos, myOffer] = await Promise.all([
-            repos.photos.listByPackage(pkg.id),
-            repos.offers.findLatest(pkg.id, investorId, pkg.round),
-          ]);
-          return { package: pkg, property, photos, myOffer, matchedAt: match.firstMatchedAt };
+          const myOffer = await repos.offers.findLatest(pkg.id, investorId, pkg.round);
+          return {
+            package: pkg,
+            property,
+            photos: photos.get(pkg.id) ?? [],
+            myOffer,
+            matchedAt: match.firstMatchedAt,
+          };
         }),
       );
     });

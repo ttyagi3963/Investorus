@@ -46,6 +46,16 @@ export class PrismaMatchRepositoryImpl implements IMatchRepository {
     return this.db.match.count({ where: { packageId, round } });
   }
 
+  async countByPackages(packages: { id: string; round: number }[]): Promise<Map<string, number>> {
+    if (packages.length === 0) return new Map();
+    const rows = await this.db.match.groupBy({
+      by: ["packageId"],
+      where: { OR: packages.map(({ id, round }) => ({ packageId: id, round })) },
+      _count: { _all: true },
+    });
+    return new Map(rows.map((row) => [row.packageId, row._count._all]));
+  }
+
   async listByPackage(packageId: string, round: number): Promise<Match[]> {
     return this.db.match.findMany({
       where: { packageId, round },

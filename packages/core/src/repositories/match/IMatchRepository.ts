@@ -19,6 +19,8 @@ export interface IMatchRepository {
   listByPackage(packageId: string, round: number): Promise<Match[]>;
   /** How many investors the package matched in the round. */
   countByPackage(packageId: string, round: number): Promise<number>;
+  /** The same count for each package at its own round, in one query (T396); none is absent. */
+  countByPackages(packages: { id: string; round: number }[]): Promise<Map<string, number>>;
   /** The investor's access to the package in the round (FR-040), or null. */
   findOne(packageId: string, investorId: string, round: number): Promise<Match | null>;
   /** Every match of the investor, newest first. */

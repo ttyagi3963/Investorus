@@ -1,6 +1,7 @@
 // Checks the AuditLog rules against a real Postgres (T282, constitution XII): an entry can be
 // added but never changed or deleted, it records the trace ID of the request that wrote it, and a
-// personal detail in its details is redacted before it is stored for good.
+// personal detail in its details is redacted before it is stored for good. The newest entry of an
+// action is found by values in its details (T396).
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -60,5 +61,36 @@ describe("AuditLog table", () => {
     await expect(db.query(`DELETE FROM "AuditLog" WHERE id = $1`, [rows[0].id])).rejects.toThrow(
       /append-only/,
     );
+  });
+
+  it("finds an entity's newest entry of one action by values in its details (T396)", async () => {
+    const uow = new PrismaUnitOfWorkImpl(
+      prisma,
+      new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`),
+    );
+    for (const [round, evaluated] of [
+      [1, 5],
+      [1, 7],
+      [2, 9],
+    ]) {
+      await uow.run((repos) =>
+        repos.audit.append({
+          actorType: "SYSTEM",
+          actorId: null,
+          action: "MATCHING_COMPLETED",
+          entityType: "ListingPackage",
+          entityId: "package-latest",
+          outcome: "SUCCESS",
+          details: { round, evaluated },
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const latest = await uow.run((repos) =>
+      repos.audit.findLatest("ListingPackage", "package-latest", "MATCHING_COMPLETED", {
+        round: 1,
+      }),
+    );
+    expect(latest?.details).toEqual({ round: 1, evaluated: 7 });
   });
 });

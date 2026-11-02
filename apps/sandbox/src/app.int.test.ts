@@ -1,6 +1,7 @@
 // Guards the sandbox stand-ins against a real Postgres (T338): the CRM applies a keyed update once
 // and refuses one numbered below the stored one (T380), a repeated message key stores one message, writes need the shared
-// token, outage modes are per service, and the inspection page escapes what it shows.
+// token, a key replays only on its own route (T392), outage modes are per service, and the
+// inspection page escapes what it shows.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -132,6 +133,12 @@ describe("sandbox messaging", () => {
     const second = await sendSms("delivery-6").expect(201);
     expect(second.body).toEqual(first.body);
     expect(await count()).toBe(before + 1);
+  });
+
+  it("keeps a key's answer to its route: the same key on another route is applied (T392)", async () => {
+    await sendSms("delivery-shared").expect(201);
+    await putCrm("pkg-shared", "delivery-shared", crmUpdate()).expect(200, { result: "APPLIED" });
+    expect((await crmRecord("pkg-shared"))?.status).toBe("ACCEPTING_OFFERS");
   });
 });
 

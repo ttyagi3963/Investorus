@@ -7,7 +7,8 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 ## Cross-cutting rules
 
 - **Auth**: `Authorization: Bearer <session JWT>` on every route except `POST /sessions`,
-  `GET /health`, `GET /brands`, and `GET /brands/:brandId/theme` (the sign-in page renders a brand). A token is accepted only while its user is active and, for
+  `GET /health`, `GET /brands`, and `GET /brands/:brandId/theme` (the sign-in page renders a brand),
+  matched as the router matches them: with a trailing slash and in any letter case (T392). A token is accepted only while its user is active and, for
   an investor, the investor is ACTIVE, checked on every request; otherwise 401 (T370). The role is
   checked in the service (III), not the route.
 - **Idempotency (XX.2)**: every POST, PUT, and PATCH from a signed-in user requires an
@@ -74,7 +75,7 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | PATCH | `/listing-packages/:id/offer-deadline` | AGENT (own) | `{ offerDeadline, version }` → 200 `AgentPackageView` | Extend the deadline, from ACCEPTING_OFFERS or NO_OFFERS_RECEIVED (Sprint 3, T307); a material edit made while NO_OFFERS_RECEIVED is matched now as the next listing version (T375) |
 | POST | `/listing-packages/:id/photo-uploads` | AGENT (own) | `{ contentType, sizeBytes }` → 201 `{ storageKey, upload: UploadInstruction }` | Vendor-neutral `{ url, method, headers, expiresAt }` ([providers.md](./providers.md)); the browser uploads directly (XIV) |
 | POST | `/listing-packages/:id/photos` | AGENT (own) | `{ storageKey, position }` → 201 `Photo` | Verifies the object exists. Photo uploads and changes only while the package is editable, else 409 `PACKAGE_LOCKED` (T375) |
-| DELETE | `/listing-packages/:id/photos/:photoId` | AGENT (own) | → 204 | 409 `PHOTO_REQUIRED` for a published package's last photo (T375) |
+| DELETE | `/listing-packages/:id/photos/:photoId` | AGENT (own) | → 204 | 409 `PHOTO_REQUIRED` for a published package's last photo (T375). A photo already gone from the package also answers 204, so a retried delete succeeds (T392) |
 | GET | `/package-form` | AGENT | → `packageFormSteps` config (ordered steps, field keys, required flags) | IX: the package form is config-driven. **Not built** (open tasks T130, T134): the form's steps are in the web app's code |
 | GET | `/listing-packages/:id/matches` | AGENT (own): counts only; OPS: full | → `{ matchedCount, topExclusionReasons[] }` (from the latest `ListingVersion`) or `MatchView[]` (positive matches with `matchedBuyBoxes[]` and their `clauseResults`) | FR-020; edge case "no matches". **Not built** (T386): the agent gets the counts as `matchedCount` and `matchSummary` on `AgentPackageView`, and operations get each match from the trace and `/ops/listing-packages/:id/matches/:investorId` |
 

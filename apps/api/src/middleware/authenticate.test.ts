@@ -1,6 +1,7 @@
 // Guards the api's front door (T253): every route but sign-in and health needs a valid session
-// token, the actor the token names reaches the route, and anything else gets a 401. The token
-// rules themselves (expiry, signature, algorithm) are tested with AuthService in core.
+// token, the actor the token names reaches the route, and anything else gets a 401. A public path
+// stays public however the router would match it (T392). The token rules themselves (expiry,
+// signature, algorithm) are tested with AuthService in core.
 import { UnauthenticatedError } from "@clever/contracts/common";
 import express from "express";
 import request from "supertest";
@@ -27,6 +28,13 @@ describe("authenticate", () => {
   it("lets sign-in and health through without a token", async () => {
     await request(app).post("/api/v1/sessions").expect(201);
     await request(app).get("/api/v1/health").expect(200);
+  });
+
+  it("agrees with the router on a trailing slash or other letter case, opening no other route (T392)", async () => {
+    await request(app).get("/api/v1/health/").expect(200);
+    await request(app).get("/API/V1/Health").expect(200);
+    await request(app).get("/api/v1/me/").expect(401);
+    await request(app).get("/api/v1/health/me").expect(401);
   });
 
   it("refuses a request with no token, a malformed header, or a bad token", async () => {

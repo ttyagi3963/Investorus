@@ -1,6 +1,6 @@
 // The sandbox's own tables, in the `sandbox` schema of the platform's database (T338): the CRM's
-// listing records, captured email and SMS, answers stored per Idempotency-Key, and the outage mode
-// per service. It is a stand-in, so the tables are created at startup instead of by migrations.
+// listing records, captured email and SMS, answers stored per route and Idempotency-Key, and the
+// outage mode per service. It is a stand-in, so the tables are created at startup, not migrated.
 import type pg from "pg";
 
 export const SERVICES = ["crm", "messaging", "storage"] as const;
@@ -61,12 +61,26 @@ CREATE TABLE IF NOT EXISTS sandbox.messages (
 );
 CREATE INDEX IF NOT EXISTS messages_received_at_idx ON sandbox.messages (received_at DESC);
 CREATE TABLE IF NOT EXISTS sandbox.idempotency_keys (
-  key           text PRIMARY KEY,
+  key           text NOT NULL,
   route         text NOT NULL,
   status_code   integer NOT NULL,
   response_body jsonb NOT NULL,
-  created_at    timestamptz NOT NULL DEFAULT now()
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT idempotency_keys_route_key_pkey PRIMARY KEY (route, key)
 );
+-- T392: a key is kept per route. A table from before it, keyed by the key alone, is rekeyed here.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'idempotency_keys_pkey'
+      AND conrelid = 'sandbox.idempotency_keys'::regclass
+  ) THEN
+    ALTER TABLE sandbox.idempotency_keys
+      DROP CONSTRAINT idempotency_keys_pkey,
+      ADD CONSTRAINT idempotency_keys_route_key_pkey PRIMARY KEY (route, key);
+  END IF;
+END $$;
 CREATE TABLE IF NOT EXISTS sandbox.simulation_modes (
   service    text PRIMARY KEY CHECK (service IN ('crm', 'messaging', 'storage')),
   mode       text NOT NULL CHECK (mode IN ('up', 'down', 'slow', 'garbage')),
@@ -81,8 +95,9 @@ export type SandboxStore = ReturnType<typeof createStore>;
 
 export function createStore(pool: pg.Pool) {
   /**
-   * Runs `apply` at most once per key: in one transaction it takes a lock on the key, replays the
-   * stored answer if there is one, and otherwise applies the change and stores its answer with it.
+   * Runs `apply` at most once per key and route: in one transaction it takes a lock on the key,
+   * replays the answer stored for this route if there is one, and otherwise applies the change and
+   * stores its answer with it. The same key on another route is another request (T392).
    */
   async function once(
     key: string,
@@ -94,8 +109,9 @@ export function createStore(pool: pg.Pool) {
       await tx.query("BEGIN");
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [key]);
       const stored = await tx.query<{ status_code: number; response_body: unknown }>(
-        "SELECT status_code, response_body FROM sandbox.idempotency_keys WHERE key = $1",
-        [key],
+        `SELECT status_code, response_body FROM sandbox.idempotency_keys
+         WHERE route = $1 AND key = $2`,
+        [route, key],
       );
       const found = stored.rows[0];
       if (found) {

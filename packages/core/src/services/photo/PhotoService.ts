@@ -3,6 +3,7 @@
 // recorded are what storage holds, the file's first bytes must match that type (T384), the key
 // must belong to this package, and a package has at most 20 photos, one per position. Photos change
 // only while the package is editable, and a published package keeps at least one (T375, FR-012).
+// Removing a photo that is already gone is done, so a retried DELETE succeeds (T392).
 import { randomUUID } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
 import {
@@ -124,7 +125,9 @@ export class PhotoService implements IPhotoService {
     await this.uow.run(async (repos) => {
       const pkg = await this.editablePackage(repos, agentId, packageId);
       const photos = await repos.photos.listByPackage(packageId);
-      if (!photos.some((p) => p.id === photoId)) throw new NotFoundError("Photo not found");
+      // Already gone, as when a DELETE is retried after its answer was lost: done, not a 404
+      // (T392). Checked before PHOTO_REQUIRED, so the retry never meets that rule.
+      if (!photos.some((p) => p.id === photoId)) return;
       if (pkg.status !== "DRAFT" && photos.length === 1) {
         throw new BusinessRuleError(
           "A published package needs at least one photo; add another before removing this one",

@@ -96,7 +96,8 @@ Rules for every provider:
 
 Internal routes need the `x-sandbox-token` header to equal `SANDBOX_INTERNAL_TOKEN` (compared in
 constant time; 401 otherwise). Writes are deduplicated on the delivery's ID sent as
-`Idempotency-Key`, in the same transaction as the change.
+`Idempotency-Key`, in the same transaction as the change; a key's answer is kept per route, so the
+same key on another route is a new request (T392).
 
 Sandbox persistence lives in its own PostgreSQL schema, `sandbox` (same database as the platform;
 the sandbox creates its tables at startup), which platform code never reads directly. Storage

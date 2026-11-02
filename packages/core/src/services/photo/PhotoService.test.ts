@@ -1,8 +1,8 @@
 // Guards the photo rules (T113): an upload is trusted only after storage confirms it, with the type
 // and size storage holds, never the browser's claim; a package cannot attach another package's
 // upload; at most 20 photos, one per position; and only the owning agent can change them, only
-// while the package is editable, never removing a published package's last photo (T375); and the
-// stored bytes must start like the image type stored (T384).
+// while the package is editable, never removing a published package's last photo (T375); the
+// stored bytes must start like the image type stored (T384); and a retried remove is done (T392).
 import type { Actor } from "@clever/contracts/auth";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@clever/contracts/common";
 import { describe, expect, it } from "vitest";
@@ -145,8 +145,19 @@ describe("PhotoService", () => {
       NotFoundError,
     );
     await s.photos.remove(avery, s.packageId, photo.id);
-    await expect(s.photos.remove(avery, s.packageId, photo.id)).rejects.toBeInstanceOf(
-      NotFoundError,
-    );
+  });
+
+  it("answers a retried remove as done, even of a published package's last photo (T392)", async () => {
+    const s = await setup();
+    const first = await s.photos.attach(avery, s.packageId, {
+      storageKey: await upload(s),
+      position: 0,
+    });
+    await s.photos.attach(avery, s.packageId, { storageKey: await upload(s), position: 1 });
+    s.uow.repos.packages.rows.get(s.packageId)!.status = "ACCEPTING_OFFERS";
+    await s.photos.remove(avery, s.packageId, first.id);
+    // The answer was lost and the browser asks again: the photo is gone, which is what it asked.
+    await s.photos.remove(avery, s.packageId, first.id);
+    expect(await s.uow.repos.photos.listByPackage(s.packageId)).toHaveLength(1);
   });
 });

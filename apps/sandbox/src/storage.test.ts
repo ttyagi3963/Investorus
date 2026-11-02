@@ -1,9 +1,10 @@
 // Guards the sandbox storage rules (T252, T275, T372, T384): only a valid, unexpired link for that
 // exact object, type, and size may upload (like a presigned S3 PUT), the internal routes need the
 // shared token and name the object they answer for, only the listed web origins (every brand's
-// address) may upload from the browser, and a served photo can never run as a page.
-import { createHmac } from "node:crypto";
-import { mkdtempSync } from "node:fs";
+// address) may upload from the browser, a served photo can never run as a page, and a cut-off
+// sidecar file reads as no object instead of failing the request (T392).
+import { createHash, createHmac } from "node:crypto";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import express from "express";
@@ -111,6 +112,16 @@ describe("sandbox storage", () => {
     expect(res.headers["content-length"]).toBe("2000");
     // Names the object, so an answer that is not about it (garbage mode) is seen as garbled (T384).
     expect(res.headers["x-object-key"]).toBe(encodeURIComponent("packages/p1/d.jpg"));
+  });
+
+  it("answers 404, not 500, for an object whose sidecar file was cut off mid-write (T392)", async () => {
+    const key = "packages/p1/cut.jpg";
+    const stored = join(config.storageDir, createHash("sha256").update(key).digest("hex"));
+    writeFileSync(stored, jpeg);
+    writeFileSync(`${stored}.json`, '{"contentType":"ima');
+    await request(app)
+      .get(`/storage/objects/${encodeURIComponent(key)}`)
+      .expect(404);
   });
 
   it("returns a stored object's bytes on the internal route, only with the token", async () => {

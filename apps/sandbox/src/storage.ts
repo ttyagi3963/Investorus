@@ -4,10 +4,11 @@
 // public, like the S3 bucket's policy; anything else, such as an import file, is not. The api checks
 // an upload, and the worker reads an uploaded file, on the internal routes with the shared token.
 // Objects are files on the SANDBOX_STORAGE_DIR volume, named by a hash of the key so no key can
-// reach outside it. An outage mode for storage is applied in front of these routes (simulation.ts);
-// the internal answers name their object (x-object-key), so core can tell a garbled one (T384).
-import { createHash, createHmac } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+// reach outside it, each written whole through a rename (T392). An outage mode for storage is
+// applied in front of these routes (simulation.ts); the internal answers name their object
+// (x-object-key), so core can tell a garbled one (T384).
+import { createHash, createHmac, randomUUID } from "node:crypto";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Router, type Request, type Response } from "express";
 import { sameSecret } from "./auth.js";
@@ -32,12 +33,27 @@ const SERVED_FILE_HEADERS = {
   "Content-Security-Policy": "default-src 'none'; sandbox",
 };
 
+/** Writes a temporary file and renames it into place, so no reader sees a half-written file. */
+async function writeWhole(path: string, data: string | Buffer): Promise<void> {
+  const temp = `${path}.${randomUUID()}.tmp`;
+  await writeFile(temp, data);
+  await rename(temp, path);
+}
+
 export function storageRoutes(config: StorageConfig): Router {
   const router = Router();
   const file = (key: string) =>
     join(config.storageDir, createHash("sha256").update(key).digest("hex"));
-  const readMeta = async (key: string): Promise<Meta | null> =>
-    JSON.parse(await readFile(`${file(key)}.json`, "utf8").catch(() => "null")) as Meta | null;
+  /** The sidecar, or null if there is none or a write interrupted before T392 cut it off. */
+  const readMeta = async (key: string): Promise<Meta | null> => {
+    const text = await readFile(`${file(key)}.json`, "utf8").catch(() => null);
+    if (text === null) return null;
+    try {
+      return JSON.parse(text) as Meta;
+    } catch {
+      return null;
+    }
+  };
 
   /** True when the link is unexpired and its signature covers exactly this request. */
   const signed = (req: Request, method: string, contentType: string, size: number) => {
@@ -83,8 +99,9 @@ export function storageRoutes(config: StorageConfig): Router {
       return void res.status(400).json({ error: "The file is smaller than declared" });
     }
     const key = String(req.params.key);
-    await writeFile(file(key), Buffer.concat(chunks));
-    await writeFile(
+    // The bytes first, then the sidecar that says they are there, each written whole (T392).
+    await writeWhole(file(key), Buffer.concat(chunks));
+    await writeWhole(
       `${file(key)}.json`,
       JSON.stringify({ contentType, sizeBytes: size } satisfies Meta),
     );

@@ -1,0 +1,17 @@
+{
+  "name": "@clever/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser end-to-end tests of the critical journeys (Playwright, Chromium) against a running stack. Never part of `pnpm test` or the images.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@clever/config": "workspace:*",
+    "@clever/contracts": "workspace:*",
+    "@playwright/test": "^1.64.1"
+  }
+}

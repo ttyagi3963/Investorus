@@ -261,6 +261,34 @@ pnpm test               # unit tests, offline
 pnpm test:integration   # needs Docker (Testcontainers)
 ```
 
+### End-to-end tests
+
+Browser tests of the critical journeys (sign-in and route guards, publishing with a photo, buy box
+matching, offers, the deal from deadline to reconfirmed backup, the operations console and its
+outages, white-label, and accessibility with axe) live in `e2e/` and use Playwright with Chromium.
+They drive a running stack and create their own packages and buy boxes, so they need only the
+demo accounts. Start the stack, install Chromium once, then run them:
+
+```sh
+docker compose up --build -d
+pnpm --filter @clever/e2e exec playwright install chromium
+pnpm test:e2e
+```
+
+They take about 8 minutes: one test waits out the worker's ten delivery attempts during a CRM
+outage. They add data to the stack they run against, and switch the stand-in services' outage
+modes (always back to up). To run them against another stack, set its addresses:
+`E2E_BASE_URL` (default `http://localhost:3000`), `E2E_PARTNER_URL`
+(`http://partner.localhost:3000`), `E2E_API_URL` (`http://localhost:4000`), and
+`E2E_SANDBOX_URL` (`http://localhost:4100`). The sandbox must accept uploads from the web and
+partner origins (`WEB_ORIGIN`) and the web must name the sandbox's public address
+(`PUBLIC_SANDBOX_URL`). On failure, `e2e/test-results/` holds a trace, screenshot, and video per
+test (`pnpm --filter @clever/e2e exec playwright show-trace <trace.zip>`).
+
+CI runs them in the `e2e` job on every pull request and push to `main`, against
+`docker compose up --build` on the runner, and uploads the report and traces when a test fails.
+They are not part of `pnpm test`, and the images never contain a browser.
+
 ### Checking the limits
 
 The prototype must build within 20 minutes and show the home page within 5 minutes on a 2 GB

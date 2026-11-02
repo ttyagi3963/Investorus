@@ -2,6 +2,7 @@
 // individual files, so the files can change without breaking callers.
 export {
   ADDRESS_FREEING_STATUSES,
+  EDITABLE_STATUSES,
   PACKAGE_STATUSES,
   type ListingPackage,
   type PackageStatus,

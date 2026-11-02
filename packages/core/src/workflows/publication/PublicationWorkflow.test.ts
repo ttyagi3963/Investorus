@@ -3,7 +3,8 @@
 // published; a publish opens offers, snapshots listing version 1, and queues matching in the same
 // change; a material edit after publish snapshots the next version and queues matching again; and
 // a withdrawal declines open offers, tells matched investors, and frees the address. A package
-// with no offers reopens as a new round that is matched again (T307, FR-058).
+// with no offers reopens as a new round that is matched again (T307, FR-058), and an edit made
+// while it had no offers is matched when the deadline is extended (T375).
 import type { Actor } from "@clever/contracts/auth";
 import type { ValidationError } from "@clever/contracts/common";
 import type { CreateListingPackageInput } from "@clever/contracts/listing-package";
@@ -119,6 +120,22 @@ describe("PublicationWorkflow", () => {
       .publish(avery, land.id, { version: land.version })
       .catch((e: unknown) => e);
     expect(fields(landErr)).toEqual(["property.lotSqft"]);
+
+    // FR-012: a multifamily home needs the building facts as well as its unit count (T375).
+    const multi = await draft({
+      ...ready,
+      property: { streetLine: "5 Row Ave", zip: "78704", propertyType: "MULTI_FAMILY", units: 4 },
+    });
+    const multiErr = await publication
+      .publish(avery, multi.id, { version: multi.version })
+      .catch((e: unknown) => e);
+    expect(fields(multiErr)).toEqual([
+      "property.baths",
+      "property.beds",
+      "property.condition",
+      "property.sqft",
+      "property.yearBuilt",
+    ]);
   });
 
   it("lets only the owning agent publish or withdraw, and publishes only a draft", async () => {
@@ -265,5 +282,38 @@ describe("PublicationWorkflow.reopen", () => {
         offerDeadline: deadline.toISOString(),
       }),
     ).rejects.toMatchObject({ code: "NOT_REOPENABLE" });
+  });
+
+  it("matches an edit made while no offers were open as a new listing version when the deadline is extended (T375)", async () => {
+    const w = world();
+    const pkg = await w.publish();
+    const [close] = w.uow.repos.jobs.rows.filter((j) => j.type === "CLOSE_OFFER_ROUND");
+    w.clock.at = pkg.offerDeadline!;
+    await new OfferRoundWorkflow(w.uow).closeRound(close!.payload as never);
+    const closed = (await w.uow.repos.packages.findById(pkg.id))!;
+    const { package: edited } = await w.packages.update(avery, pkg.id, {
+      version: closed.version,
+      priceExpectationMax: 280_000,
+    });
+
+    const matchRuns = () => w.uow.repos.jobs.rows.filter((j) => j.type === "MATCH_PACKAGE");
+    const extend = (version: number, hours: number) =>
+      w.publication.extendDeadline(avery, pkg.id, {
+        version,
+        offerDeadline: new Date(w.clock.at.getTime() + hours * 3_600_000).toISOString(),
+      });
+    const { package: extended } = await extend(edited.version, 24);
+    expect(extended).toMatchObject({ status: "ACCEPTING_OFFERS", round: 1, listingVersion: 2 });
+    expect(w.uow.repos.listingVersions.rows.at(-1)).toMatchObject({
+      listingVersion: 2,
+      snapshot: { priceExpectationMax: 280_000 },
+    });
+    expect(matchRuns().at(-1)).toMatchObject({
+      payload: { packageId: pkg.id, round: 1, listingVersion: 2, trigger: "PACKAGE_EDIT" },
+    });
+
+    // Nothing changed since that snapshot, so a second extension matches nothing again.
+    await extend(extended.version, 48);
+    expect(matchRuns()).toHaveLength(2);
   });
 });

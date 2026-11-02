@@ -1,6 +1,7 @@
 // Guards the photo rules (T113): an upload is trusted only after storage confirms it, with the type
 // and size storage holds, never the browser's claim; a package cannot attach another package's
-// upload; at most 20 photos, one per position; and only the owning agent can change them.
+// upload; at most 20 photos, one per position; and only the owning agent can change them, only
+// while the package is editable, never removing a published package's last photo (T375).
 import type { Actor } from "@clever/contracts/auth";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@clever/contracts/common";
 import { describe, expect, it } from "vitest";
@@ -26,7 +27,7 @@ async function setup() {
     currentlyListed: null,
     eligiblePrograms: [],
   });
-  return { photos: new PhotoService(uow, storage), storage, packageId: pkg.id };
+  return { photos: new PhotoService(uow, storage), uow, storage, packageId: pkg.id };
 }
 
 /** Requests an upload and pretends the browser stored `stored` under the returned key. */
@@ -85,6 +86,38 @@ describe("PhotoService", () => {
     await expect(
       s.photos.requestUpload(avery, s.packageId, { contentType: "image/jpeg", sizeBytes: 10 }),
     ).rejects.toBeInstanceOf(BusinessRuleError);
+  });
+
+  it("keeps at least one photo on a published package (T375)", async () => {
+    const s = await setup();
+    const first = await s.photos.attach(avery, s.packageId, {
+      storageKey: await upload(s),
+      position: 0,
+    });
+    const second = await s.photos.attach(avery, s.packageId, {
+      storageKey: await upload(s),
+      position: 1,
+    });
+    s.uow.repos.packages.rows.get(s.packageId)!.status = "ACCEPTING_OFFERS";
+    await s.photos.remove(avery, s.packageId, first.id);
+    await expect(s.photos.remove(avery, s.packageId, second.id)).rejects.toMatchObject({
+      code: "PHOTO_REQUIRED",
+    });
+  });
+
+  it("refuses photo changes once the package is closed (T375)", async () => {
+    const s = await setup();
+    const key = await upload(s);
+    const photo = await s.photos.attach(avery, s.packageId, { storageKey: key, position: 0 });
+    s.uow.repos.packages.rows.get(s.packageId)!.status = "CLOSED";
+    const locked = { code: "PACKAGE_LOCKED" };
+    await expect(
+      s.photos.requestUpload(avery, s.packageId, { contentType: "image/jpeg", sizeBytes: 10 }),
+    ).rejects.toMatchObject(locked);
+    await expect(
+      s.photos.attach(avery, s.packageId, { storageKey: key, position: 1 }),
+    ).rejects.toMatchObject(locked);
+    await expect(s.photos.remove(avery, s.packageId, photo.id)).rejects.toMatchObject(locked);
   });
 
   it("lets only the owning agent request, attach, or remove", async () => {

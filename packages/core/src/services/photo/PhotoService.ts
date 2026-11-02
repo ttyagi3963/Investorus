@@ -1,7 +1,8 @@
 // The photo rules (T124): the agent asks for an upload link, the browser uploads straight to
 // storage, then the agent attaches it. Attaching trusts storage, not the browser: the type and size
 // recorded are what storage holds, the key must belong to this package, and a package has at most
-// 20 photos, one per position.
+// 20 photos, one per position. Photos change only while the package is editable, and a published
+// package keeps at least one (T375, FR-012).
 import { randomUUID } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@clever/contracts/photo";
 import type { IStorageProvider } from "../../providers/storage/IStorageProvider.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
+import { assertEditable } from "../listing-package/publish-rules.js";
 
 const MAX_PHOTOS = 20;
 const keyField = (message: string) =>
@@ -44,7 +46,7 @@ export class PhotoService implements IPhotoService {
     const agentId = this.agentOf(actor);
     const { contentType, sizeBytes } = createPhotoUploadInputSchema.parse(input);
     await this.uow.run(async (repos) => {
-      await this.ownPackage(repos, agentId, packageId);
+      await this.editablePackage(repos, agentId, packageId);
       if ((await repos.photos.listByPackage(packageId)).length >= MAX_PHOTOS) {
         throw new BusinessRuleError(
           `A package can have at most ${MAX_PHOTOS} photos`,
@@ -61,7 +63,7 @@ export class PhotoService implements IPhotoService {
   async attach(actor: Actor, packageId: string, input: unknown): Promise<Photo> {
     const agentId = this.agentOf(actor);
     const { storageKey, position } = addPhotoInputSchema.parse(input);
-    await this.uow.run((repos) => this.ownPackage(repos, agentId, packageId));
+    await this.uow.run((repos) => this.editablePackage(repos, agentId, packageId));
     if (!storageKey.startsWith(`packages/${packageId}/`)) {
       throw keyField("This upload belongs to another package");
     }
@@ -76,6 +78,8 @@ export class PhotoService implements IPhotoService {
     }
     const contentType = stored.contentType;
     return this.uow.run(async (repos) => {
+      // Checked again: the status may have changed while storage was asked.
+      await this.editablePackage(repos, agentId, packageId);
       const photos = await repos.photos.listByPackage(packageId);
       if (photos.length >= MAX_PHOTOS) {
         throw new BusinessRuleError(
@@ -102,9 +106,16 @@ export class PhotoService implements IPhotoService {
   async remove(actor: Actor, packageId: string, photoId: string): Promise<void> {
     const agentId = this.agentOf(actor);
     await this.uow.run(async (repos) => {
-      await this.ownPackage(repos, agentId, packageId);
-      if (!(await repos.photos.remove(packageId, photoId)))
-        throw new NotFoundError("Photo not found");
+      const pkg = await this.editablePackage(repos, agentId, packageId);
+      const photos = await repos.photos.listByPackage(packageId);
+      if (!photos.some((p) => p.id === photoId)) throw new NotFoundError("Photo not found");
+      if (pkg.status !== "DRAFT" && photos.length === 1) {
+        throw new BusinessRuleError(
+          "A published package needs at least one photo; add another before removing this one",
+          "PHOTO_REQUIRED",
+        );
+      }
+      await repos.photos.remove(packageId, photoId);
     });
   }
 
@@ -113,9 +124,12 @@ export class PhotoService implements IPhotoService {
     return actor.agentId;
   }
 
-  private async ownPackage(repos: UnitOfWorkRepositories, agentId: string, packageId: string) {
-    if (!(await repos.packages.findForAgent(agentId, packageId))) {
-      throw new NotFoundError("Package not found");
-    }
+  /** The agent's own package, held until the change ends so its status and photo count hold. */
+  private async editablePackage(repos: UnitOfWorkRepositories, agentId: string, packageId: string) {
+    await repos.packages.lock(packageId);
+    const pkg = await repos.packages.findForAgent(agentId, packageId);
+    if (!pkg) throw new NotFoundError("Package not found");
+    assertEditable(pkg);
+    return pkg;
   }
 }

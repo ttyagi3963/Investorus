@@ -59,15 +59,15 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | GET | `/listing-packages` | AGENT (own), OPS (all) | `?status=` → `AgentPackageSummary[]` (each with `matchedCount`) | Story 2 |
 | POST | `/listing-packages` | AGENT | `CreatePackageInput` (seller, property, expectations) → 201 `AgentPackageView` (DRAFT); an address with an active package (any agent) → 409 `DUPLICATE_ACTIVE_LISTING`, with `details.existingPackageId` only if the caller owns it (the same check runs when an edit changes the address) | FR-010, FR-013 |
 | GET | `/listing-packages/:id` | AGENT (own), OPS | → `AgentPackageView` (full, with PII, and `matchedCount`: investors matched in the current round) | |
-| PATCH | `/listing-packages/:id` | AGENT (own) | `UpdatePackageInput` (partial; `undefined` = unchanged) + `version` → 200 | 202 with a re-match job if a material field changed after publish |
+| PATCH | `/listing-packages/:id` | AGENT (own) | `UpdatePackageInput` (partial; `undefined` = unchanged) + `version` → 200 | 202 with a re-match job if a material field changed after publish. Only in DRAFT, ACCEPTING_OFFERS, or NO_OFFERS_RECEIVED, else 409 `PACKAGE_LOCKED`; after publish, 400 names each field publishing needs that the edit would empty (T375) |
 | POST | `/listing-packages/:id/publication` | AGENT (own) | `{ offerDeadline?, version }` → 200 `AgentPackageView` (now ACCEPTING_OFFERS; the MATCH_PACKAGE job is queued in the same change and runs in the worker) | 400 lists invalid fields (FR-012) |
 | POST | `/listing-packages/:id/withdrawal` | AGENT (own) | `{ version }` → 200 `AgentPackageView` | |
 | GET | `/listing-packages/:id/timeline` | AGENT (own) | → `TimelineEntryView[]` (the package's audit entries, newest first, without per-investor match decisions) | Sprint 2 (T297) |
 | POST | `/listing-packages/:id/reopening` | AGENT (own) | `{ offerDeadline, version }` → 200 `AgentPackageView` (round + 1, ACCEPTING_OFFERS; the MATCH_PACKAGE job is queued in the same change, as for publication) | FR-058; from NO_OFFERS_RECEIVED or FELL_THROUGH (Sprint 3, T307) |
-| PATCH | `/listing-packages/:id/offer-deadline` | AGENT (own) | `{ offerDeadline, version }` → 200 `AgentPackageView` | Extend the deadline, from ACCEPTING_OFFERS or NO_OFFERS_RECEIVED (Sprint 3, T307) |
+| PATCH | `/listing-packages/:id/offer-deadline` | AGENT (own) | `{ offerDeadline, version }` → 200 `AgentPackageView` | Extend the deadline, from ACCEPTING_OFFERS or NO_OFFERS_RECEIVED (Sprint 3, T307); a material edit made while NO_OFFERS_RECEIVED is matched now as the next listing version (T375) |
 | POST | `/listing-packages/:id/photo-uploads` | AGENT (own) | `{ contentType, sizeBytes }` → 201 `{ storageKey, upload: UploadInstruction }` | Vendor-neutral `{ url, method, headers, expiresAt }` ([providers.md](./providers.md)); the browser uploads directly (XIV) |
-| POST | `/listing-packages/:id/photos` | AGENT (own) | `{ storageKey, position }` → 201 `Photo` | Verifies the object exists |
-| DELETE | `/listing-packages/:id/photos/:photoId` | AGENT (own) | → 204 | |
+| POST | `/listing-packages/:id/photos` | AGENT (own) | `{ storageKey, position }` → 201 `Photo` | Verifies the object exists. Photo uploads and changes only while the package is editable, else 409 `PACKAGE_LOCKED` (T375) |
+| DELETE | `/listing-packages/:id/photos/:photoId` | AGENT (own) | → 204 | 409 `PHOTO_REQUIRED` for a published package's last photo (T375) |
 | GET | `/package-form` | AGENT | → `packageFormSteps` config (ordered steps, field keys, required flags) | IX: the package form is config-driven |
 | GET | `/listing-packages/:id/matches` | AGENT (own): counts only; OPS: full | → `{ matchedCount, topExclusionReasons[] }` (from the latest `ListingVersion`) or `MatchView[]` (positive matches with `matchedBuyBoxes[]` and their `clauseResults`) | FR-020; edge case "no matches" |
 

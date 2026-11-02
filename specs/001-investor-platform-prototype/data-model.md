@@ -144,12 +144,18 @@ Index: `(zip)`, `(addressHash)`.
 | specialCircumstances | string? | ≤ 2,000 chars |
 | offerDeadline | timestamptz | at publish: > now and ≤ now + 30 days; default now + 72 h (config) |
 | publishedAt | timestamptz? | |
-| listingVersion | int | 0 while DRAFT; 1 at publish; +1 on each material edit and on reopen. Each value has a `ListingVersion` snapshot |
+| listingVersion | int | 0 while DRAFT; 1 at publish; +1 on each material edit and on reopen, and on a deadline extension that follows a material edit made while NO_OFFERS_RECEIVED. Each value has a `ListingVersion` snapshot |
 | version | int | optimistic concurrency (unrelated to `listingVersion`) |
 
 Material fields are every listing field a criterion reads (`MATERIAL_FIELDS`, derived from the
 registry's `listingFields`). Editing one after publish creates a new `listingVersion` and
 re-runs matching.
+
+The agent may change a package's details and photos only while it is DRAFT, ACCEPTING_OFFERS, or
+NO_OFFERS_RECEIVED (`EDITABLE_STATUSES`, T375); in any other status the change is refused (409
+`PACKAGE_LOCKED`), and after a fall-through the agent reopens first. Once published, an edit may
+not empty a field publishing needs (FR-012), and an edit made while NO_OFFERS_RECEIVED is matched
+when the deadline is extended or the package reopens.
 
 Indexes:
 - `(agentId, status)`
@@ -177,7 +183,8 @@ Indexes:
 | sizeBytes | int | ≤ 10 MB |
 | position | int | 0–19; unique `(packageId, position)` |
 
-At least 1 photo is required to publish (FR-012); at most 20.
+At least 1 photo is required to publish (FR-012), and a published package keeps at least 1; at
+most 20. Photos change only while the package is editable (`EDITABLE_STATUSES`, T375).
 
 ---
 

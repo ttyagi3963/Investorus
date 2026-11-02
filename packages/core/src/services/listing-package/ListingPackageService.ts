@@ -2,8 +2,8 @@
 // service validates input, derives city and state from the ZIP, blocks a second package for an
 // address (FR-013), keeps agents to their own packages (FR-080), checks an edit on the merged
 // result, because some rules span the stored row and the change, and audits each change (XII).
+// Edits stop once an offer is accepted, and a published package stays publishable (T375).
 import type { AuditAction, AuditEntry } from "@clever/contracts/audit";
-import { MATERIAL_FIELDS } from "@clever/contracts/buy-box";
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -24,11 +24,12 @@ import type { Seller } from "@clever/contracts/seller";
 import type { IClock } from "../../providers/clock/IClock.js";
 import type { IGeoProvider, ZipInfo } from "../../providers/geo/IGeoProvider.js";
 import type { AddressHasher } from "../../providers/pii-cipher/IPiiCipher.js";
-import { toListingFacts, type ListingFacts } from "../../registry/listing-facts.js";
+import { isMaterialChange, toListingFacts } from "../../registry/listing-facts.js";
 import type { NewAuditEntry } from "../../repositories/audit/IAuditRepository.js";
 import { snapshotAndQueueMatching } from "../../workflows/matching/queue-matching.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { matchSummaryOf } from "./match-summary.js";
+import { assertEditable, missingToPublish } from "./publish-rules.js";
 import type { MatchSummary } from "@clever/contracts/listing-package";
 
 /** A package with everything its agent sees: the seller, the property, the photos, how many
@@ -58,10 +59,6 @@ const NOT_FOUND = "Package not found";
 
 const definedFields = <T extends object>(patch: T): Partial<T> =>
   Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined)) as Partial<T>;
-
-/** True when a field some criterion reads differs between the two versions of the listing. */
-const isMaterialChange = (before: ListingFacts, after: ListingFacts) =>
-  MATERIAL_FIELDS.some((field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]));
 
 /** The names of the fields an edit changes, never their values, for the audit entry. */
 const changedFields = ({ version: _version, ...data }: UpdateListingPackageInput): string[] =>
@@ -164,7 +161,8 @@ export class ListingPackageService implements IListingPackageService {
     return this.uow.run(async (repos) => {
       const current = await repos.packages.findForAgent(agentId, id);
       if (!current) throw new NotFoundError(NOT_FOUND);
-      const { seller, property } = await this.load(repos, current);
+      assertEditable(current);
+      const { seller, property, photos } = await this.load(repos, current);
       const change = data.property ?? {};
       const errors: FieldError[] = [];
 
@@ -201,6 +199,20 @@ export class ListingPackageService implements IListingPackageService {
       if (email === null && phone === null) {
         errors.push({ field: "seller.email", message: "Enter an email or a phone number" });
       }
+      const packagePatch = {
+        priceExpectationMin: data.priceExpectationMin,
+        priceExpectationMax: data.priceExpectationMax,
+        closingWindowStart: data.closingWindowStart,
+        closingWindowEnd: data.closingWindowEnd,
+        currentlyListed: data.currentlyListed,
+        eligiblePrograms: data.eligiblePrograms,
+      };
+      const pkgAfter = { ...current, ...definedFields(packagePatch) };
+      const propertyAfter = { ...property, ...definedFields(change), ...(place && place) };
+      // Investors can see a published package, so an edit cannot empty a field publishing needs.
+      if (current.status !== "DRAFT") {
+        errors.push(...missingToPublish(pkgAfter, propertyAfter, photos.length));
+      }
       if (errors.length > 0) throw invalid(errors);
 
       const addressChanged = change.streetLine !== undefined || zipChanged;
@@ -212,24 +224,14 @@ export class ListingPackageService implements IListingPackageService {
         : undefined;
       if (addressHash) await this.assertAddressFree(repos, addressHash, agentId, id);
 
-      const packagePatch = {
-        priceExpectationMin: data.priceExpectationMin,
-        priceExpectationMax: data.priceExpectationMax,
-        closingWindowStart: data.closingWindowStart,
-        closingWindowEnd: data.closingWindowEnd,
-        currentlyListed: data.currentlyListed,
-        eligiblePrograms: data.eligiblePrograms,
-      };
-      // An edit to a field some criterion reads, after publish, is a new listing version that
-      // matching runs on again (FR-022).
+      // An edit to a field some criterion reads, while offers are open, is a new listing version
+      // that matching runs on again (FR-022). With no offers open, matching waits until the
+      // deadline is extended (PublicationWorkflow.extendDeadline) or the package is reopened.
       const material =
         current.status === "ACCEPTING_OFFERS" &&
         isMaterialChange(
           toListingFacts(current, property),
-          toListingFacts(
-            { ...current, ...definedFields(packagePatch) },
-            { ...property, ...definedFields(change), ...(place && place) },
-          ),
+          toListingFacts(pkgAfter, propertyAfter),
         );
 
       // The version check comes first, so a stale edit changes nothing.
@@ -251,7 +253,6 @@ export class ListingPackageService implements IListingPackageService {
             addressHash,
           })
         : property;
-      const photos = await repos.photos.listByPackage(id);
       if (material) await snapshotAndQueueMatching(repos, pkg, savedProperty, "PACKAGE_EDIT");
       await repos.audit.append({
         ...this.auditEntry(actor, id, "PACKAGE_UPDATED"),

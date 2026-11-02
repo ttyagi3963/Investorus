@@ -2,11 +2,13 @@
 // The package page (T270, T301, T330): loads the agent's package and shows the header with its
 // status and actions, then, in two columns on wide screens, the photos and the form on the left and
 // the matching, offers, and activity cards on the right. A package that is not the agent's comes
-// back as not found from the api.
+// back as not found from the api. Once its details are fixed (T375), they show as text instead.
+import { EDITABLE_STATUSES } from "@clever/contracts/listing-package";
 import { useParams } from "next/navigation";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { MatchingCard } from "@/features/listing-package/MatchingCard";
 import { PackageActivity, PackageOffers } from "@/features/listing-package/OffersAndTimeline";
+import { PackageDetails } from "@/features/listing-package/PackageDetails";
 import { PackageForm } from "@/features/listing-package/PackageForm";
 import { PhotoSection } from "@/features/listing-package/PhotoSection";
 import { PublishPanel } from "@/features/listing-package/PublishPanel";
@@ -30,14 +32,19 @@ export default function EditPackagePage() {
     );
   }
 
+  const editable = (EDITABLE_STATUSES as readonly string[]).includes(pkg.status);
   return (
     <>
       <PublishPanel pkg={pkg} />
       <div className="grid items-start gap-stack-lg lg:grid-cols-3">
         <div className="flex flex-col gap-stack-lg lg:col-span-2">
-          <PhotoSection pkg={pkg} />
-          {/* The key reloads the form after a publish or an edit, so it shows the saved values. */}
-          <PackageForm key={pkg.version} existing={pkg} />
+          <PhotoSection pkg={pkg} editable={editable} />
+          {editable ? (
+            /* The key reloads the form after a publish or an edit, so it shows the saved values. */
+            <PackageForm key={pkg.version} existing={pkg} />
+          ) : (
+            <PackageDetails pkg={pkg} />
+          )}
         </div>
         <div className="flex flex-col gap-stack-lg">
           <MatchingCard pkg={pkg} />

@@ -2,7 +2,8 @@
 // come from the ZIP, one active package per address across all agents, a closed or withdrawn one
 // freeing it (FR-013, T369), an agent only reaches their
 // own packages (FR-080), a stale edit is refused, an edit is checked on the merged result, and each
-// change is audited without seller PII (T282, XII).
+// change is audited without seller PII (T282, XII). Edits stop once an offer is accepted, and an
+// edit cannot leave a published package unpublishable (T375).
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -150,6 +151,30 @@ describe("ListingPackageService", () => {
     expect(fields(await edit({ property: { units: 4 } }))).toEqual(["property.units"]);
     expect(fields(await edit({ priceExpectationMin: 400_000 }))).toEqual(["priceExpectationMax"]);
     expect(fields(await edit({ seller: { phone: null } }))).toEqual(["seller.email"]);
+  });
+
+  it("refuses an edit once an offer is accepted, the deal fell through, or the package ended (T375)", async () => {
+    const { uow, packages, publish } = world();
+    const pkg = await publish();
+    for (const status of ["UNDER_CONTRACT", "FELL_THROUGH", "CLOSED", "WITHDRAWN"] as const) {
+      uow.repos.packages.rows.get(pkg.id)!.status = status;
+      await expect(
+        packages.update(avery, pkg.id, { version: pkg.version, priceExpectationMax: 290_000 }),
+      ).rejects.toMatchObject({ code: "PACKAGE_LOCKED" });
+    }
+  });
+
+  it("refuses an edit that would leave a published package unpublishable, naming each field (T375)", async () => {
+    const { packages, publish } = world();
+    const pkg = await publish();
+    const err = await packages
+      .update(avery, pkg.id, {
+        version: pkg.version,
+        eligiblePrograms: [],
+        property: { beds: null },
+      })
+      .catch((e: unknown) => e);
+    expect(fields(err)).toEqual(["eligiblePrograms", "property.beds"]);
   });
 
   it("audits a create and an edit as the acting user, naming changed fields but never their values", async () => {

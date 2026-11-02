@@ -27,6 +27,17 @@ export const ADDRESS_FREEING_STATUSES = [
   "WITHDRAWN",
 ] as const satisfies readonly PackageStatus[];
 
+/**
+ * The statuses in which the agent may change a package's details and photos (T375). From an
+ * accepted offer on, a buyer has agreed to these facts, and Closed and Withdrawn are final
+ * (FR-014). After a fall-through the agent reopens first, which makes the package editable again.
+ */
+export const EDITABLE_STATUSES = [
+  "DRAFT",
+  "ACCEPTING_OFFERS",
+  "NO_OFFERS_RECEIVED",
+] as const satisfies readonly PackageStatus[];
+
 export type ListingPackage = {
   id: string;
   agentId: string;

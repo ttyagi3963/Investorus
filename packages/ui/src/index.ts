@@ -24,6 +24,7 @@ export { Select, type SelectOption, type SelectProps } from "./primitives/Select
 export { StatTile, type StatTileProps } from "./primitives/StatTile.js";
 export { StatusChip, type StatusChipProps } from "./primitives/StatusChip.js";
 export { TextField, type TextFieldProps } from "./primitives/TextField.js";
+export { showToast, Toaster } from "./primitives/Toast.js";
 export { Thumbnail, type ThumbnailProps } from "./primitives/Thumbnail.js";
 export { ConfirmDialog, type ConfirmDialogProps } from "./primitives/ConfirmDialog.js";
 export { PopoverPanel, type PopoverPanelProps } from "./primitives/PopoverPanel.js";

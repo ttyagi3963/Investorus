@@ -6,6 +6,23 @@
 
 @theme {
   --color-*: initial;
+
+  /* A toast fades in, holds, and fades out over its 5 seconds on screen (T422). */
+  --animate-toast: toast 5s ease-in-out forwards;
+  @keyframes toast {
+    0% {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+    6%,
+    85% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    100% {
+      opacity: 0;
+    }
+  }
 }
 
 @theme inline {
@@ -157,4 +174,9 @@
   --font-weight-medium: var(--brand-font-weight-medium);
   --font-weight-semibold: var(--brand-font-weight-semibold);
   --font-weight-bold: var(--brand-font-weight-bold);
+}
+
+/* Holds an animation where it is, such as a toast's fade while it is hovered or focused (T422). */
+@utility animation-paused {
+  animation-play-state: paused;
 }

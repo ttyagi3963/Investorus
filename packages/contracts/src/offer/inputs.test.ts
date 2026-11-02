@@ -1,5 +1,6 @@
 // Guards the offer terms' list rule (T389; FR-050): a contingency counts once, so listing it twice
-// cannot make an offer look less certain than it is on the agent's comparison.
+// cannot make an offer look less certain than it is on the agent's comparison. A bad date is named
+// in plain words on its field, never as Zod's "Invalid ISO date" (T422).
 import { describe, expect, it } from "vitest";
 import { createOfferInputSchema } from "./inputs.js";
 
@@ -21,5 +22,17 @@ describe("offer terms", () => {
     });
     expect(result.success).toBe(false);
     expect(result.error!.issues.map((issue) => issue.path.join("."))).toEqual(["contingencies"]);
+  });
+
+  it("call a bad date an invalid date, on its own field", () => {
+    const result = createOfferInputSchema.safeParse({
+      ...offer,
+      closingDate: "2026-02-31x",
+      expiresAt: "tomorrow",
+    });
+    expect(result.error!.issues.map((issue) => [issue.path.join("."), issue.message])).toEqual([
+      ["closingDate", "Invalid date"],
+      ["expiresAt", "Invalid date and time"],
+    ]);
   });
 });

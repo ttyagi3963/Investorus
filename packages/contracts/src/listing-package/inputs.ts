@@ -2,6 +2,7 @@
 // one request) and update (PATCH /listing-packages/:id), checked with Zod; errors name the field.
 // The agent comes from the session, never from the body.
 import { z } from "zod";
+import { isoDate, isoDateTime } from "../common/dates.js";
 import { createPropertyInputSchema, updatePropertyInputSchema } from "../property/inputs.js";
 import { createSellerInputSchema, updateSellerInputSchema } from "../seller/inputs.js";
 import { OFFER_PROGRAMS } from "./programs.js";
@@ -13,8 +14,8 @@ const minAtMostMax = {
 };
 // The seller's terms, which publishing requires but a draft may leave out (FR-012).
 const terms = {
-  closingWindowStart: z.iso.date(),
-  closingWindowEnd: z.iso.date(),
+  closingWindowStart: isoDate(),
+  closingWindowEnd: isoDate(),
   currentlyListed: z.boolean(),
   eligiblePrograms: z.array(z.enum(OFFER_PROGRAMS)),
 };
@@ -70,7 +71,7 @@ export type UpdateListingPackageInput = z.input<typeof updateListingPackageInput
 /** POST /listing-packages/:id/publication. The deadline defaults to now + 72 hours. */
 export const publishInputSchema = z.object({
   version: z.number().int().positive(),
-  offerDeadline: z.iso.datetime().optional(),
+  offerDeadline: isoDateTime().optional(),
 });
 export type PublishInput = z.input<typeof publishInputSchema>;
 
@@ -84,6 +85,6 @@ export type WithdrawInput = z.input<typeof withdrawInputSchema>;
  */
 export const offerDeadlineInputSchema = z.object({
   version: z.number().int().positive(),
-  offerDeadline: z.iso.datetime(),
+  offerDeadline: isoDateTime(),
 });
 export type OfferDeadlineInput = z.input<typeof offerDeadlineInputSchema>;

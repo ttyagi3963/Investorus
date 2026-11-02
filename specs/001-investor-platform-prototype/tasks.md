@@ -1557,6 +1557,6 @@ Re-run V1 after each increment, because every story adds to the build and the se
   `ISellerContactReader`, `GET /package-form`, the agent offer list, and the backup-expiry
   extension) were written into [contracts/](./contracts/) before implementation, so the
   contracts stay the source of truth (V).
-- Commit after each task or logical group, once the user asks for commits. After Sprint 0,
-  each task or small group is one pull request from a short-lived `t###-short-summary` branch
-  off `main`, merged by squash within about a day (trunk-based development, Sprint 0).
+- One commit per task. After Sprint 0, each batch of work (normally a sprint) is one branch and
+  one pull request, named `t###-short-summary` after its first task and cut from `main`, and is
+  squash merged when every check is green (CLAUDE.md, "How work merges"; trunk-based development).

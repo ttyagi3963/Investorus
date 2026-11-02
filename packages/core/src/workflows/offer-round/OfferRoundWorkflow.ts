@@ -3,7 +3,8 @@
 // offers stays open for the seller's decision (new offers are already refused after the deadline).
 // At an offer's expiry, a still-open offer becomes EXPIRED and its investor is told; a promoted
 // backup's deal waiting for reconfirmation is released with it (T365). Each run
-// re-reads the rows and does nothing when its job is stale, so a late or repeated job is harmless.
+// re-reads the rows and does nothing when its job is stale, and a round closes once (an effect
+// marker, T368), so a late or repeated job is harmless.
 import { releasePromotedBackup } from "../deal-lifecycle/release-promoted-backup.js";
 import type { CloseOfferRoundPayload, ExpireOfferPayload } from "@clever/contracts/jobs";
 import { OPEN_OFFER_STATUSES } from "../../repositories/offer/IOfferRepository.js";
@@ -29,6 +30,16 @@ export class OfferRoundWorkflow implements IOfferRoundWorkflow {
         pkg?.status !== "ACCEPTING_OFFERS" ||
         pkg.round !== round ||
         pkg.offerDeadline?.toISOString() !== offerDeadline
+      ) {
+        return;
+      }
+      // A round with open offers keeps its status, so a second run (a worker died after this
+      // committed, before the job was marked done) would pass the checks above again: the effect
+      // is claimed once, in this transaction (T368).
+      if (
+        !(await repos.effects.claimOnce(
+          `OFFER_ROUND_CLOSED:${packageId}:${round}:${offerDeadline}`,
+        ))
       ) {
         return;
       }

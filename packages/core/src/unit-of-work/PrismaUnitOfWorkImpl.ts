@@ -12,6 +12,7 @@ import { PrismaConfigRepositoryImpl } from "../repositories/config/PrismaConfigR
 import { PrismaDealRepositoryImpl } from "../repositories/deal/PrismaDealRepositoryImpl.js";
 import { PrismaDeliveryRepositoryImpl } from "../repositories/delivery/PrismaDeliveryRepositoryImpl.js";
 import { PrismaDecisionRepositoryImpl } from "../repositories/decision/PrismaDecisionRepositoryImpl.js";
+import { PrismaEffectMarkerRepositoryImpl } from "../repositories/effect-marker/PrismaEffectMarkerRepositoryImpl.js";
 import { markClaimCommitted } from "../repositories/idempotency/PrismaIdempotencyStoreImpl.js";
 import { PrismaImportRepositoryImpl } from "../repositories/import/PrismaImportRepositoryImpl.js";
 import { PrismaInvestorRepositoryImpl } from "../repositories/investor/PrismaInvestorRepositoryImpl.js";
@@ -61,6 +62,7 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
           deliveries: new PrismaDeliveryRepositoryImpl(tx),
           opsQuery: new PrismaOpsQueryRepositoryImpl(tx, this.cipher),
           brands: new PrismaBrandRepositoryImpl(tx),
+          effects: new PrismaEffectMarkerRepositoryImpl(tx),
         }),
       );
       await markClaimCommitted(tx);

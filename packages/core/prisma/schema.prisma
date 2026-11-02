@@ -424,6 +424,14 @@ enum NotificationType {
   RECONFIRMATION_DECLINED
 }
 
+// A one-time effect that has happened (T368): a job that may run twice (a worker died after its
+// change committed but before the job was marked done) claims its effect's key in the same
+// transaction as the effect, so the second run finds the key and does nothing. Append-only.
+model EffectMarker {
+  key       String   @id
+  createdAt DateTime @default(now())
+}
+
 // One in-app message for one user (T281), written in the same transaction as the change it
 // reports. Title and body never carry seller details.
 model Notification {

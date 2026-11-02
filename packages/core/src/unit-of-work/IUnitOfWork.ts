@@ -3,6 +3,7 @@
 import type { IAuditRepository } from "../repositories/audit/IAuditRepository.js";
 import type { IBrandRepository } from "../repositories/brand/IBrandRepository.js";
 import type { IBuyBoxRepository } from "../repositories/buy-box/IBuyBoxRepository.js";
+import type { IEffectMarkerRepository } from "../repositories/effect-marker/IEffectMarkerRepository.js";
 import type { IConfigRepository } from "../repositories/config/IConfigRepository.js";
 import type { IDealRepository } from "../repositories/deal/IDealRepository.js";
 import type { IDeliveryRepository } from "../repositories/delivery/IDeliveryRepository.js";
@@ -44,6 +45,7 @@ export interface UnitOfWorkRepositories {
   deliveries: IDeliveryRepository;
   opsQuery: IOpsQueryRepository;
   brands: IBrandRepository;
+  effects: IEffectMarkerRepository;
 }
 
 export interface IUnitOfWork {

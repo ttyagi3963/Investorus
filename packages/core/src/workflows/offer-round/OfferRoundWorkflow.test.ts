@@ -1,6 +1,7 @@
 // Guards the offer round's timers (T306; FR-044, FR-059): at the deadline a round with no open
 // offers moves to "No offers received" and the agent is told, while a round with offers stays open
-// for the decision; a job for a deadline that was since extended does nothing; and each offer
+// for the decision; running the same deadline's job again (a worker died after it committed) tells
+// and audits nothing more (T368); a job for a deadline that was since extended does nothing; and each offer
 // revision expires on its own schedule, so an older revision's job does nothing and an accepted
 // offer never expires.
 import type { CloseOfferRoundPayload, ExpireOfferPayload } from "@clever/contracts/jobs";
@@ -37,6 +38,21 @@ describe("OfferRoundWorkflow", () => {
       expect.objectContaining({ packageId: withOffer.id, title: "Offers are ready to compare" }),
       expect.objectContaining({ packageId: empty.id, title: "No offers came in" }),
     ]);
+  });
+
+  it("tells the agent and audits once when the same deadline's job runs again", async () => {
+    const { uow, offers, round, publish, jobs } = setup();
+    const pkg = await publish();
+    await offers.create(summit, pkg.id, offer());
+    const [payload] = jobs<CloseOfferRoundPayload>("CLOSE_OFFER_ROUND");
+
+    await round.closeRound(payload!);
+    await round.closeRound(payload!);
+
+    expect(await uow.repos.notifications.listForUser(avery.userId)).toHaveLength(1);
+    expect(uow.repos.audit.entries.filter((e) => e.action === "OFFER_ROUND_CLOSED")).toHaveLength(
+      1,
+    );
   });
 
   it("does nothing for a deadline that was extended since", async () => {

@@ -38,6 +38,7 @@ import type {
   BrandRecord,
   IBrandRepository,
 } from "../../src/repositories/brand/IBrandRepository.js";
+import type { IEffectMarkerRepository } from "../../src/repositories/effect-marker/IEffectMarkerRepository.js";
 import {
   ALREADY_ACCEPTED,
   type DealPatch,
@@ -756,6 +757,16 @@ export class InMemoryBrandRepository implements IBrandRepository {
   }
 }
 
+/** Effect keys already claimed. */
+export class InMemoryEffectMarkerRepository implements IEffectMarkerRepository {
+  readonly keys = new Set<string>();
+  async claimOnce(key: string) {
+    if (this.keys.has(key)) return false;
+    this.keys.add(key);
+    return true;
+  }
+}
+
 export class InMemoryUnitOfWork implements IUnitOfWork {
   readonly repos: UnitOfWorkRepositories & {
     sellers: InMemorySellerRepository;
@@ -777,6 +788,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
     outbox: InMemoryOutboxRepository;
     deliveries: InMemoryDeliveryRepository;
     brands: InMemoryBrandRepository;
+    effects: InMemoryEffectMarkerRepository;
   };
   constructor(users: UserCredentials[] = []) {
     const outbox = new InMemoryOutboxRepository();
@@ -802,6 +814,7 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       deliveries: new InMemoryDeliveryRepository(outbox),
       opsQuery: OPS_QUERIES_NEED_POSTGRES,
       brands: new InMemoryBrandRepository(),
+      effects: new InMemoryEffectMarkerRepository(),
     };
   }
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {

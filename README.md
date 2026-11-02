@@ -58,7 +58,7 @@ home page and the sign-in page, each account's **Sign in** button signs in with 
 
 The seed also creates a small Los Angeles market: 13 listing packages with made-up addresses in
 real LA ZIP codes (Highland Park, Echo Park, West Adams, Inglewood, Van Nuys, Venice, and more),
-priced around each ZIP's typical home value. Eleven are taking offers (one is a lot no investor
+priced around each ZIP's typical home value. Ten are taking offers (one is a lot no investor
 matches), one is under contract, and two are drafts. The listings have no photos yet.
 
 | Role | Email | Shows |

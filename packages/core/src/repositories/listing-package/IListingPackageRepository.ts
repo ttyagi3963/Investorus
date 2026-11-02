@@ -31,10 +31,13 @@ export type ListingPackagePatch = Partial<
 >;
 
 export interface IListingPackageRepository {
+  /** An active package already at the address is a BusinessRuleError (DUPLICATE_ACTIVE_LISTING). */
   create(pkg: NewListingPackage): Promise<ListingPackage>;
   findForAgent(agentId: string, id: string): Promise<ListingPackage | null>;
   /** For the system (matching), never for a request: it does not check the agent. */
   findById(id: string): Promise<ListingPackage | null>;
+  /** Several packages in one query, by ID, for an investor's list (T399); like findById, unchecked. */
+  findByIds(ids: string[]): Promise<Map<string, ListingPackage>>;
   listByAgent(agentId: string): Promise<ListingPackage[]>;
   /** For the system (matching a saved buy box): packages taking offers whose deadline is after `now`. */
   listOpenForOffers(now: Date): Promise<ListingPackage[]>;
@@ -46,7 +49,10 @@ export interface IListingPackageRepository {
   /**
    * Applies the patch and moves to the next version, only if the stored version is `version`;
    * otherwise throws ConflictError. An empty patch still moves the version (the seller or the
-   * property changed).
+   * property changed). A new address an active package already has is DUPLICATE_ACTIVE_LISTING.
+   * Inside a unit of work, a patch that changes the status also writes `package.status_changed`
+   * with the CRM snapshot to the outbox, in the same change (outbox/with-outbox-events.ts, T337):
+   * callers never write that event themselves.
    */
   update(id: string, version: number, patch: ListingPackagePatch): Promise<ListingPackage>;
   /**

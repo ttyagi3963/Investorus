@@ -23,7 +23,7 @@ Then open:
 | URL | What |
 | --- | --- |
 | http://localhost:3000 | Home page: what the demo shows, demo accounts, where to start |
-| http://localhost:4000/api/v1/health | API health (`db`, `redis` both `ok`) |
+| http://localhost:4000/api/v1/health | API health (`{ status: "ok", db: "ok" }`; the api does not use Redis, only the worker does) |
 | http://localhost:4100 | Sandbox: the stand-in CRM records, captured emails and SMS, outage switches |
 
 Demo accounts (also listed in the README):
@@ -72,14 +72,16 @@ unchanged (FR-003).
 ### V3 — Offers, duplicates, deadline (Story 3, SC-004, SC-009)
 
 1. As `summit@example.com`, submit an offer, then revise it. The agent sees one offer at the
-   latest revision, with history.
+   latest revision (every revision is stored; a history view is not built, T150).
 2. Send the same POST twice with the same `Idempotency-Key` (curl recipe in the README). The
    second response has `Idempotent-Replay: true`, and only one offer exists.
-3. Open the seeded package "Deadline passed". Submitting is refused with an explanation.
+3. No seeded package is past its deadline: extend a package's deadline to a few minutes ahead,
+   let it pass, then submit. Submitting is refused with an explanation.
 
 ### V4 — Compare, accept, track to close, backup (Story 4, SC-005, SC-010, SC-011)
 
-1. As `blake@example.com`, open the seeded package with 6 offers → **Compare**. Sort by net
+1. As `blake@example.com`, open the seeded package at 48 Maple Ave, which has 4 offers →
+   **Compare**. Sort by net
    proceeds; each row's breakdown matches the formula in data-model.md.
 2. Accept the top offer. The winner sees the seller contact details (an audit entry is written),
    and the others see "Backup offer".
@@ -127,7 +129,7 @@ unchanged (FR-003).
 1. Open http://localhost:3000/design-system. Every semantic token, component, and template
    renders for the `clever` brand.
 2. Put the page next to cleveroffers.com. Colors, type, and spacing match (SC-013).
-3. Use the brand switcher to choose `brand-beta`. Every screen, including logged-in agent,
+3. Use the brand switcher to choose `larkspur` (or open http://partner.localhost:3000). Every screen, including logged-in agent,
    investor, and ops pages, changes palette, radius, logo, and footer, with no restart or code
    change (FR-092, FR-093).
 4. As `morgan@example.com`, submit a token set whose muted text fails contrast against the card

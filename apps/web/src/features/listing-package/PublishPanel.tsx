@@ -2,9 +2,10 @@
 // The top of the package page (T301, T316, T330): the page header with the street line, the status
 // chip, the place and offer deadline, and, by status, what the agent can do. A draft has Publish,
 // which either publishes or lists every blocking field under the header; an open package links to
-// compare the offers and can Extend deadline; a package with no offers can be extended or reopened;
-// from acceptance on, a link goes to the deal. Withdraw asks in a dialog first (focus moves into it
-// and back to the button).
+// compare the offers and can Extend deadline; a package with no offers (or none left open after
+// the deadline, T377) can be extended or reopened; from acceptance on, a link goes to the deal,
+// where a fallen-through deal is promoted, reopened, or withdrawn. Withdraw asks in a dialog first
+// (focus moves into it and back to the button).
 import type { AgentPackageView, PackageStatus } from "@clever/contracts/listing-package";
 import { Button, buttonClasses, ConfirmDialog, PACKAGE_STATUS_TONES, StatusChip } from "@clever/ui";
 import Link from "next/link";
@@ -13,6 +14,7 @@ import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { PageHeader } from "@/features/shell/PageHeader";
 import { listingPackages } from "@/lib/bff-client";
 import { useAction } from "@/lib/use-action";
+import { whenDone } from "@/lib/when-done";
 import { DeadlineDialog } from "./DeadlineDialog";
 import { STATUS_LABELS } from "./labels";
 import { PublishBlockers } from "./PublishBlockers";
@@ -21,6 +23,7 @@ import { usePublication } from "./usePublication";
 
 const when = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+const ROUND_FAILED = "The offer round could not be changed. Try again.";
 const WITHDRAWABLE: PackageStatus[] = ["DRAFT", "ACCEPTING_OFFERS", "NO_OFFERS_RECEIVED"];
 const DEAL: PackageStatus[] = [
   "OFFER_ACCEPTED",
@@ -45,7 +48,7 @@ function contextLine(pkg: AgentPackageView): string {
 
 export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
   const { publish, withdraw, isBusy, blockers, error } = usePublication();
-  const round = useAction("The offer round could not be changed. Try again.", packageKeys.all);
+  const round = useAction(ROUND_FAILED, packageKeys.all);
   const target = { id: pkg.id, version: pkg.version };
   const busy = isBusy || round.isBusy;
 
@@ -69,8 +72,10 @@ export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
           note="Matched investors are told the new deadline. It must be later than the current one."
           isDisabled={busy}
           onSubmit={(offerDeadline) =>
-            round.run(() =>
-              listingPackages.extendDeadline(pkg.id, { version: pkg.version, offerDeadline }),
+            whenDone(
+              round.run,
+              () => listingPackages.extendDeadline(pkg.id, { version: pkg.version, offerDeadline }),
+              ROUND_FAILED,
             )
           }
         />
@@ -82,7 +87,11 @@ export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
           note="Matching runs again, and every matched investor is told about the new round."
           isDisabled={busy}
           onSubmit={(offerDeadline) =>
-            round.run(() => listingPackages.reopen(pkg.id, { version: pkg.version, offerDeadline }))
+            whenDone(
+              round.run,
+              () => listingPackages.reopen(pkg.id, { version: pkg.version, offerDeadline }),
+              ROUND_FAILED,
+            )
           }
         />
       )}
@@ -122,7 +131,13 @@ export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
       />
       {pkg.status === "NO_OFFERS_RECEIVED" && (
         <p className="rounded-control bg-status-offers-in p-inset-md text-body text-status-offers-in">
-          The deadline passed with no offers. Extend it, reopen for a new round, or withdraw.
+          The deadline passed with no open offers. Extend it, reopen for a new round, or withdraw.
+        </p>
+      )}
+      {pkg.status === "FELL_THROUGH" && (
+        <p className="rounded-control bg-status-error p-inset-md text-body text-status-error">
+          The deal fell through. On the deal page, promote a backup offer, reopen for a new round,
+          or withdraw.
         </p>
       )}
       {blockers && <PublishBlockers blockers={blockers} onPage />}

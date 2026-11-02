@@ -15,7 +15,9 @@ export function createBrandsRouter(brands: IBrandService): Router {
     const theme = await brands.getTheme(req.params.id);
     const etag = `"${theme.brandId}-v${theme.tokenVersion}"`;
     res.set({ ETag: etag, "Cache-Control": "public, max-age=60" });
-    if (req.headers["if-none-match"] === etag) return void res.status(304).end();
+    // Express compares If-None-Match with the ETag set above as RFC 9110 asks: weakly, and against
+    // each tag of a list (T386).
+    if (req.fresh) return void res.status(304).end();
     res.status(200).json(theme);
   });
   router.get("/ops/brands/:id/tokens", async (req, res) => {

@@ -46,6 +46,7 @@ const parts = {
   },
   photos: [],
   myOffer: null,
+  myOwnTerms: null,
   myDeal: null,
   matchedAt: now,
 };

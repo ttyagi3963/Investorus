@@ -2,9 +2,11 @@
 // The in-app inbox in the investor and agent headers (T300, T315, T329): a button with the unread count opens a panel
 // (Escape or a click outside closes it) with the notifications, newest first, each marked New until
 // read and showing when it arrived; opening one marks it
-// read and goes to its package. The list refreshes every 15 seconds, and a polite live region
-// announces when the unread count goes up, so a new match reaches screen reader users too.
-import { PopoverPanel } from "@clever/ui";
+// read and goes to its package, and one with no package has Mark as read instead (T385). Each link
+// and button names its notification for screen readers (WCAG 2.4.4). The list refreshes every 15
+// seconds, and a polite live region announces when the unread count goes up, so a new match reaches
+// screen reader users too.
+import { Button, PopoverPanel } from "@clever/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -65,11 +67,16 @@ export function NotificationInbox({ packagesPath }: { packagesPath: string }) {
                   <span className="flex items-center gap-inline-sm">
                     {!n.read && (
                       <>
-                        <span aria-hidden="true" className="size-2 shrink-0 rounded-pill bg-action-primary" />
+                        <span
+                          aria-hidden="true"
+                          className="size-2 shrink-0 rounded-pill bg-action-primary"
+                        />
                         <span className="text-caption font-semibold text-link">New</span>
                       </>
                     )}
-                    <span className={`text-body ${n.read ? "text-muted" : "font-semibold text-heading"}`}>
+                    <span
+                      className={`text-body ${n.read ? "text-muted" : "font-semibold text-heading"}`}
+                    >
                       {n.title}
                     </span>
                   </span>
@@ -78,7 +85,7 @@ export function NotificationInbox({ packagesPath }: { packagesPath: string }) {
                     <time dateTime={n.createdAt} className="text-helper text-muted">
                       {formatTime(n.createdAt)}
                     </time>
-                    {n.packageId && (
+                    {n.packageId ? (
                       <Link
                         href={`${packagesPath}/${n.packageId}`}
                         className="inline-flex min-h-touch items-center text-label text-link hover:text-link-hover"
@@ -87,8 +94,19 @@ export function NotificationInbox({ packagesPath }: { packagesPath: string }) {
                           close();
                         }}
                       >
-                        Open it
+                        Open it<span className="sr-only">: {n.title}</span>
                       </Link>
+                    ) : (
+                      !n.read && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          isPending={markRead.isPending && markRead.variables === n.id}
+                          onPress={() => markRead.mutate(n.id)}
+                        >
+                          Mark as read<span className="sr-only">: {n.title}</span>
+                        </Button>
+                      )
                     )}
                   </span>
                 </li>

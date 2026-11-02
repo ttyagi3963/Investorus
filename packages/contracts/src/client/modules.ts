@@ -1,6 +1,7 @@
 // The typed calls the web app makes (T265), one function per route in contracts/api.md. The browser
 // uses them against the BFF: `session` signs in and out through the BFF's cookie route, and the
-// others go through the BFF's proxy to the api with the cookie's token.
+// others go through the BFF's proxy to the api with the cookie's token. Every value put into a path
+// or query is encoded, typed or not, so none can reach another route (T385, T389).
 import type { TimelineEntryView } from "../audit/audit.js";
 import type { BrandSummary, BrandThemeView, BrandTokensView } from "../brand/brand.js";
 import type { BuyBoxInput } from "../buy-box/inputs.js";
@@ -52,7 +53,7 @@ import type { Photo, PhotoUpload } from "../photo/photo.js";
 import type { CreateSessionInput } from "../auth/auth.js";
 import type { UserView } from "../user/views.js";
 import type { ImportBatchView, ImportUploadView } from "../investor/import-views.js";
-import type { ApiClient, RequestOptions } from "./http.js";
+import type { ApiClient } from "./http.js";
 
 const pkgPath = (id: string) => `/listing-packages/${encodeURIComponent(id)}`;
 const offerPath = (id: string) => `/offers/${encodeURIComponent(id)}`;
@@ -83,7 +84,10 @@ export const listingPackagesClient = (api: ApiClient) => ({
   extendDeadline: (id: string, input: OfferDeadlineInput) =>
     api.request<AgentPackageView>("PATCH", `${pkgPath(id)}/offer-deadline`, input),
   comparison: (id: string, sort: ComparisonSort) =>
-    api.request<OfferComparisonView>("GET", `${pkgPath(id)}/offer-comparison?sort=${sort}`),
+    api.request<OfferComparisonView>(
+      "GET",
+      `${pkgPath(id)}/offer-comparison?sort=${encodeURIComponent(sort)}`,
+    ),
   decide: (id: string, input: CreateDecisionInput) =>
     api.request<DecisionView>("POST", `${pkgPath(id)}/decisions`, input),
   deal: (id: string) => api.request<DealView>("GET", `${pkgPath(id)}/deal`),
@@ -108,10 +112,10 @@ export const investorClient = (api: ApiClient) => ({
       "GET",
       `/investor/packages/${encodeURIComponent(id)}`,
     ),
-  makeOffer: (packageId: string, input: CreateOfferInput, options?: RequestOptions) =>
-    api.request<OfferView>("POST", `${pkgPath(packageId)}/offers`, input, options),
-  reviseOffer: (offerId: string, input: ReviseOfferInput, options?: RequestOptions) =>
-    api.request<OfferView>("PATCH", `/offers/${encodeURIComponent(offerId)}`, input, options),
+  makeOffer: (packageId: string, input: CreateOfferInput) =>
+    api.request<OfferView>("POST", `${pkgPath(packageId)}/offers`, input),
+  reviseOffer: (offerId: string, input: ReviseOfferInput) =>
+    api.request<OfferView>("PATCH", `/offers/${encodeURIComponent(offerId)}`, input),
   withdrawOffer: (offerId: string, input: WithdrawOfferInput) =>
     api.request<OfferView>("POST", `${offerPath(offerId)}/withdrawal`, input),
   respondToCounter: (offerId: string, input: CounterResponseInput) =>
@@ -123,11 +127,11 @@ export const investorClient = (api: ApiClient) => ({
 /** The investor's own buy boxes (T323). A save restates the whole box and the version it read. */
 export const buyBoxesClient = (api: ApiClient) => ({
   list: () => api.request<BuyBoxView[]>("GET", "/investor/buy-boxes"),
-  get: (id: string) => api.request<BuyBoxView>("GET", `/investor/buy-boxes/${id}`),
-  create: (input: BuyBoxInput, options?: RequestOptions) =>
-    api.request<BuyBoxView>("POST", "/investor/buy-boxes", input, options),
-  save: (id: string, input: BuyBoxInput & { version: number }, options?: RequestOptions) =>
-    api.request<BuyBoxView>("PUT", `/investor/buy-boxes/${id}`, input, options),
+  get: (id: string) =>
+    api.request<BuyBoxView>("GET", `/investor/buy-boxes/${encodeURIComponent(id)}`),
+  create: (input: BuyBoxInput) => api.request<BuyBoxView>("POST", "/investor/buy-boxes", input),
+  save: (id: string, input: BuyBoxInput & { version: number }) =>
+    api.request<BuyBoxView>("PUT", `/investor/buy-boxes/${encodeURIComponent(id)}`, input),
 });
 
 /** Operations' legacy investor import (T323): get an upload link, start, then follow the batch. */
@@ -136,7 +140,8 @@ export const investorImportsClient = (api: ApiClient) => ({
     api.request<ImportUploadView>("POST", "/ops/investor-imports/uploads", { sizeBytes }),
   start: (input: { storageKey: string; fileName: string }) =>
     api.request<{ jobId: string; batchId: string }>("POST", "/ops/investor-imports", input),
-  get: (batchId: string) => api.request<ImportBatchView>("GET", `/ops/investor-imports/${batchId}`),
+  get: (batchId: string) =>
+    api.request<ImportBatchView>("GET", `/ops/investor-imports/${encodeURIComponent(batchId)}`),
 });
 
 /** The signed-in user's in-app inbox (T300). */
@@ -187,7 +192,7 @@ export const opsClient = (api: ApiClient) => ({
   deliveries: (status?: DeliveryStatus) =>
     api.request<DeliveryView[]>(
       "GET",
-      status ? `/ops/deliveries?status=${status}` : "/ops/deliveries",
+      status ? `/ops/deliveries?status=${encodeURIComponent(status)}` : "/ops/deliveries",
     ),
   retryDelivery: (id: string) =>
     api.request<undefined>("POST", `/ops/deliveries/${encodeURIComponent(id)}/retry`),
@@ -197,5 +202,7 @@ export const opsClient = (api: ApiClient) => ({
   crmComparison: () => api.request<CrmComparisonRow[]>("GET", "/ops/crm-comparison"),
   simulations: () => api.request<SimulationModes>("GET", "/ops/simulations"),
   setSimulation: (service: SimulationService, mode: SimulationMode) =>
-    api.request<SimulationModes>("PUT", `/ops/simulations/${service}`, { mode }),
+    api.request<SimulationModes>("PUT", `/ops/simulations/${encodeURIComponent(service)}`, {
+      mode,
+    }),
 });

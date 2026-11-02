@@ -19,6 +19,8 @@ export type NetProceedsLine = { label: string; amount: number };
 export type OfferComparisonRow = {
   offer: OfferView;
   investorName: string;
+  /** False once operations marked the investor inactive: the offer is shown, flagged, still acceptable (T398). */
+  investorActive: boolean;
   netProceeds: number;
   breakdown: NetProceedsLine[];
   /** Lower is more certain: fewer contingencies, and cash ahead of financed on a tie. */

@@ -42,6 +42,41 @@ describe("validateBrandTokens", () => {
     });
   });
 
+  it("holds the input border to 3:1 (WCAG 1.4.11) and the heading text to 4.5:1", () => {
+    const tokens = structuredClone(clever);
+    const color = (tokens.semantic as { color: Record<string, Record<string, { $value: string }>> })
+      .color;
+    color.border!.input!.$value = "#dddedf";
+    color.text!.heading!.$value = "#bbbbbb";
+
+    const result = validateBrandTokens(tokens);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.problems).toContainEqual({
+      field: "border-input on background-surface",
+      message: "Contrast is 1.35:1; it must be at least 3:1",
+    });
+    expect(result.problems).toContainEqual(
+      expect.objectContaining({ field: "text-heading on background-surface" }),
+    );
+  });
+
+  it("refuses a logo path that leaves the site", () => {
+    const content = read("clever", "content.json") as Record<string, unknown>;
+    for (const logoPath of ["//evil.example/logo.svg", "/\\evil.example/logo.svg"]) {
+      expect(brandContentSchema.safeParse({ ...content, logoPath }).success).toBe(false);
+    }
+  });
+
+  it("refuses aliases that point back at themselves", () => {
+    const cycle = { space: { a: { $value: "{space.b}" }, b: { $value: "{space.a}" } } };
+    expect(validateBrandTokens(cycle)).toEqual({
+      ok: false,
+      problems: [{ field: "tokens", message: expect.stringContaining("space") }],
+    });
+  });
+
   it("refuses a name or value that could break out of the style element, and an alias to nothing", () => {
     const breakout = "x:red}</style><script>alert(1)</script><style>";
     expect(validateBrandTokens({ color: { bad: { $value: "red</style><script>" } } })).toEqual({

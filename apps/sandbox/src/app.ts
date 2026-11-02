@@ -15,10 +15,24 @@ export type SandboxConfig = StorageConfig & {
   slowDelayMs: number;
 };
 
-/** A bad JSON body keeps its 4xx; anything else is a 500 without internals. */
-const onError: ErrorRequestHandler = (err: { status?: number }, _req, res, _next) => {
+/**
+ * What a failure's log line may say: the error's class, its code, and where it was thrown. Never
+ * its message, which can quote a value being stored, such as a seller's contact (T392).
+ */
+function safeSummary(err: unknown): string {
+  if (!(err instanceof Error)) return "a non-Error value was thrown";
+  const code = "code" in err && typeof err.code === "string" ? ` (${err.code})` : "";
+  const frames = (err.stack ?? "").split("\n").filter((line) => line.trimStart().startsWith("at "));
+  return [`${err.name}${code}`, ...frames].join("\n");
+}
+
+/** A bad JSON body keeps its 4xx; anything else is a 500 without internals, logged safely. */
+const onError: ErrorRequestHandler = (err: { status?: number }, req, res, _next) => {
   const status = err.status && err.status >= 400 && err.status < 500 ? err.status : 500;
-  if (status === 500) process.stderr.write(`sandbox: ${String((err as Error).stack ?? err)}\n`);
+  if (status === 500) {
+    // The path, not the URL: an upload link's query carries its signature.
+    process.stderr.write(`sandbox: ${req.method} ${req.path} failed: ${safeSummary(err)}\n`);
+  }
   res.status(status).json({ error: status === 500 ? "Internal error" : "Invalid request" });
 };
 

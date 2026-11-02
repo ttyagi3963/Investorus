@@ -54,6 +54,10 @@ export interface IOpsQueryRepository {
   listPackages(): Promise<OpsPackageSummary[]>;
   findPackage(id: string): Promise<OpsPackage | null>;
   deliveriesForPackage(packageId: string): Promise<OpsDelivery[]>;
+  /** Each package's newest CRM delivery not yet sent, in one query (T399); none is absent. */
+  unsentCrmDeliveries(
+    packageIds: string[],
+  ): Promise<Map<string, Pick<OpsDelivery, "id" | "status">>>;
   /** The newest deliveries first, at most `limit`, narrowed by each filter given. */
   listDeliveries(filter: DeliveryFilter, limit: number): Promise<OpsDelivery[]>;
   activeInvestors(): Promise<{ id: string; companyName: string }[]>;

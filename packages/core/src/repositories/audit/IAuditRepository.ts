@@ -21,4 +21,14 @@ export interface IAuditRepository {
   append(entry: NewAuditEntry): Promise<void>;
   /** An entity's entries, newest first. */
   listForEntity(entityType: string, entityId: string): Promise<AuditEntry[]>;
+  /**
+   * The entity's newest entry of one action whose details hold every given value (T396), read
+   * without loading the rest of its history.
+   */
+  findLatest(
+    entityType: string,
+    entityId: string,
+    action: AuditAction,
+    details: Record<string, string | number>,
+  ): Promise<AuditEntry | null>;
 }

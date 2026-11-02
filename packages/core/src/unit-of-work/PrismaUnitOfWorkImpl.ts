@@ -1,6 +1,8 @@
 // The unit of work over Prisma (T043, T249): one interactive transaction per `run`, with every
 // repository bound to that transaction, so all of a change's writes commit or roll back together.
-// withOutboxEvents adds the CRM event to every package status change (T337).
+// withOutboxEvents adds the CRM event to every package status change (T337). A transaction that
+// wrote, inside a request holding an idempotency claim, marks the claim committed before it
+// commits (T367).
 import type { PrismaClient } from "../generated/prisma/client.js";
 import type { IPiiCipher } from "../providers/pii-cipher/IPiiCipher.js";
 import { PrismaAuditRepositoryImpl } from "../repositories/audit/PrismaAuditRepositoryImpl.js";
@@ -10,6 +12,11 @@ import { PrismaConfigRepositoryImpl } from "../repositories/config/PrismaConfigR
 import { PrismaDealRepositoryImpl } from "../repositories/deal/PrismaDealRepositoryImpl.js";
 import { PrismaDeliveryRepositoryImpl } from "../repositories/delivery/PrismaDeliveryRepositoryImpl.js";
 import { PrismaDecisionRepositoryImpl } from "../repositories/decision/PrismaDecisionRepositoryImpl.js";
+import { PrismaEffectMarkerRepositoryImpl } from "../repositories/effect-marker/PrismaEffectMarkerRepositoryImpl.js";
+import {
+  claimWriteBaseline,
+  markClaimCommitted,
+} from "../repositories/idempotency/PrismaIdempotencyStoreImpl.js";
 import { PrismaImportRepositoryImpl } from "../repositories/import/PrismaImportRepositoryImpl.js";
 import { PrismaInvestorRepositoryImpl } from "../repositories/investor/PrismaInvestorRepositoryImpl.js";
 import { PrismaJobRepositoryImpl } from "../repositories/job/PrismaJobRepositoryImpl.js";
@@ -34,8 +41,9 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
   ) {}
 
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {
-    return this.prisma.$transaction((tx) =>
-      work(
+    return this.prisma.$transaction(async (tx) => {
+      const writesBefore = await claimWriteBaseline(tx);
+      const result = await work(
         withOutboxEvents({
           users: new PrismaUserRepositoryImpl(tx),
           sellers: new PrismaSellerRepositoryImpl(tx, this.cipher),
@@ -58,8 +66,11 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
           deliveries: new PrismaDeliveryRepositoryImpl(tx),
           opsQuery: new PrismaOpsQueryRepositoryImpl(tx, this.cipher),
           brands: new PrismaBrandRepositoryImpl(tx),
+          effects: new PrismaEffectMarkerRepositoryImpl(tx),
         }),
-      ),
-    );
+      );
+      await markClaimCommitted(tx, writesBefore);
+      return result;
+    });
   }
 }

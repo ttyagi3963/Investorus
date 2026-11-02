@@ -2,22 +2,15 @@
 // The offer form (T302, T331; FR-042): every term, filled in from the investor's offer when they
 // revise it, laid out for the package page's "Your offer" card. Each input is named by its api
 // field, so an api error shows on its field.
-import { CONTINGENCIES, type CreateOfferInput, type OfferView } from "@clever/contracts/offer";
+import type { CreateOfferInput, OfferView } from "@clever/contracts/offer";
 import { Button, CheckboxGroup, NumberField, Select, TextField } from "@clever/ui";
 import { useState, type FormEvent } from "react";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
+import { CONTINGENCY_OPTIONS, PAYMENT_TYPE_OPTIONS } from "@/features/listing-package/labels";
 import { toLocalInput } from "@/lib/local-time";
 import { useOfferForm } from "./useOfferForm";
 
 const USD = { style: "currency", currency: "USD", maximumFractionDigits: 0 } as const;
-const paymentOptions = [
-  { id: "CASH", label: "Cash" },
-  { id: "FINANCED", label: "Financed" },
-];
-const contingencyOptions = CONTINGENCIES.map((id) => ({
-  id,
-  label: id.charAt(0) + id.slice(1).toLowerCase().replaceAll("_", " "),
-}));
 export function OfferForm({
   packageId,
   myOffer,
@@ -77,7 +70,7 @@ export function OfferForm({
         <Select
           name="paymentType"
           label="Payment"
-          options={paymentOptions}
+          options={PAYMENT_TYPE_OPTIONS}
           selectedKey={paymentType}
           onSelectionChange={(key) => setPaymentType(String(key))}
           errorMessage={fieldErrors.paymentType}
@@ -114,7 +107,7 @@ export function OfferForm({
         name="contingencies"
         label="Contingencies"
         description={paymentType === "FINANCED" ? "A financed offer needs Financing." : undefined}
-        options={contingencyOptions}
+        options={CONTINGENCY_OPTIONS}
         defaultValue={myOffer?.contingencies}
         errorMessage={fieldErrors.contingencies}
       />

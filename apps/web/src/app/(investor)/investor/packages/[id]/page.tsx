@@ -2,8 +2,9 @@
 // A matched package as the investor sees it (T302, T331; FR-040, SC-006): the place, the facts, the
 // photos, the price range, and the deadline, never the seller or the street, unless their offer
 // won the deal (T317). While offers are open the investor makes, revises, or withdraws their offer
-// in the side column; afterwards they answer a counter, keep or withdraw a backup offer, reconfirm
-// a promoted backup, or follow their deal. A package that was not shared with them is "not found".
+// in the side column; afterwards they answer a counter (with a revision too, even after the
+// deadline, T377), keep or withdraw a backup offer, reconfirm a promoted backup, or follow their
+// deal. A package that was not shared with them is "not found".
 import type {
   InvestorPackageView,
   PackageStatus,
@@ -130,9 +131,13 @@ export default function InvestorPackagePage() {
   const { id } = useParams<{ id: string }>();
   const { data: pkg, isPending, isError, error } = useInvestorPackage(id);
   const now = useNow();
+  // A counter is answered while the package takes decisions, so its revision is not held to the
+  // deadline (T377).
   const open =
     pkg?.status === "ACCEPTING_OFFERS" &&
-    (pkg.offerDeadline === null || Date.parse(pkg.offerDeadline) > now);
+    (pkg.offerDeadline === null ||
+      Date.parse(pkg.offerDeadline) > now ||
+      pkg.myOffer?.status === "COUNTERED");
   const back = { href: "/investor", label: "Opportunities" };
 
   if (!pkg) {
@@ -207,7 +212,7 @@ function MyOffer({ pkg, open }: { pkg: InvestorPackageView; open: boolean }) {
   if (offer?.status === "BACKUP") return <BackupPanel offer={offer} />;
   return (
     <>
-      {offer?.status === "COUNTERED" && <CounterPanel offer={offer} />}
+      {offer?.status === "COUNTERED" && <CounterPanel offer={offer} ownTerms={pkg.myOwnTerms} />}
       <Card
         title="Your offer"
         description={`Seller expects ${formatUsd(pkg.priceExpectationMin)} to ${formatUsd(pkg.priceExpectationMax)}.`}

@@ -2,7 +2,9 @@
 // adds nothing; the demo agent can sign in with the README's credentials through the real service;
 // the seeded buy boxes match the sample listing exactly as seed/expected-matches.json says; and
 // Blake's deal demo is seeded once, matched only to investors whose boxes really fit it, with its
-// seller stored encrypted.
+// seller stored encrypted. Seeded in run.ts's order, the demo is matched by the real workflow: each
+// match has the decision behind the ops console's "Why?" and the version its investor was told
+// about, and each offer writes the CRM event that brings the CRM's count to four (T373).
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -15,6 +17,7 @@ import { evaluateBuyBox } from "../src/registry/evaluate-buy-box.js";
 import type { ListingFacts } from "../src/registry/listing-facts.js";
 import { AesGcmPiiCipherImpl } from "../src/providers/pii-cipher/AesGcmPiiCipherImpl.js";
 import { AuthService } from "../src/services/auth/AuthService.js";
+import { OpsQueryService } from "../src/services/ops/OpsQueryService.js";
 import { PrismaUnitOfWorkImpl } from "../src/unit-of-work/PrismaUnitOfWorkImpl.js";
 import { startMigratedDatabase } from "./database.js";
 
@@ -85,7 +88,9 @@ describe("seed", () => {
     await seedDemoAccounts(prisma);
     const cipher = new AesGcmPiiCipherImpl(`v1:${randomBytes(32).toString("base64")}`);
     const deps = { cipher, addressHash: createAddressHasher("test-hash-key") };
+    // run.ts's order: buy box versions before the deal demo.
     await seedConfig(prisma);
+    await seedBuyBoxVersions(prisma);
     await seedDealDemo(prisma, deps);
     await seedDealDemo(prisma, deps);
 
@@ -110,5 +115,19 @@ describe("seed", () => {
         expect(box && evaluateBuyBox(box, version!.snapshot, today).matched).toBe(true);
       }
     }
+
+    // Every match was told about version 1, so a later edit reaches it (FR-022).
+    expect(matches.map((m) => m.lastNotifiedListingVersion)).toEqual(matches.map(() => 1));
+    // "Why?" shows the stored decision with each box's criteria.
+    const ops = { userId: "user-ops", role: "OPS" as const, agentId: null };
+    const why = await new OpsQueryService(uow).explainMatch(ops, pkg!.id, matches[0]!.investorId);
+    expect(why).toMatchObject({ source: "STORED", matched: true });
+    expect(why.buyBoxes.length).toBeGreaterThan(0);
+    // The last offer's CRM event carries all four offers.
+    const events = await db.query(
+      `SELECT payload FROM "OutboxEvent" WHERE type = 'offer.submitted' ORDER BY "occurredAt"`,
+    );
+    expect(events.rows).toHaveLength(4);
+    expect(events.rows.at(-1).payload.crm.offerCount).toBe(4);
   });
 });

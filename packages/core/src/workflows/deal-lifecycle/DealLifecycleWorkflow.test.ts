@@ -4,11 +4,15 @@
 // from the buyer and the audit log; an expired backup is listed but marked, and only an unexpired
 // backup can be promoted, one at a time, with
 // 48 hours to reconfirm; reconfirming makes it the accepted offer, and declining or the timeout
-// frees the agent to promote another; and the package cannot be reopened while a backup decides.
+// frees the agent to promote another; and the package cannot be reopened while a backup decides,
+// but can be with backups left, which are declined and told (T377).
+// A promoted backup that is withdrawn or expires is released at once and can never be reconfirmed
+// into an accepted offer, which would reveal the seller (T365).
 import { describe, expect, it } from "vitest";
 import { avery, investor, offer, world } from "../../../test/fixtures/published-package.js";
 import { OfferService } from "../../services/offer/OfferService.js";
 import { DecisionWorkflow } from "../decision/DecisionWorkflow.js";
+import { OfferRoundWorkflow } from "../offer-round/OfferRoundWorkflow.js";
 import { DealLifecycleWorkflow } from "./DealLifecycleWorkflow.js";
 
 async function accepted() {
@@ -114,6 +118,21 @@ describe("DealLifecycleWorkflow fall-through and backups", () => {
     ).rejects.toMatchObject({ code: "BACKUP_PENDING" });
   });
 
+  it("reopens after a fall-through with a backup left, declining it and telling its investor (T377)", async () => {
+    const { uow, pkg, publication, ridge, fallThrough, status, notices } = await accepted();
+    await fallThrough();
+    const fell = (await uow.repos.packages.findById(pkg.id))!;
+
+    await expect(
+      publication.reopen(avery, pkg.id, {
+        version: fell.version,
+        offerDeadline: "2026-11-06T12:00:00Z",
+      }),
+    ).resolves.toMatchObject({ package: { status: "ACCEPTING_OFFERS", round: 2 } });
+    expect(await status(ridge.id)).toBe("DECLINED");
+    expect(await notices("user-ridge")).toContain("OFFER_DECLINED");
+  });
+
   it("makes a reconfirmed backup the accepted offer", async () => {
     const { uow, pkg, deals, ridge, fallThrough, promote, status, notices } = await accepted();
     await fallThrough();
@@ -152,6 +171,53 @@ describe("DealLifecycleWorkflow fall-through and backups", () => {
     await expect(promote(harbor.id)).resolves.toMatchObject({
       deal: { status: "PENDING_RECONFIRMATION" },
     });
+  });
+
+  it("releases a promoted backup that is withdrawn or expires, so it can never be reconfirmed", async () => {
+    const withdrawn = await accepted();
+    await withdrawn.fallThrough();
+    const { deal } = await withdrawn.promote(withdrawn.ridge.id);
+    const ridgeNow = (await withdrawn.uow.repos.offers.findById(withdrawn.ridge.id))!;
+    await new OfferService(withdrawn.uow, { clock: withdrawn.clock }).withdraw(
+      investor("ridge"),
+      withdrawn.ridge.id,
+      { version: ridgeNow.version },
+    );
+
+    await expect(
+      withdrawn.deals.reconfirm(investor("ridge"), withdrawn.ridge.id, { action: "CONFIRM" }),
+    ).rejects.toMatchObject({ code: "NOT_PROMOTED" });
+    expect(await withdrawn.status(withdrawn.ridge.id)).toBe("WITHDRAWN");
+    expect((await withdrawn.uow.repos.deals.findById(deal.id))?.status).toBe("RECONFIRM_DECLINED");
+    expect(await withdrawn.notices(avery.userId)).toContain("RECONFIRMATION_DECLINED");
+    await expect(withdrawn.promote(withdrawn.harbor.id)).resolves.toMatchObject({
+      deal: { status: "PENDING_RECONFIRMATION" },
+    });
+
+    const expired = await accepted();
+    await expired.fallThrough();
+    await expired.promote(expired.ridge.id);
+    const ridgeOffer = (await expired.uow.repos.offers.findById(expired.ridge.id))!;
+    await new OfferRoundWorkflow(expired.uow).expireOffer({
+      offerId: ridgeOffer.id,
+      revision: ridgeOffer.currentRevision,
+    });
+    await expect(
+      expired.deals.reconfirm(investor("ridge"), expired.ridge.id, { action: "CONFIRM" }),
+    ).rejects.toMatchObject({ code: "NOT_PROMOTED" });
+    expect(await expired.status(expired.ridge.id)).toBe("EXPIRED");
+  });
+
+  it("refuses to reconfirm a promoted backup whose offer has passed its expiry", async () => {
+    const { clock, deals, harbor, fallThrough, promote, status } = await accepted();
+    await fallThrough();
+    await promote(harbor.id);
+    clock.at = new Date("2026-11-02T06:00:00Z");
+
+    await expect(
+      deals.reconfirm(investor("harbor"), harbor.id, { action: "CONFIRM" }),
+    ).rejects.toMatchObject({ code: "OFFER_EXPIRED" });
+    expect(await status(harbor.id)).toBe("BACKUP");
   });
 
   it("times out a backup that has not answered, and leaves one that reconfirmed alone", async () => {

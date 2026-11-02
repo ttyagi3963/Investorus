@@ -109,7 +109,7 @@ describe("publish and match", () => {
     expect(published).toMatchObject({ status: "ACCEPTING_OFFERS", listingVersion: 1 });
     const job = await uow.run((repos) => repos.jobs.claimNext("worker-a", new Date()));
     await handlers[job!.type](job!.payload);
-    await uow.run((repos) => repos.jobs.complete(job!.id));
+    await uow.run((repos) => repos.jobs.complete(job!.id, "worker-a"));
 
     const matches = await db.query(`SELECT "investorId", "matchedBuyBoxIds" FROM "Match"`);
     expect(matches.rows).toEqual([{ investorId: "summit", matchedBuyBoxIds: ["summit-box"] }]);
@@ -127,6 +127,13 @@ describe("publish and match", () => {
     const summit: Actor = { userId: "user-summit", role: "INVESTOR", investorId: "summit" };
     const ridge: Actor = { userId: "user-ridge", role: "INVESTOR", investorId: "ridge" };
     expect((await packages.get(avery, created.id)).matchedCount).toBe(1);
+    // The list reads every row's photos and match count in one query each (T396).
+    expect(await packages.list(avery)).toEqual([
+      expect.objectContaining({
+        matchedCount: 1,
+        photos: [expect.objectContaining({ position: 0 })],
+      }),
+    ]);
     const reads = new InvestorPackageQueryService(uow);
     expect((await reads.listMatched(summit)).map((p) => p.package.id)).toEqual([created.id]);
     expect(await reads.listMatched(ridge)).toEqual([]);

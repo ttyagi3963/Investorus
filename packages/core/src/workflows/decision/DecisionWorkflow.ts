@@ -3,20 +3,18 @@
 // waits on the one-active-deal index and is refused; then the winner is ACCEPTED, every other open
 // offer becomes a backup, the package moves to OFFER_ACCEPTED, and every matched investor learns
 // the outcome. A counter is an agent revision only that investor sees. Decline all closes every
-// open offer. Each decision is an append-only row and an audit entry, in one change; its note stays
+// open offer; before the deadline the round stays open for new offers, and after it the package
+// has no offers left, so it moves to NO_OFFERS_RECEIVED to be extended, reopened, or withdrawn
+// (T377). Each decision is an append-only row and an audit entry, in one change; its note stays
 // with the agent (encrypted at rest, never in a notice or the audit details).
 import type { Actor } from "@clever/contracts/auth";
-import {
-  BusinessRuleError,
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-} from "@clever/contracts/common";
+import { BusinessRuleError, ConflictError, NotFoundError } from "@clever/contracts/common";
 import { createDecisionSchema, type Decision } from "@clever/contracts/deal";
 import type { ListingPackage, PackageStatus } from "@clever/contracts/listing-package";
 import type { Offer } from "@clever/contracts/offer";
 import type { IClock } from "../../providers/clock/IClock.js";
 import { ALREADY_ACCEPTED } from "../../repositories/deal/IDealRepository.js";
+import { agentOf } from "../../services/actor-guards.js";
 import { checkOfferDates } from "../../services/offer/offer-terms.js";
 import type { UnitOfWorkRepositories, IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
 import { placeOf } from "../notice-text.js";
@@ -46,9 +44,7 @@ export class DecisionWorkflow implements IDecisionWorkflow {
 
   async record(actor: Actor, packageId: string, input: unknown): Promise<Decision> {
     // The seller decides through their agent; operations can see but never decide (FR-080).
-    if (actor.role !== "AGENT") {
-      throw new ForbiddenError("Only the package's agent records the seller's decision");
-    }
+    const agentId = agentOf(actor, "Only the package's agent records the seller's decision");
     const data = createDecisionSchema.parse(input);
     const now = this.deps.clock.now();
     const counterTerms =
@@ -58,7 +54,7 @@ export class DecisionWorkflow implements IDecisionWorkflow {
       // Decisions on one package run one at a time: a second accept waits here, then reads the
       // package as the first left it and is told an offer was already accepted.
       await repos.packages.lock(packageId);
-      const pkg = await repos.packages.findForAgent(actor.agentId, packageId);
+      const pkg = await repos.packages.findForAgent(agentId, packageId);
       if (!pkg) throw new NotFoundError("Package not found");
       if (DEAL_STATUSES.includes(pkg.status)) {
         throw new BusinessRuleError(ALREADY_ACCEPTED, "PACKAGE_HAS_ACCEPTED_OFFER");
@@ -71,8 +67,14 @@ export class DecisionWorkflow implements IDecisionWorkflow {
 
       let details: Record<string, unknown>;
       if (data.type === "DECLINE_ALL") {
-        // The package's version guards a decline made from a stale screen.
-        await repos.packages.update(packageId, data.version, {});
+        // The package's version guards a decline made from a stale screen. After the deadline no
+        // new offer can come, so the round ends here as if none had come (T377).
+        const roundOver = pkg.offerDeadline !== null && now >= pkg.offerDeadline;
+        await repos.packages.update(
+          packageId,
+          data.version,
+          roundOver ? { status: "NO_OFFERS_RECEIVED" } : {},
+        );
         const declined = await repos.offers.declineOpen(packageId, pkg.round);
         for (const offer of declined) {
           await notify(offer.investorId, {

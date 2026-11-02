@@ -1,10 +1,11 @@
 // The words the screens use for the codes (T301, T315, T324): offer programs, property types and
-// conditions, package, offer, and deal statuses, the fields a publish can be blocked by, and the
-// timeline's actions. One place, so every screen says the same thing.
+// conditions, package, offer, and deal statuses, an offer's payment types and contingencies, the
+// fields a publish can be blocked by, and the timeline's actions. One place, so every screen says
+// the same thing.
 import type { AuditAction, TimelineEntryView } from "@clever/contracts/audit";
 import type { DealStatus } from "@clever/contracts/deal";
 import type { OfferProgram, PackageStatus } from "@clever/contracts/listing-package";
-import type { OfferStatus } from "@clever/contracts/offer";
+import { CONTINGENCIES, type OfferStatus } from "@clever/contracts/offer";
 import type { PropertyCondition, PropertyType } from "@clever/contracts/property";
 
 export const PROPERTY_TYPE_LABELS: Record<PropertyType, string> = {
@@ -54,6 +55,16 @@ export const OFFER_STATUS_LABELS: Record<OfferStatus, string> = {
   FELL_THROUGH: "Fell through",
   DECLINED_TO_RECONFIRM: "Declined to reconfirm",
 };
+
+/** The choices an offer form and a counter offer for how the price is paid and its conditions. */
+export const PAYMENT_TYPE_OPTIONS = [
+  { id: "CASH", label: "Cash" },
+  { id: "FINANCED", label: "Financed" },
+];
+export const CONTINGENCY_OPTIONS = CONTINGENCIES.map((id) => ({
+  id,
+  label: id.charAt(0) + id.slice(1).toLowerCase().replaceAll("_", " "),
+}));
 
 export const DEAL_STATUS_LABELS: Record<DealStatus, string> = {
   PENDING_RECONFIRMATION: "Waiting for the backup to reconfirm",

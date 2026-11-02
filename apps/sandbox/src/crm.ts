@@ -1,6 +1,7 @@
 // The stand-in CRM (T338; contracts/providers.md): the worker sends each listing's status snapshot,
-// keyed by its delivery ID, and an update older than the stored one is refused with 409 STALE, so
-// a delayed retry never overwrites a newer status. The read-out serves the api's CRM comparison.
+// keyed by its delivery ID, and an update numbered at or below the stored one is refused with 409
+// STALE, so a delayed retry or an out-of-order delivery never overwrites a newer status (T380).
+// The read-out serves the api's CRM comparison.
 import express, { Router, type RequestHandler } from "express";
 import { z } from "zod";
 import { requireInternalToken } from "./auth.js";
@@ -18,6 +19,7 @@ const crmUpdateSchema = z.object({
     phone: z.string().nullable(),
   }),
   occurredAt: z.iso.datetime({ offset: true }),
+  sequence: z.number().int().min(1),
 });
 
 export type CrmConfig = { store: SandboxStore; internalToken: string; gate: RequestHandler };

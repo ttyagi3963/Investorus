@@ -10,7 +10,10 @@ const terms = z
     paymentType: z.enum(PAYMENT_TYPES),
     closingDate: z.iso.date(),
     earnestMoney: z.number().int().min(0),
-    contingencies: z.array(z.enum(CONTINGENCIES)),
+    // Each counts once: the comparison ranks certainty by how many there are (FR-050).
+    contingencies: z
+      .array(z.enum(CONTINGENCIES))
+      .refine((list) => new Set(list).size === list.length, "List each contingency once"),
     feesAndConcessions: z.number().int().min(0),
     expiresAt: z.iso.datetime(),
   })

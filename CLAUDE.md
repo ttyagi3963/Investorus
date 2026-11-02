@@ -88,7 +88,13 @@ Docker-in-Docker machine.
   already covered. Delete weak or redundant tests instead of keeping them.
 - Unit tests stub the network; fake timers only inside the test files that need them, set up
   and torn down per file, never globally.
-- Integration tests are `*.int.test.ts` and start their own Postgres 17 containers.
+- Integration tests are `*.int.test.ts`. In packages/core, one Postgres 17 container serves the
+  whole run: it is migrated once into a template database, and each test file gets its own
+  copy of that template, dropped when the file ends.
+- The in-memory repositories (packages/core/test/doubles) carry pure business rules only. A rule
+  about locking, database constraints, or SQL is tested on Postgres, never in the fake; when the
+  fake must mirror Postgres (an error a constraint raises), it answers exactly as the Prisma
+  repository does.
 
 ## Hard constraints
 

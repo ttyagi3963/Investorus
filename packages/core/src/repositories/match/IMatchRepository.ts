@@ -19,11 +19,15 @@ export interface IMatchRepository {
   listByPackage(packageId: string, round: number): Promise<Match[]>;
   /** How many investors the package matched in the round. */
   countByPackage(packageId: string, round: number): Promise<number>;
+  /** The same count for each package at its own round, in one query (T396); none is absent. */
+  countByPackages(packages: { id: string; round: number }[]): Promise<Map<string, number>>;
   /** The investor's access to the package in the round (FR-040), or null. */
   findOne(packageId: string, investorId: string, round: number): Promise<Match | null>;
   /** Every match of the investor, newest first. */
   listForInvestor(investorId: string): Promise<Match[]>;
-  /** Buy-box-change matches not yet sent in a daily digest (FR-023), oldest first. */
-  listUndigested(): Promise<Match[]>;
-  markDigested(ids: string[], at: Date): Promise<void>;
+  /**
+   * Marks digested at `at` every buy-box-change match not yet sent in a daily digest (FR-023) and
+   * returns them, oldest first. One statement, so of two runs at once each match goes to one (T379).
+   */
+  claimUndigested(at: Date): Promise<Match[]>;
 }

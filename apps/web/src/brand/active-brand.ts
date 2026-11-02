@@ -3,30 +3,27 @@
 // minute and tagged so the theme editor can drop them the moment a theme is saved (T353). Both wait
 // for a request (connection()), so `next build` never reads the settings or calls the api.
 import type { BrandSummary, BrandThemeView } from "@clever/contracts/brand";
-import { brandsClient, createApiClient } from "@clever/contracts/client";
+import { brandsClient } from "@clever/contracts/client";
 import { cookies, headers } from "next/headers";
 import { connection } from "next/server";
 import { cache } from "react";
 import { serverEnv } from "@/env";
+import { serverApi } from "@/lib/server-api";
 import { pickBrand } from "./pick-brand";
 
 export const BRAND_COOKIE = "brand";
 export const BRAND_CACHE_TAG = "brands";
 const CACHE_SECONDS = 60;
 
-function brandsApi() {
+async function brandsApi() {
   return brandsClient(
-    createApiClient({
-      baseUrl: `${serverEnv().API_URL}/api/v1`,
-      fetch: (input, init) =>
-        fetch(input, { ...init, next: { revalidate: CACHE_SECONDS, tags: [BRAND_CACHE_TAG] } }),
-    }),
+    await serverApi({ next: { revalidate: CACHE_SECONDS, tags: [BRAND_CACHE_TAG] } }),
   );
 }
 
 export const listBrands = cache(async (): Promise<BrandSummary[]> => {
   await connection();
-  return brandsApi().list();
+  return (await brandsApi()).list();
 });
 
 export const activeBrand = cache(async (): Promise<BrandThemeView> => {
@@ -43,5 +40,5 @@ export const activeBrand = cache(async (): Promise<BrandThemeView> => {
   if (!brands.some((b) => b.brandId === brandId)) {
     throw new Error(`DEFAULT_BRAND_ID "${brandId}" names no brand; check .env and seed/brands/`);
   }
-  return brandsApi().theme(brandId);
+  return (await brandsApi()).theme(brandId);
 });

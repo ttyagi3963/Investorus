@@ -153,11 +153,8 @@ export const CRITERIA = {
     ...range(
       "yearBuiltMin",
       "yearBuiltMax",
-      // Up to next year: a home can be sold before it is finished.
-      whole(1800).refine(
-        (year) => year <= new Date().getUTCFullYear() + 1,
-        "Must not be after next year",
-      ),
+      // The upper bound (next year) needs the clock, so BuyBoxService checks it (T387).
+      whole(1800),
       { min: "Min year built", max: "Max year built" },
     ),
   },

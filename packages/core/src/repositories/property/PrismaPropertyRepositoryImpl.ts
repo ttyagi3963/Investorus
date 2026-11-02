@@ -21,6 +21,11 @@ export class PrismaPropertyRepositoryImpl implements IPropertyRepository {
     return row ? toProperty(row, this.cipher) : null;
   }
 
+  async findByIds(ids: string[]): Promise<Map<string, Property>> {
+    const rows = await this.db.property.findMany({ where: { id: { in: ids } } });
+    return new Map(rows.map((row) => [row.id, toProperty(row, this.cipher)]));
+  }
+
   async update(id: string, patch: PropertyPatch): Promise<Property> {
     const data = toPrismaPropertyUpdate(patch, this.cipher);
     return toProperty(await this.db.property.update({ where: { id }, data }), this.cipher);

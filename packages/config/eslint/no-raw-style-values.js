@@ -53,7 +53,9 @@ function propertyName(property) {
 export const noRawStyleValues = {
   meta: {
     type: "problem",
-    docs: { description: "Disallow raw colors, sizes, and default palette classes; use semantic tokens." },
+    docs: {
+      description: "Disallow raw colors, sizes, and default palette classes; use semantic tokens.",
+    },
     schema: [],
     messages: {
       hex: "Raw hex color '{{value}}'. Use a semantic token utility (e.g. bg-action-primary).",
@@ -79,14 +81,19 @@ export const noRawStyleValues = {
       },
       JSXAttribute(node) {
         if (node.name.name !== "style") return;
-        const expression = node.value?.type === "JSXExpressionContainer" ? node.value.expression : null;
+        const expression =
+          node.value?.type === "JSXExpressionContainer" ? node.value.expression : null;
         if (expression?.type !== "ObjectExpression") return;
         for (const property of expression.properties) {
           if (property.type !== "Property" || property.value.type !== "Literal") continue;
           const { value } = property.value;
           const name = propertyName(property);
           if (typeof value === "number" && value !== 0 && !UNITLESS_STYLE_PROPS.has(name)) {
-            context.report({ node: property.value, messageId: "inlineUnit", data: { value: String(value) } });
+            context.report({
+              node: property.value,
+              messageId: "inlineUnit",
+              data: { value: String(value) },
+            });
           } else if (typeof value === "string" && CSS_UNIT.test(value)) {
             context.report({ node: property.value, messageId: "inlineUnit", data: { value } });
           }

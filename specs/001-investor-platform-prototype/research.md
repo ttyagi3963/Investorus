@@ -93,8 +93,11 @@ below are the planning baseline.
 - **Job types**: `MATCH_PACKAGE`, `IMPORT_INVESTORS`, `CLOSE_OFFER_ROUND` (scheduled at the
   deadline), `EXPIRE_OFFER` (at expiration), `EXPIRE_RECONFIRMATION` (48 hours after promotion).
 - **Rationale**: Scheduled jobs in the database survive restarts, which satisfies FR-059 and
-  FR-072. A stale lock (`lockedAt` older than 60 seconds) is reclaimed, so a crashed worker's
-  job is picked up again. Handlers are written to be safely re-runnable.
+  FR-072. A claim is a 60-second lease the running worker renews every 20 seconds, so a long
+  run (a large import) is never taken over. A lease nobody renewed (`lockedAt` older than 60
+  seconds) is reclaimed, so a crashed worker's job is picked up again; the lost run counts as a
+  try, so a job that kills its worker every time ends FAILED. Only the worker holding the lease
+  can complete or fail the job (T378). Handlers are written to be safely re-runnable.
 - **Alternatives considered**: BullMQ delayed jobs for timers (Redis is not the system of record
   for workflow state; VIII and XVIII.3 assign that to PostgreSQL); pg-boss (good library, but the
   constitution wants a generic envelope the team owns, and the table is small).
@@ -106,7 +109,8 @@ below are the planning baseline.
      transaction.
   2. A relay loop in `apps/worker` (1-second poll, `SKIP LOCKED`) creates one `Delivery` row per
      target (CRM, email, SMS, in-app) and enqueues a BullMQ job with `jobId = delivery.id`, so a
-     re-relayed event is not enqueued twice.
+     re-relayed event is not enqueued twice. It queues only after the transaction claiming the
+     rows commits, never inside it, and a sweep re-queues any delivery whose job was lost (T379).
   3. BullMQ consumers call the provider. Retries use exponential backoff (base 2 seconds,
      capped at 60 seconds, 10 attempts by default, about 5 minutes, configurable). Exhausted jobs go to the DLQ, and the `Delivery` row
      is set to `NEEDS_ATTENTION` with the last error.
@@ -195,6 +199,10 @@ below are the planning baseline.
   neighborhood stay in plain text for matching and display. Investor-facing responses use a
   separate contract (`InvestorPackageView`) with no PII fields at all, so masking happens by
   construction at the outbound serializer. A shared `redactPii()` scrubs log and Sentry payloads.
+  Its `scrubPiiText()` also scrubs a delivery failure's text where it is made, so the stored
+  `Delivery.lastError` and the reason queued and logged with it carry no email or phone number,
+  and every audit entry's `details` go through `redactPii()`, since an entry can never be changed
+  (T382).
   Revealing seller details to the winning investor writes a `PII_ACCESSED` audit entry.
 - **Rationale**: Storing in full and masking on the way out is what XX.1 requires. Making the
   investor view a different type means PII cannot leak by forgetting to filter. A contract test
@@ -211,10 +219,18 @@ below are the planning baseline.
   native build problems on a slim image). `apps/api` issues a signed JWT (HS256 via `jose`,
   8-hour expiry) carrying `userId`, `role`, and `investorId` or `agentId`. The `apps/web` BFF
   stores it in an HTTP-only, Secure, SameSite=Lax cookie and forwards it as a bearer token, so
-  the browser never sees the token. Browsers treat `http://localhost` as a secure context, so
-  Secure cookies work for reviewers. `COOKIE_SECURE=false` exists only for non-localhost plain
-  HTTP. State-changing BFF routes reject requests whose `Origin` does not match the host
-  (CSRF, XII). Demo accounts are seeded; credentials are in the README.
+  the browser never sees the token. The cookie is Secure when the browser came over HTTPS (the
+  request URL or `X-Forwarded-Proto`), so sign-in also works over plain HTTP on a non-localhost
+  host, where a browser drops Secure cookies (`COOKIE_SECURE=auto`, the default; `true` or
+  `false` force it; T372). State-changing BFF routes reject requests whose `Origin` does not
+  match the site's own origin, scheme and host, the scheme read as for the cookie (CSRF, XII; T389).
+  Every answer carries a Content-Security-Policy set per request by proxy.ts: everything from this
+  site, except photos, which may also come from and go to the storage origin the settings give;
+  HSTS is sent only over HTTPS (T389). The catch-all `/bff/<path>` proxy refuses `/bff/sessions` (the
+  api's sign-in answer carries the token; sign-in goes only through `/bff/session`) and empty,
+  `.`, or `..` segments, with 404; the route guard sends an unreadable, unknown-role, or expired
+  session cookie to /login and clears it (T374). Demo accounts are seeded; credentials are in the
+  README.
 - **Rationale**: Meets XII and XXI.4 with the fewest moving parts. Role checks run in services,
   using the actor passed in from the route (III).
 - **Alternatives considered**: NextAuth or Auth.js (couples auth to web, but api is the authority);
@@ -235,8 +251,14 @@ below are the planning baseline.
   - The same key with a different body gets `422 Unprocessable Entity`.
   - If Redis is unreachable, the request is rejected with `503` and `Retry-After: 5`
     (fail closed).
-  - The web contract client attaches the key automatically. UI forms create one key when the
-    form opens, so a double-click reuses it.
+  - The web contract client attaches the key automatically and keeps it with the request
+    (method, path, body) until the api settles it, so a retry or a double-click reuses it and a
+    changed body gets a new one (T381).
+  - Keys live in PostgreSQL (plan.md Complexity Tracking) for their 24 hours; each tick of the
+    worker's job loop deletes up to 1,000 older keys with their stored answers (T390), so the
+    table holds about one day of keys. Every Prisma session (api, worker, seed) runs in UTC
+    (`-c TimeZone=UTC` in `createPrismaClient`), because the timestamp columns hold UTC without a
+    zone and the leases and job times compare them with the database clock (T390).
 - **Rationale**: A literal implementation of XX.2. It sits outside route handlers (II, VI).
   Duplicate offers (FR-045) are also blocked by a unique constraint on (`packageId`,
   `investorId`, `round`) for active offers, giving defense in depth.
@@ -368,7 +390,8 @@ below are the planning baseline.
 - **Guardrails**:
   - A Zod schema requires every semantic token to be mapped (FR-091).
   - A contrast checker computes WCAG ratios for the declared text/background and focus pairs,
-    and fails seeding, saving, and tests when any pair is below AA (FR-095, SC-015).
+    and fails seeding, saving, and tests when any pair is below AA (FR-095, SC-015): 4.5:1 for
+    text, headings included, and 3:1 for the input border and focus ring (SC 1.4.11, T385).
   - Lint bans Tailwind arbitrary values (`bg-[#…]`, `p-[13px]`), hex and rgb literals, and the
     default palette classes in `apps/web` and `packages/ui`. Only semantic utilities pass
     (SC-014).
@@ -469,7 +492,7 @@ import {
 
 export function createContainer(env: ApiEnv = apiEnvSchema.parse(process.env)) {
   const cipher = new AesGcmPiiCipherImpl(env.PII_ENCRYPTION_KEY);
-  const db = new PostgresDatabaseImpl(env.DATABASE_URL, cipher);  // IDatabase (T276): the one line a database swap changes
+  const db = new PostgresDatabaseImpl(env.DATABASE_URL, cipher);  // IDatabase (T276): the one line an ORM or driver swap changes
   const redis = createRedisClient(env.REDIS_URL);
   const clock = new SystemClockImpl();
   const { uow } = db;                                              // repos bound to one tx
@@ -542,7 +565,7 @@ and `MESSAGING_PROVIDER`), the job handlers, and the outbox relay. It shares
   | Vendor quirk | Where it is handled | What the core sees |
   | --- | --- | --- |
   | Model mapping (our `PackageStatus` → HubSpot deal stage and properties; legacy sheet columns → buy box criteria) | The adapter or parser, with an explicit mapping table | Only our enums and schemas |
-  | Ordering (a delayed retry must not overwrite a newer status) | Sandbox: `409 STALE` on an older `occurredAt`. HubSpot: a stored `lastSyncedAt` property compared in the adapter | `{ result: "APPLIED" \| "STALE" }`; STALE is recorded as SENT (superseded) |
+  | Ordering (a delayed retry must not overwrite a newer status) | Sandbox: `409 STALE` on a `sequence` at or below the stored one (T380). HubSpot: a stored `lastSyncedSequence` property compared in the adapter | `{ result: "APPLIED" \| "STALE" }`; STALE is recorded as SENT (superseded) |
   | Rate limits, timeouts, 5xx | 5 s timeout per call; 408 / 429 / 5xx mapped to a retryable `InfrastructureError` | Retries with backoff in the delivery dispatcher (contracts/events.md) |
   | Malformed or unexpected responses | Zod validation of every response (VI) | `InfrastructureError`; primary data is never written from a bad response |
   | Vendor error codes and SDK exceptions | Caught and translated inside the adapter (IV) | Our `InfrastructureError` hierarchy only (VII) |

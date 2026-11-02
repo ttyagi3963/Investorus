@@ -14,7 +14,12 @@ function appWith(complete: (...args: unknown[]) => Promise<void>, report: () => 
     res.locals.actor = { userId: "user-a", role: "AGENT", agentId: "agent-a" };
     next();
   });
-  const store = { claim: async () => ({ kind: "claimed" as const }), complete, release: vi.fn() };
+  const store = {
+    claim: async () => ({ kind: "claimed" as const, token: "t1" }),
+    complete,
+    release: vi.fn(),
+    purgeExpired: vi.fn(),
+  };
   app.use(idempotency(store, { report }));
   app.post("/created", (_req, res) => void res.status(201).json({ id: "p1" }));
   app.post("/empty", (_req, res) => void res.status(204).end());
@@ -34,6 +39,7 @@ describe("idempotency middleware", () => {
       claim: async () => ({ kind: "replay" as const, status: 200, body: JSON.stringify({ v: 2 }) }),
       complete: vi.fn(),
       release: vi.fn(),
+      purgeExpired: vi.fn(),
     };
     app.use(idempotency(store, { report: vi.fn() }));
     app.put("/buy-boxes/b1", save);
@@ -51,8 +57,8 @@ describe("idempotency middleware", () => {
     await request(app).post("/created").set("Idempotency-Key", "k1").send({}).expect(201);
     await request(app).post("/empty").set("Idempotency-Key", "k2").send({}).expect(204);
     expect(complete.mock.calls).toEqual([
-      ["user-a", "k1", 201, JSON.stringify({ id: "p1" })],
-      ["user-a", "k2", 204, null],
+      ["user-a", "k1", "t1", 201, JSON.stringify({ id: "p1" })],
+      ["user-a", "k2", "t1", 204, null],
     ]);
   });
 

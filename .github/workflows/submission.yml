@@ -6,7 +6,10 @@
 #
 # Runs on every push to main (the trunk must stay submittable), on demand, and on pull requests
 # that touch what the startup depends on. A cold rebuild takes several minutes, so it does not
-# run on every PR, to stay within the free plan's Actions minutes.
+# run on every PR, to stay within the free plan's Actions minutes. Source code counts (T391): CI
+# never runs the production build (`next build`, the images), and code can break it, the start,
+# or the memory, so a PR that changes code is rehearsed before it reaches main. Docs and tests
+# alone do not trigger it.
 
 name: Submission rehearsal
 
@@ -25,10 +28,15 @@ on:
       - pnpm-workspace.yaml
       - apps/*/package.json
       - packages/*/package.json
-      - apps/web/next.config.ts
+      - apps/*/src/**
+      - packages/*/src/**
+      - "!**/*.test.ts" # tests sit beside the code but never reach the images
+      - "!**/*.test.tsx"
+      - apps/web/next.config.*
       - packages/core/prisma/** # migrations run inside the one-command start
       - packages/core/prisma.config.ts
       - packages/core/scripts/**
+      - seed/** # the seed loads it inside the one-command start
       - README.md
       - scripts/package-zip.sh
       - scripts/submission/**

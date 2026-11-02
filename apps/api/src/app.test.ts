@@ -3,7 +3,8 @@
 // they learn nothing about the routes). Every answer names the request's trace ID, and code behind
 // the JSON body parser still runs inside that trace (T283). An investor's package goes out as the
 // investor view, without the seller or the street (T298, SC-006). A brand's theme is public and
-// cached by its version: a caller holding the current version gets a 304 (T348).
+// cached by its version: a caller holding the current version gets a 304 (T348), however its
+// If-None-Match names it (T386).
 import { UnauthenticatedError } from "@clever/contracts/common";
 import { currentTraceId } from "@clever/core";
 import { pino } from "pino";
@@ -12,11 +13,32 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import type { AppContainer } from "./container.js";
 
-const unused = () => Promise.reject(new Error("not used in this test"));
-const container: AppContainer = {
+/** Anything a test does not name: reading it gives more of the same, and calling it rejects. */
+const notUsed: unknown = new Proxy(() => Promise.reject(new Error("not used in this test")), {
+  get: (_target, key) => (key === "then" ? undefined : notUsed),
+});
+type Stub<T> = {
+  [K in keyof T]?: T[K] extends (...args: never[]) => unknown ? T[K] : Stub<T[K]>;
+};
+/** A container with only the parts a test names; every other service method is `notUsed`. */
+function stub(parts: Stub<AppContainer>): AppContainer {
+  const wrap = (value: object): unknown =>
+    new Proxy(value, {
+      get: (target, key) => {
+        const found: unknown = Reflect.get(target, key);
+        if (found === undefined) return notUsed;
+        const plain =
+          typeof found === "object" &&
+          found !== null &&
+          Object.getPrototypeOf(found) === Object.prototype;
+        return plain ? wrap(found) : found;
+      },
+    });
+  return wrap(parts) as AppContainer;
+}
+
+const base: Stub<AppContainer> = {
   auth: {
-    signIn: unused,
-    me: unused,
     verify: async (token) => {
       if (token === "investor") {
         return { userId: "user-s", role: "INVESTOR", investorId: "investor-s" };
@@ -25,50 +47,13 @@ const container: AppContainer = {
       return { userId: "user-a", role: "AGENT", agentId: "agent-a" };
     },
   },
-  packages: { create: unused, get: unused, list: unused, update: unused, timeline: unused },
-  photos: { requestUpload: unused, attach: unused, remove: unused },
-  presentPackage: () => {
-    throw new Error("not used in this test");
-  },
-  presentSummary: () => {
-    throw new Error("not used in this test");
-  },
   addPhotoUrls: (photos) => photos.map((photo) => ({ ...photo, url: "https://storage/p" })),
-  publication: { publish: unused, withdraw: unused, reopen: unused, extendDeadline: unused },
-  investorPackages: { listMatched: unused, getForInvestor: unused },
-  offers: {
-    create: unused,
-    revise: unused,
-    withdraw: unused,
-    respondToCounter: unused,
-    listForPackage: unused,
-  },
-  comparison: { compare: unused },
-  decisions: { record: unused },
-  deals: {
-    get: unused,
-    recordMilestone: unused,
-    fallThrough: unused,
-    promoteBackup: unused,
-    reconfirm: unused,
-    expireReconfirmation: unused,
-  },
-  notifications: { listMine: unused, markRead: unused },
-  buyBoxes: { list: unused, get: unused, create: unused, update: unused },
-  investorImports: { requestUpload: unused, start: unused, run: unused, getBatch: unused },
-  digests: { sendNow: unused },
-  brands: { list: unused, getTheme: unused, getTokens: unused, updateTheme: unused },
-  ops: {
-    queries: { listPackages: unused, trace: unused, explainMatch: unused },
-    deliveries: { list: unused, retry: unused, retryAll: unused },
-    outside: { crmComparison: unused, simulations: unused, setSimulation: unused },
-  },
   checkDatabase: async () => {},
-  idempotency: { claim: unused, complete: unused, release: unused },
   logger: pino({ level: "silent" }),
   reporter: { report: () => {} },
   dispose: async () => {},
 };
+const container = stub(base);
 
 describe("api app", () => {
   it("answers the health check without a session", async () => {
@@ -90,16 +75,18 @@ describe("tracing", () => {
 
   it("keeps the caller's trace ID through the JSON body to the service, and names it in the error", async () => {
     let seen: string | undefined;
-    const app = createApp({
-      ...container,
-      auth: {
-        ...container.auth,
-        signIn: async () => {
-          seen = currentTraceId();
-          throw new UnauthenticatedError("Invalid email or password");
+    const app = createApp(
+      stub({
+        ...base,
+        auth: {
+          ...base.auth,
+          signIn: async () => {
+            seen = currentTraceId();
+            throw new UnauthenticatedError("Invalid email or password");
+          },
         },
-      },
-    });
+      }),
+    );
     const res = await request(app)
       .post("/api/v1/sessions")
       .set("traceparent", traceparent)
@@ -122,28 +109,31 @@ describe("tracing", () => {
 
 describe("brand routes", () => {
   it("serve a theme without a session, and a 304 to a caller holding its version", async () => {
-    const app = createApp({
-      ...container,
-      brands: {
-        list: unused,
-        getTokens: unused,
-        updateTheme: unused,
-        getTheme: async (brandId) => ({
-          brandId,
-          tokenVersion: 3,
-          cssVariables: {},
-          fontFamily: ["Inter"],
-          content: {} as never,
-        }),
-      },
-    });
+    const app = createApp(
+      stub({
+        ...base,
+        brands: {
+          getTheme: async (brandId) => ({
+            brandId,
+            tokenVersion: 3,
+            cssVariables: {},
+            fontFamily: ["Inter"],
+            content: {} as never,
+          }),
+        },
+      }),
+    );
 
     const first = await request(app).get("/api/v1/brands/test/theme").expect(200);
     expect(first.headers.etag).toBe('"test-v3"');
+    // If-None-Match compares weakly and may list several tags (RFC 9110 13.1.2).
+    for (const held of ['"test-v3"', 'W/"test-v3"', '"test-v2", W/"test-v3"']) {
+      await request(app).get("/api/v1/brands/test/theme").set("If-None-Match", held).expect(304);
+    }
     await request(app)
       .get("/api/v1/brands/test/theme")
-      .set("If-None-Match", '"test-v3"')
-      .expect(304);
+      .set("If-None-Match", '"test-v2"')
+      .expect(200);
     await request(app).put("/api/v1/ops/brands/test/theme").send({}).expect(401);
   });
 });
@@ -151,57 +141,59 @@ describe("brand routes", () => {
 describe("investor routes", () => {
   it("answer an investor's package with the investor view, which has no seller or street", async () => {
     const at = new Date("2026-11-01T12:00:00Z");
-    const app = createApp({
-      ...container,
-      investorPackages: {
-        listMatched: unused,
-        getForInvestor: async () => ({
-          package: {
-            id: "p1",
-            agentId: "a1",
-            sellerId: "s1",
-            propertyId: "pr1",
-            status: "ACCEPTING_OFFERS",
-            round: 1,
-            priceExpectationMin: 250_000,
-            priceExpectationMax: 300_000,
-            closingWindowStart: null,
-            closingWindowEnd: null,
-            currentlyListed: false,
-            eligiblePrograms: [],
-            offerDeadline: at,
-            publishedAt: at,
-            listingVersion: 1,
-            version: 2,
-            createdAt: at,
-            updatedAt: at,
-          },
-          property: {
-            id: "pr1",
-            streetLine: "12 Elm St",
-            zip: "78704",
-            city: "Austin",
-            state: "TX",
-            neighborhood: null,
-            propertyType: "SINGLE_FAMILY",
-            beds: 3,
-            baths: 2,
-            sqft: 1_600,
-            lotSqft: null,
-            units: null,
-            yearBuilt: 1985,
-            condition: "FAIR",
-            repairEstimate: null,
-            createdAt: at,
-            updatedAt: at,
-          },
-          photos: [],
-          myOffer: null,
-          myDeal: null,
-          matchedAt: at,
-        }),
-      },
-    });
+    const app = createApp(
+      stub({
+        ...base,
+        investorPackages: {
+          getForInvestor: async () => ({
+            package: {
+              id: "p1",
+              agentId: "a1",
+              sellerId: "s1",
+              propertyId: "pr1",
+              status: "ACCEPTING_OFFERS",
+              round: 1,
+              priceExpectationMin: 250_000,
+              priceExpectationMax: 300_000,
+              closingWindowStart: null,
+              closingWindowEnd: null,
+              currentlyListed: false,
+              eligiblePrograms: [],
+              offerDeadline: at,
+              publishedAt: at,
+              listingVersion: 1,
+              version: 2,
+              createdAt: at,
+              updatedAt: at,
+            },
+            property: {
+              id: "pr1",
+              streetLine: "12 Elm St",
+              zip: "78704",
+              city: "Austin",
+              state: "TX",
+              neighborhood: null,
+              propertyType: "SINGLE_FAMILY",
+              beds: 3,
+              baths: 2,
+              sqft: 1_600,
+              lotSqft: null,
+              units: null,
+              yearBuilt: 1985,
+              condition: "FAIR",
+              repairEstimate: null,
+              createdAt: at,
+              updatedAt: at,
+            },
+            photos: [],
+            myOffer: null,
+            myOwnTerms: null,
+            myDeal: null,
+            matchedAt: at,
+          }),
+        },
+      }),
+    );
     const res = await request(app)
       .get("/api/v1/investor/packages/p1")
       .set("Authorization", "Bearer investor")

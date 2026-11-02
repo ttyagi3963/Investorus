@@ -16,7 +16,10 @@ Then open **http://localhost:3000**.
 
 On first start, Compose builds the images, starts PostgreSQL, runs the database
 migrations and the seed data automatically, and then starts the apps. Later starts reuse the
-built images and the stored data, and the seed adds no duplicates.
+built images and the stored data, and the seed adds no duplicates. The api and the worker start
+once the sandbox is listening, and the web app once the api is healthy. To fit a 2 GB machine,
+each Node service has a heap cap in [compose.yaml](compose.yaml) (`NODE_OPTIONS`): 384 MB for the
+web app and the worker, 256 MB for the api, and 128 MB for the sandbox.
 
 | Service | URL | What it is |
 | --- | --- | --- |
@@ -29,6 +32,24 @@ To stop: `Ctrl+C`, or `docker compose down`. To start over with an empty databas
 
 Settings come from the committed [.env](.env) file. It holds demo values only, and they protect
 nothing real.
+
+### Open it from another machine
+
+Signing in works over plain HTTP from any address, for example `http://<server-ip>:3000`. The
+browser uploads photos and CSV files straight to the sandbox, so for uploads from another
+address change these two lines in `.env` (demo values only) to that host's addresses, then run
+`docker compose up --build` again:
+
+```sh
+PUBLIC_SANDBOX_URL=http://<server-ip>:4100
+WEB_ORIGIN=http://<server-ip>:3000,http://localhost:3000
+```
+
+Or keep the defaults, tunnel both ports from your machine, and open http://localhost:3000:
+
+```sh
+ssh -L 3000:localhost:3000 -L 4100:localhost:4100 <server>
+```
 
 ## Demo accounts
 
@@ -61,7 +82,10 @@ home page and the sign-in page, each account's **Sign in** button signs in with 
 ## Try an outage
 
 Emails, texts, and CRM updates leave through a transactional outbox and a Redis queue, so an
-outside service being down never fails anyone's action and loses nothing.
+outside service being down never fails anyone's action and loses nothing. PostgreSQL keeps each
+delivery's state: a delivery whose queue job is lost is queued again, a run that outlived its
+2-minute lease cannot overwrite a newer one's result, and a delivery whose job kept failing ends
+in **Failed jobs** rather than vanishing.
 
 1. Sign in as `morgan@example.com`, open **Simulations**, and set the CRM to **Down** and
    messaging to **Garbage**.
@@ -105,6 +129,13 @@ AWS_ACCESS_KEY_ID=<your key id>
 AWS_SECRET_ACCESS_KEY=<your secret>
 ```
 
+Then start with both files, so the web's Content-Security-Policy allows the bucket (the web gets
+the bucket and region from `.env.local`, never the keys):
+
+```sh
+docker compose --env-file .env --env-file .env.local up --build
+```
+
 The bucket needs:
 
 - **Public photos, nothing else public.** Under Block public access, turn off the two settings
@@ -127,8 +158,9 @@ The bucket needs:
   }
   ```
 
-- **A CORS rule** that allows `PUT` and `GET` from `http://localhost:3000` with the
-  `Content-Type` header, because the browser uploads straight to the bucket.
+- **A CORS rule** that allows `PUT` and `GET` from `http://localhost:3000` and
+  `http://partner.localhost:3000` with the `Content-Type` header, because the browser uploads
+  straight to the bucket.
 - **An IAM user** with `s3:PutObject` and `s3:GetObject` on `<bucket>/*`, and `s3:ListBucket`
   on the bucket. Without `s3:ListBucket`, S3 answers 403 instead of 404 for an object that was
   never uploaded.
@@ -189,7 +221,7 @@ table is in [plan.md](specs/001-investor-platform-prototype/plan.md).
 | Each listing package has its own Seller row (`ListingPackage.sellerId` unique), so one homeowner's sales are not grouped | A Person or Contact record that groups a homeowner's per-listing Seller rows, so the seller dashboard can sign them in once and show every sale; the same pattern as the physical-home record for Property |
 | One login per investor (User ↔ Investor is 1:1) | Several Users per investor company, with offers and audit entries recording the acting user (for example `submittedByUserId`) |
 | No seller access; the agent presents offers | Read-only seller dashboard: a SELLER role and unique `User.sellerId`, magic-link sign-in (so `passwordHash` becomes nullable or moves to a credentials table); Seller data unchanged |
-| Email/password demo auth, 8 h JWT, no refresh, revocation, or MFA | SSO for agents and ops (Okta/Google), magic link or passkeys for investors, short-lived tokens with rotation |
+| Email/password demo auth, 8 h JWT, no refresh or MFA; each request checks in Postgres that the login is not banned, so a ban takes effect at once (T370; an inactive investor keeps access, T398) | SSO for agents and ops (Okta/Google), magic link or passkeys for investors, short-lived tokens with rotation and a revocation list |
 | Sandbox stand-ins for CRM, email/SMS, storage | HubSpot, SendGrid/Twilio, and S3 provider implementations behind the same ports (S3 storage is T274–T275, after Sprint 1) |
 | Listing photos are public: anyone with a photo's link can open it, and the link never expires (the owner's decision, 2026-11-01, T326). Import files stay private. | A private bucket served through a CDN with signed cookies, or an app address that checks access and redirects to a short-lived link, so a leaked link stops working and access can be withdrawn |
 | Brands live in the database and are chosen per request by cookie, host, or `DEFAULT_BRAND_ID`, but emails and texts always carry the default brand's name, the brand's font must be registered in the web app's code to load, and content and hosts change only through the seed files (Sprint 7, T346–T353) | Each agent and investor belongs to a brand, so messages carry that brand; brand fonts are self-hosted files stored with the brand; content, hosts, and logos are edited in the console with design review; the theme CSS is served as a cached, versioned stylesheet from a CDN |
@@ -203,9 +235,14 @@ table is in [plan.md](specs/001-investor-platform-prototype/plan.md).
 | The web app's Content-Security-Policy forbids framing, plugins, and outside form posts, but not inline scripts or styles (T362) | A nonce-based CSP set per request in proxy.ts (`script-src 'nonce-…' 'strict-dynamic'`), with the brand's style element carrying the nonce |
 | No rate limiting. CSRF is covered by a SameSite=Lax cookie plus an `Origin`/`Host` check on every state-changing BFF route (meets XII), but there are no synchronizer tokens. | Edge rate limits and a WAF; add double-submit CSRF tokens if the BFF is ever exposed cross-site |
 | Plain HTTP (no TLS) on localhost and the Compose network (see Complexity Tracking) | TLS at the load balancer or ingress; mTLS between services |
-| No horizontal scaling tests | Multiple worker replicas are already safe (`SKIP LOCKED`, unique constraints); load test before launch |
+| No horizontal scaling tests | Multiple worker replicas are already safe (`SKIP LOCKED`, a job lease the running worker renews, unique constraints); load test before launch |
 | "Why not matched?" replays non-matches with the current evaluator and flags `replayedWithNewerRules` when the rules changed since matching ran | Keep every released `EVALUATOR_VERSION` runnable (versioned evaluator modules) so old decisions replay exactly |
-| A buy box save re-matches against every package still accepting offers in one job; the near-miss summary replays recent listings in memory on request | Incremental matching by changed criteria, and near-miss counts precomputed in a reporting table |
+| A buy box save re-matches against every package still accepting offers in one job | Incremental matching by changed criteria |
+| List routes have no cursor pagination: each returns a plain array, and the delivery list stops at the newest 200 (T386). The agent's and the investor's package lists read the properties in one query but each row's photos and match count or offer separately, as the CRM comparison does each package's deliveries | Keyset pagination as contracts/api.md describes (`?cursor=&limit=`, `{ items, nextCursor }`; open task T016), and list read models that join or batch every per-row read |
+| Not built, though the spec or the api contract names them (T386; each marked in contracts/api.md): the offer revision history route (FR-042; open task T150; revisions are stored and audited); the near-miss summary (FR-062, a SHOULD; T223); an operations editor for the fee assumptions (`/ops/config`; FR-051 is met by the `netProceeds` Config row, read on every comparison and changed in the database); the config-driven package form and its wizard (`/package-form`; T130, T134); a special-circumstances field and an offer deadline chosen at publish (FR-011; publish sets 72 hours and the agent extends it); `/listing-packages/:id/matches` (the counts are on the package view, each match in the ops trace); the job status route `/jobs/:jobId` and a 202 for a material edit (T189); and the shared Table, Tabs, Notice, EmptyState, LoadingState, and ErrorState components in packages/ui (FR-094; T087; the screens use their own) | Build each against the contract already written, with the same service-owned rules and tests |
+| The investor import writes each CSV row in its own transaction and queues one MATCH_BUY_BOX job per changed box (T395 review; safe for long files since the job keeps its lease, T378) | Chunks of 100–250 rows per transaction with a savepoint per row, so one refused row does not undo its chunk, and one re-match pass for the batch |
+| "A STATES or ZIPS buy box has at least one place" is enforced by the service and the import, not the database (T395 review) | A deferred constraint trigger on BuyBoxGeography, so a direct SQL or seed write cannot leave a box with no places |
+| Each brand's token file is a complete set: Larkspur repeats about 80% of Clever's tokens (156 of 195 values identical), so a shared fix is made in every file (T408, decided by the owner 2026-11-01) | A neutral base theme defines every token (structure, spacing and type scales, component tokens, motion, default colors); each brand stores only its overrides (palette, fonts, radius, logo, copy, a few semantic mappings); the api merges base and overrides on every read and validates the merged result; the ops brand editor shows inherited versus overridden values with reset to base |
 
 ## Development
 
@@ -230,8 +267,9 @@ scripts/verify-limits.sh --clean   # --clean empties Docker's build cache first,
 ```
 
 It times the build and the home page's first answer, prints each container's memory and the total,
-and exits 1 if a limit is broken. `scripts/submission/rehearse.sh <zip>` checks the same limits in
-a simulated 2 GB, 2-core machine; CI runs it on every pull request.
+and exits 1 if a limit is broken (for memory, a total over 2,048 MiB).
+`scripts/submission/rehearse.sh <zip>` checks the same limits in a simulated 2 GB, 2-core machine;
+CI runs it on every push to `main` and on pull requests that change code or the build.
 
 The specification, plan, and task list are in
 [specs/001-investor-platform-prototype](specs/001-investor-platform-prototype/).

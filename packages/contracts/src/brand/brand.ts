@@ -1,7 +1,8 @@
 // A brand's data and its checks (T347; FR-091, FR-092, FR-095, contracts/design-tokens.md): the content
 // schema (name, product names, logo, sign-in copy), the theme the api serves, and the validator that
-// refuses a token set the screens cannot use: an unsafe or dangling token, a variable the theme reads
-// but the set lacks, or a text and background pair under WCAG AA's 4.5:1. Each failure is named, so
+// refuses a token set the screens cannot use: an unsafe, dangling, or circular token, a variable the
+// theme reads but the set lacks, a text and background pair under WCAG AA's 4.5:1, or an input
+// border or focus ring under the 3:1 a control's outline needs (T385). Each failure is named, so
 // operations can fix the file (SC-015).
 import { z } from "zod";
 import { REQUIRED_BRAND_VARIABLES } from "./required.js";
@@ -12,7 +13,8 @@ export const brandContentSchema = z.object({
   displayName: z.string().min(1),
   productName: z.string().min(1),
   opsProductName: z.string().min(1),
-  logoPath: z.string().startsWith("/"),
+  /** A path on this site: `//host/...` or `/\host/...` would load the logo from another site. */
+  logoPath: z.string().regex(/^\/(?![/\\])[^\\]*$/),
   signIn: z.object({
     headline: z.string().min(1),
     intro: z.string().min(1),
@@ -45,6 +47,8 @@ export type BrandProblem = { field: string; message: string };
 export const TEXT_ON_BACKGROUND: readonly (readonly [text: string, background: string])[] = [
   ["text-primary", "background-surface"],
   ["text-primary", "background-subtle"],
+  ["text-heading", "background-surface"],
+  ["text-heading", "background-subtle"],
   ["text-muted", "background-surface"],
   ["text-muted", "background-subtle"],
   ["text-link", "background-surface"],
@@ -61,7 +65,19 @@ export const TEXT_ON_BACKGROUND: readonly (readonly [text: string, background: s
   ),
 ];
 
+/**
+ * The control outlines (WCAG 2.1 SC 1.4.11, 3:1): a field's border, on a card or on the page, and the
+ * focus ring, which theme.css draws in the primary action color.
+ */
+const OUTLINE_ON_BACKGROUND: readonly (readonly [outline: string, background: string])[] = [
+  ["border-input", "background-surface"],
+  ["border-input", "background-subtle"],
+  ["action-primary", "background-surface"],
+  ["action-primary", "background-subtle"],
+];
+
 const MIN_CONTRAST = 4.5;
+const MIN_OUTLINE_CONTRAST = 3;
 const HEX = /^#[0-9a-fA-F]{6}$/;
 const semantic = (name: string) => `--brand-semantic-color-${name}`;
 
@@ -116,7 +132,11 @@ export function validateBrandTokens(tokens: unknown): BrandValidation {
   const problems: BrandProblem[] = REQUIRED_BRAND_VARIABLES.filter((n) => !(n in variables)).map(
     (name) => ({ field: name, message: "The theme needs this token" }),
   );
-  for (const [text, background] of TEXT_ON_BACKGROUND) {
+  const pairs = [
+    ...TEXT_ON_BACKGROUND.map((pair) => [...pair, MIN_CONTRAST] as const),
+    ...OUTLINE_ON_BACKGROUND.map((pair) => [...pair, MIN_OUTLINE_CONTRAST] as const),
+  ];
+  for (const [text, background, minimum] of pairs) {
     const fg = literal(variables, semantic(text));
     const bg = literal(variables, semantic(background));
     if (!fg || !bg || !HEX.test(fg) || !HEX.test(bg)) {
@@ -127,10 +147,10 @@ export function validateBrandTokens(tokens: unknown): BrandValidation {
       continue;
     }
     const ratio = contrastRatio(fg, bg);
-    if (ratio < MIN_CONTRAST) {
+    if (ratio < minimum) {
       problems.push({
         field: `${text} on ${background}`,
-        message: `Contrast is ${ratio.toFixed(2)}:1; it must be at least ${MIN_CONTRAST}:1`,
+        message: `Contrast is ${ratio.toFixed(2)}:1; it must be at least ${minimum}:1`,
       });
     }
   }

@@ -26,3 +26,11 @@ Thumbs.db
 
 # Release artifact
 investor-platform.zip
+
+# Confidential or personal: the brief, written answers, and local settings are never committed
+assignment.md
+teams.md
+forgemini.md
+AGENTS.md
+settings.local.json
+.claude/worktrees/

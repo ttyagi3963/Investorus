@@ -1,13 +1,18 @@
 // Walks the whole loop on a real Postgres through the real services and workflows (T360, T361; R18,
 // SC-010, FR-032, SC-006): publish, match, offer, accept, every milestone to CLOSED, and the CRM
 // told at each step, one update set aside during a CRM outage and retried by operations. No text the
-// run produced may carry the seller's details: the reasons deliveries were set aside (which the
-// worker logs as they are), every stored delivery and job error, event payload, audit entry, and
-// notice, and the sandbox's output. The worker's job-failure log line is guarded by its own test
-// (apps/worker/src/job-runner.test.ts).
+// run produced may carry the seller's details: the worker's log lines for the run (each job done,
+// each delivery set aside with its reason, any error report), written through the real logger and
+// error reporter into memory; every stored delivery and job error, event payload, audit entry, and
+// notice; and the sandbox's own log output. The worker's and the api's code does not run here: the
+// lines are written as the worker writes them, its job-failure line is guarded by
+// apps/worker/src/job-runner.test.ts, and the api's request logger logs no bodies and redacts the
+// session headers by path.
 // The sandbox runs as its own process (its real server, started with tsx) on the database's
 // `sandbox` schema. The relay queues to a list and the test hands each delivery to the dispatcher,
 // as the worker's BullMQ consumer would, so the run needs no Redis and has no timing to wait on.
+// The real end-to-end check is the submission rehearsal (scripts/submission/rehearse.sh), which
+// runs the built stack and signs in through the BFF.
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
@@ -21,11 +26,14 @@ import type { DeliveryRetryPolicy } from "@clever/contracts/config";
 import type { DealMilestone, DealParts } from "@clever/contracts/deal";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { redactPii } from "../src/errors/redact-pii.js";
 import { createJobHandlers } from "../src/jobs/handlers.js";
+import { createLogger } from "../src/infra/logger.js";
 import { createPrismaClient, type PrismaClient } from "../src/infra/prisma-client.js";
 import { DeliveryDispatcher } from "../src/outbox/DeliveryDispatcher.js";
 import { OutboxRelay } from "../src/outbox/OutboxRelay.js";
 import { SandboxCrmProviderImpl } from "../src/providers/crm/SandboxCrmProviderImpl.js";
+import { LogErrorReporterImpl } from "../src/providers/error-reporter/LogErrorReporterImpl.js";
 import { StaticGeoProviderImpl } from "../src/providers/geo/StaticGeoProviderImpl.js";
 import { SandboxMessagingProviderImpl } from "../src/providers/messaging/SandboxMessagingProviderImpl.js";
 import { AesGcmPiiCipherImpl } from "../src/providers/pii-cipher/AesGcmPiiCipherImpl.js";
@@ -42,7 +50,7 @@ import { PublicationWorkflow } from "../src/workflows/publication/PublicationWor
 import { startMigratedDatabase } from "./database.js";
 
 const SANDBOX_DIR = fileURLToPath(new URL("../../../apps/sandbox/", import.meta.url));
-const TOKEN = "end-to-end-internal-token";
+const TOKEN = "full-loop-internal-token";
 const RETRY: DeliveryRetryPolicy = { baseMs: 20, factor: 2, capMs: 100, jitter: 0, attempts: 2 };
 const avery: Actor = { userId: "user-a", role: "AGENT", agentId: "agent-a" };
 const summit: Actor = { userId: "user-summit", role: "INVESTOR", investorId: "summit" };
@@ -56,8 +64,13 @@ const STREET = "4471 Wrenfield Hollow Rd";
 const inDays = (days: number) => new Date(Date.now() + days * 86_400_000);
 const day = (days: number) => inDays(days).toISOString().slice(0, 10);
 
-/** Text the run produced outside the database: set-aside reasons and the sandbox's output. */
+/** Text the run produced outside the database: the worker's log lines and the sandbox's output. */
 const producedText: string[] = [];
+/** The worker's logger and error reporter, built as its container builds them, writing to memory. */
+const logger = createLogger("worker", {
+  destination: { write: (line: string) => void producedText.push(line) },
+});
+const reporter = new LogErrorReporterImpl(logger);
 
 let db: pg.Client;
 let stopDb: () => Promise<void>;
@@ -85,8 +98,8 @@ async function startSandbox(databaseUrl: string): Promise<void> {
     env: {
       ...process.env,
       DATABASE_URL: databaseUrl,
-      SANDBOX_STORAGE_DIR: mkdtempSync(join(tmpdir(), "end-to-end-")),
-      STORAGE_SIGNING_KEY: "end-to-end-signing-key",
+      SANDBOX_STORAGE_DIR: mkdtempSync(join(tmpdir(), "full-loop-")),
+      STORAGE_SIGNING_KEY: "full-loop-signing-key",
       SANDBOX_INTERNAL_TOKEN: TOKEN,
       WEB_ORIGIN: "http://localhost:3000",
       PORT: String(port),
@@ -165,15 +178,22 @@ beforeAll(async () => {
   });
   const setAside: string[] = [];
   /**
-   * Runs the due jobs, then relays and sends every delivery, as the worker's loops do; a delivery to
-   * retry goes back on the queue, and a set-aside one's reason is kept.
+   * Runs the due jobs, then relays and sends every delivery, as the worker's loops do, and logs
+   * what the worker logs: each job done or reported, and each delivery set aside with its reason.
+   * A delivery to retry goes back on the queue.
    */
   const work = async () => {
     for (;;) {
       const job = await uow.run((repos) => repos.jobs.claimNext("worker", clock.now()));
       if (!job) break;
-      await handlers[job.type](job.payload);
-      await uow.run((repos) => repos.jobs.complete(job.id));
+      try {
+        await handlers[job.type](job.payload);
+      } catch (err) {
+        reporter.report(err, { job_id: job.id, type: job.type, payload: redactPii(job.payload) });
+        throw err;
+      }
+      await uow.run((repos) => repos.jobs.complete(job.id, "worker"));
+      logger.child({ job_id: job.id, type: job.type }).info("job completed");
     }
     await relay.tick();
     for (let id = queued.shift(); id; id = queued.shift()) {
@@ -181,7 +201,7 @@ beforeAll(async () => {
       if (result.outcome === "RETRY") queued.push(id);
       if (result.outcome === "NEEDS_ATTENTION") {
         setAside.push(id);
-        producedText.push(result.error);
+        logger.warn({ delivery_id: id, error: result.error }, "delivery needs attention");
       }
     }
   };
@@ -301,7 +321,9 @@ describe("the whole loop", () => {
       ...producedText,
       ...stored.rows.map((r: { text: string | null }) => r.text ?? ""),
     ];
-    expect(producedText.join("\n")).toContain("503");
+    const logged = producedText.join("\n");
+    expect(logged).toMatch(/"error":"[^"]*503[^"]*","msg":"delivery needs attention"/);
+    expect(logged).toContain('"msg":"job completed"');
     for (const detail of [seller.fullName, seller.email, seller.phone, STREET]) {
       expect(text.join("\n")).not.toContain(detail);
     }

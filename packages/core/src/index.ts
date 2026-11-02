@@ -4,6 +4,7 @@ export { InfrastructureError } from "./errors/InfrastructureError.js";
 export { redactPii, scrubPiiText } from "./errors/redact-pii.js";
 export { translateError, type ErrorBody } from "./errors/http-error-translator.js";
 export { currentTraceId, runWithTrace } from "./infra/trace-context.js";
+export { runWithIdempotencyClaim } from "./infra/idempotency-context.js";
 export type { IErrorReporter } from "./providers/error-reporter/IErrorReporter.js";
 export type { AddressHasher, IPiiCipher } from "./providers/pii-cipher/IPiiCipher.js";
 export type { IClock } from "./providers/clock/IClock.js";
@@ -44,7 +45,6 @@ export { PhotoService, type IPhotoService } from "./services/photo/PhotoService.
 export {
   InvestorPackageQueryService,
   type IInvestorPackageQueryService,
-  type InvestorPackage,
 } from "./services/investor-package/InvestorPackageQueryService.js";
 export { OfferService, type IOfferService } from "./services/offer/OfferService.js";
 export { BuyBoxService, type IBuyBoxService } from "./services/buy-box/BuyBoxService.js";

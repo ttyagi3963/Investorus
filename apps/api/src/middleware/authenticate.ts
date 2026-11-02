@@ -6,16 +6,21 @@ import type { Actor } from "@clever/contracts/auth";
 import { UnauthenticatedError } from "@clever/contracts/common";
 import type { RequestHandler } from "express";
 
+/**
+ * Matched the way Express routes (T392): one optional trailing slash, any letter case. A path the
+ * router would send to a public route is public; nothing else is.
+ */
 const PUBLIC: readonly [method: string, path: RegExp][] = [
-  ["POST", /^\/api\/v1\/sessions$/],
-  ["GET", /^\/api\/v1\/health$/],
-  ["GET", /^\/api\/v1\/brands$/],
-  ["GET", /^\/api\/v1\/brands\/[^/]+\/theme$/],
+  ["POST", /^\/api\/v1\/sessions\/?$/i],
+  ["GET", /^\/api\/v1\/health\/?$/i],
+  ["GET", /^\/api\/v1\/brands\/?$/i],
+  ["GET", /^\/api\/v1\/brands\/[^/]+\/theme\/?$/i],
 ];
 
 export function authenticate(auth: { verify(token: string): Promise<Actor> }): RequestHandler {
   return async (req, res, next) => {
-    if (PUBLIC.some(([method, path]) => req.method === method && path.test(req.path))) return next();
+    if (PUBLIC.some(([method, path]) => req.method === method && path.test(req.path)))
+      return next();
     const header = req.headers.authorization ?? "";
     const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
     if (!token) return next(new UnauthenticatedError("Sign in first"));

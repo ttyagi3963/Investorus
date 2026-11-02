@@ -12,7 +12,10 @@
 #      `docker compose up --build`. The build must finish within 20 minutes.
 #   4. GET / must answer 200 within 5 minutes of the containers starting.
 #   5. Sign in through the api with every demo account the seed creates (read from the seed in the
-#      zip), so the reviewer's credentials are proven to work, not just listed.
+#      zip), so the reviewer's credentials are proven to work, not just listed. Then sign in once
+#      through the web app's BFF the way a browser does (it must set the session cookie), and send
+#      the browser's upload preflight to the sandbox from the partner brand's address (it must be
+#      allowed), because the browser, not the api, makes those two calls.
 #   6. Report memory: the highest program memory (anonymous memory, sampled every 2 s, excluding
 #      the file cache Linux fills and frees on demand) and the out-of-memory kill count, which
 #      must be 0.
@@ -107,7 +110,7 @@ if [ "$up_rc" -eq 0 ]; then
 fi
 
 # --- 5. every seeded demo account signs in -------------------------------------------------------
-log "5/6 signing in with every seeded demo account"
+log "5/6 signing in with every seeded demo account, through the web app, and the partner upload preflight"
 signed_in=0
 if [ -n "$home_s" ]; then
   # The accounts come from the seed inside the zip: the ones the reviewer can really sign in with.
@@ -125,6 +128,29 @@ if [ -n "$home_s" ]; then
       fail "$email could not sign in (HTTP ${code:-none})"
     fi
   done
+
+  # Through the BFF, as the sign-in page does: 201 and the session cookie. Here-strings, not
+  # pipes into grep -q, so pipefail never sees a SIGPIPE.
+  email=${emails%%$'\n'*}
+  body=$(printf '{"email":"%s","password":"%s"}' "$email" "$password")
+  answer=$(curl -s -i --max-time 10 -X POST http://localhost:3000/bff/session \
+    -H 'Origin: http://localhost:3000' -H 'Content-Type: application/json' -d "$body" | tr -d '\r' || true)
+  status_line=${answer%%$'\n'*}
+  if [[ "$status_line" == *" 201"* ]] && grep -qi '^set-cookie: session=' <<< "$answer"; then
+    echo "ok: $email signed in through the web app and got the session cookie"
+  else
+    fail "signing in through the web app (/bff/session) did not answer 201 with the session cookie (${status_line:-no answer})"
+  fi
+
+  # The browser's upload preflight from the partner brand's address must be allowed.
+  partner=http://partner.localhost:3000
+  preflight=$(curl -s -i --max-time 10 -X OPTIONS http://localhost:4100/storage/objects/check \
+    -H "Origin: $partner" -H 'Access-Control-Request-Method: PUT' | tr -d '\r' || true)
+  if grep -qix "access-control-allow-origin: $partner" <<< "$preflight"; then
+    echo "ok: the sandbox allows uploads from $partner"
+  else
+    fail "the sandbox does not allow uploads from $partner (no matching Access-Control-Allow-Origin)"
+  fi
 fi
 
 # --- 6. peak memory ---------------------------------------------------------------------------

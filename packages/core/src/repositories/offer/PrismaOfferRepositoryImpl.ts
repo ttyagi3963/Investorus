@@ -50,6 +50,26 @@ export class PrismaOfferRepositoryImpl implements IOfferRepository {
     return row ? toOffer(row) : null;
   }
 
+  async findLatestForInvestor(
+    investorId: string,
+    packages: { id: string; round: number }[],
+  ): Promise<Map<string, Offer>> {
+    if (packages.length === 0) return new Map();
+    const rows = await this.db.offer.findMany({
+      where: { investorId, OR: packages.map(({ id, round }) => ({ packageId: id, round })) },
+      orderBy: { createdAt: "desc" },
+    });
+    // Newest first, so a package's first row is its newest; a live offer replaces it, as in findLatest.
+    const latest = new Map<string, Offer>();
+    for (const row of rows) {
+      const held = latest.get(row.packageId);
+      const live = LIVE_OFFER_STATUSES.includes(row.status);
+      if (!held || (live && !LIVE_OFFER_STATUSES.includes(held.status)))
+        latest.set(row.packageId, toOffer(row));
+    }
+    return latest;
+  }
+
   async listByPackage(packageId: string, round: number): Promise<Offer[]> {
     const rows = await this.db.offer.findMany({
       where: { packageId, round },

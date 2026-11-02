@@ -2,7 +2,8 @@
 // The offer comparison (T315, restyled in T330; FR-050 to FR-052): every offer still in play side by
 // side as columns, sortable by net proceeds, closing date, or certainty, the leading offer for the
 // sort highlighted, each net figure with a breakdown of what was subtracted, and the seller's
-// decision recorded from here. An expired, backup, or countered offer cannot be accepted directly.
+// decision recorded from here. An expired, backup, or countered offer cannot be accepted directly,
+// and an inactive investor's offer is flagged, for the agent to weigh (T370, T398).
 import type { CreateDecisionInput } from "@clever/contracts/deal";
 import type { ComparisonSort, OfferComparisonRow } from "@clever/contracts/offer";
 import {
@@ -30,6 +31,7 @@ import { PageHeader } from "@/features/shell/PageHeader";
 import { listingPackages } from "@/lib/bff-client";
 import { describeError } from "@/lib/errors";
 import { useAction } from "@/lib/use-action";
+import { whenDone } from "@/lib/when-done";
 
 const SORTS = [
   { id: "netProceeds", label: "Net proceeds (highest first)" },
@@ -47,6 +49,7 @@ const LEADS: Record<ComparisonSort, string> = {
  * status, and the in-progress tone would vanish on the leading column's accent tint.
  */
 const LEAD_TONE: StatusTone = "closed";
+const DECISION_FAILED = "The decision could not be recorded. Try again.";
 const ROW_HEAD =
   "border-b border-subtle px-inset-lg py-inset-md text-left align-top text-label font-medium text-muted";
 const CELL = "border-b border-subtle px-inset-md py-inset-md text-left align-top text-body";
@@ -55,7 +58,12 @@ const lower = (code: string) => code.toLowerCase().replaceAll("_", " ");
 const day = (date: string) =>
   new Date(date).toLocaleDateString("en-US", { dateStyle: "medium", timeZone: "UTC" });
 const moment = (iso: string) =>
-  new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 
 function Breakdown({ row }: { row: OfferComparisonRow }) {
   return (
@@ -98,7 +106,10 @@ function AttributeRow({
         {label}
       </th>
       {rows.map((row, index) => (
-        <td key={row.offer.id} className={`${CELL} ${edge} ${index === 0 ? "bg-accent-subtle" : ""}`}>
+        <td
+          key={row.offer.id}
+          className={`${CELL} ${edge} ${index === 0 ? "bg-accent-subtle" : ""}`}
+        >
           {cell(row)}
         </td>
       ))}
@@ -111,11 +122,11 @@ export default function ComparePage() {
   const [sort, setSort] = useState<ComparisonSort>("netProceeds");
   const pkg = usePackage(id);
   const comparison = useComparison(id, sort);
-  const { run, isBusy, error } = useAction(
-    "The decision could not be recorded. Try again.",
-    packageKeys.all,
-  );
+  const { run, isBusy, error } = useAction(DECISION_FAILED, packageKeys.all);
   const decide = (input: CreateDecisionInput) => run(() => listingPackages.decide(id, input));
+  /** For a dialog with typed terms: it stays open, keeping them, if the api refuses (T385). */
+  const decideAndWait = (input: CreateDecisionInput) =>
+    whenDone(run, () => listingPackages.decide(id, input), DECISION_FAILED);
   const open = pkg.data?.status === "ACCEPTING_OFFERS";
   const rows = comparison.data?.rows ?? [];
   const p = pkg.data;
@@ -156,9 +167,15 @@ export default function ComparePage() {
       {!open && p && (
         <p role="status" className="rounded-card bg-status-closed p-inset-md text-status-closed">
           This package is no longer taking decisions on offers.{" "}
-          <Link href={`/agent/packages/${id}/deal`} className="font-semibold text-link underline">
-            See the deal
-          </Link>
+          {p.status === "NO_OFFERS_RECEIVED" ? (
+            <Link href={`/agent/packages/${id}`} className="font-semibold text-link underline">
+              Extend, reopen, or withdraw it
+            </Link>
+          ) : (
+            <Link href={`/agent/packages/${id}/deal`} className="font-semibold text-link underline">
+              See the deal
+            </Link>
+          )}
         </p>
       )}
       <div className="flex flex-wrap items-end justify-between gap-inline-md">
@@ -169,7 +186,7 @@ export default function ComparePage() {
           onSelectionChange={(key) => setSort(key as ComparisonSort)}
         />
         {open && p && rows.length > 0 && (
-          <DeclineAllDialog version={p.version} onDecide={decide} isDisabled={isBusy} />
+          <DeclineAllDialog version={p.version} onDecide={decideAndWait} isDisabled={isBusy} />
         )}
       </div>
       {comparison.data && rows.length === 0 && (
@@ -200,12 +217,13 @@ export default function ComparePage() {
                       }`}
                     >
                       <span className="flex flex-col items-start gap-stack-xs">
-                        {index === 0 && (
-                          <StatusChip tone={LEAD_TONE}>{LEADS[sort]}</StatusChip>
-                        )}
+                        {index === 0 && <StatusChip tone={LEAD_TONE}>{LEADS[sort]}</StatusChip>}
                         <span className="font-heading text-body-lg font-semibold text-heading">
                           {row.investorName}
                         </span>
+                        {!row.investorActive && (
+                          <StatusChip tone="draft">Investor inactive</StatusChip>
+                        )}
                         <span className="text-helper font-regular text-muted">
                           Revision {row.offer.revision} · {moment(row.offer.updatedAt)}
                         </span>
@@ -285,7 +303,7 @@ export default function ComparePage() {
                         <CounterDialog
                           offer={row.offer}
                           investorName={row.investorName}
-                          onDecide={decide}
+                          onDecide={decideAndWait}
                           isDisabled={isBusy}
                         />
                       </div>

@@ -1,7 +1,7 @@
 // The listing facts every criterion reads (T287; constitution XIX), one flat object per listing
 // version with no seller PII: matching evaluates it, and it is stored as the ListingVersion
 // snapshot, so a match always names what the investor was shown.
-import type { ListingField } from "@clever/contracts/buy-box";
+import { MATERIAL_FIELDS, type ListingField } from "@clever/contracts/buy-box";
 import type { ListingPackage, OfferProgram } from "@clever/contracts/listing-package";
 import type { Property, PropertyCondition, PropertyType } from "@clever/contracts/property";
 
@@ -51,3 +51,7 @@ export function toListingFacts(pkg: ListingPackage, property: Property): Listing
     eligiblePrograms: pkg.eligiblePrograms,
   };
 }
+
+/** True when a field some criterion reads differs between two versions of the listing. */
+export const isMaterialChange = (before: ListingFacts, after: ListingFacts) =>
+  MATERIAL_FIELDS.some((field) => JSON.stringify(before[field]) !== JSON.stringify(after[field]));

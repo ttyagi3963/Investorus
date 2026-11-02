@@ -1,6 +1,12 @@
 // Public API of @clever/contracts/listing-package. Other packages import from here, never from the
 // individual files, so the files can change without breaking callers.
-export { PACKAGE_STATUSES, type ListingPackage, type PackageStatus } from "./listing-package.js";
+export {
+  ADDRESS_FREEING_STATUSES,
+  EDITABLE_STATUSES,
+  PACKAGE_STATUSES,
+  type ListingPackage,
+  type PackageStatus,
+} from "./listing-package.js";
 export { OFFER_PROGRAMS, type OfferProgram } from "./programs.js";
 export {
   createListingPackageInputSchema,
@@ -19,6 +25,7 @@ export {
   toAgentPackageView,
   type AgentPackageParts,
   type AgentPackageSummary,
+  type AgentPackageSummaryParts,
   type AgentPackageView,
   type MatchSummary,
   type AgentPackagePartsWithUrls,

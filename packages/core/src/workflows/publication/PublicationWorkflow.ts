@@ -2,12 +2,13 @@
 // FR-014, FR-022, FR-058). Publish checks every field matching and investors need and names each
 // one that is missing, then opens offers, snapshots listing version 1, and queues matching and the
 // deadline, all in one change. Withdraw closes the package, declines its open offers, tells each
-// matched investor, and frees the address. Reopen starts a new round that is matched again;
-// extending moves the deadline of the current round.
+// matched investor, and frees the address. Reopen starts a new round that is matched again, and
+// declines and tells each offer the old round left open, such as a backup after a fall-through
+// (T377); extending moves the deadline of the current round, and matches an edit made while no
+// offers were open as the next listing version (T375).
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
-  ForbiddenError,
   NotFoundError,
   ValidationError,
   type FieldError,
@@ -26,6 +27,10 @@ import {
   loadAgentPackage,
   type AgentPackage,
 } from "../../services/listing-package/ListingPackageService.js";
+import { earliestToday } from "../../providers/clock/earliest-today.js";
+import { agentOf } from "../../services/actor-guards.js";
+import { missingToPublish } from "../../services/listing-package/publish-rules.js";
+import { isMaterialChange, toListingFacts } from "../../registry/listing-facts.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { snapshotAndQueueMatching } from "../matching/queue-matching.js";
 import { placeOf } from "../notice-text.js";
@@ -53,16 +58,7 @@ const HOUR = 3_600_000;
 const DEFAULT_OFFER_WINDOW_HOURS = 72;
 const MAX_OFFER_WINDOW_DAYS = 30;
 const NOT_FOUND = "Package not found";
-
-/** The property facts each type must have before investors see it. */
-const REQUIRED_FACTS: Record<Property["propertyType"], (keyof Property)[]> = {
-  LAND: ["lotSqft"],
-  MULTI_FAMILY: ["units"],
-  SINGLE_FAMILY: ["beds", "baths", "sqft", "yearBuilt", "condition"],
-  CONDO: ["beds", "baths", "sqft", "yearBuilt", "condition"],
-  TOWNHOME: ["beds", "baths", "sqft", "yearBuilt", "condition"],
-  MANUFACTURED: ["beds", "baths", "sqft", "yearBuilt", "condition"],
-};
+const AGENTS_ONLY = "Only agents publish listing packages";
 
 export class PublicationWorkflow implements IPublicationWorkflow {
   constructor(
@@ -71,7 +67,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
   ) {}
 
   async publish(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const data = publishInputSchema.parse(input);
     const now = this.deps.clock.now();
     const offerDeadline = data.offerDeadline
@@ -79,6 +75,8 @@ export class PublicationWorkflow implements IPublicationWorkflow {
       : new Date(now.getTime() + DEFAULT_OFFER_WINDOW_HOURS * HOUR);
 
     return this.uow.run(async (repos) => {
+      // A photo removal waits here, so the photos read below are the ones published.
+      await repos.packages.lock(packageId);
       const current = await this.ownPackage(repos, agentId, packageId);
       if (current.status !== "DRAFT") {
         throw new BusinessRuleError("Only a draft can be published", "NOT_A_DRAFT");
@@ -108,7 +106,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
   }
 
   async withdraw(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const data = withdrawInputSchema.parse(input);
 
     return this.uow.run(async (repos) => {
@@ -137,7 +135,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
   }
 
   async reopen(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const data = offerDeadlineInputSchema.parse(input);
     const offerDeadline = this.checkDeadline(data.offerDeadline);
 
@@ -153,10 +151,19 @@ export class PublicationWorkflow implements IPublicationWorkflow {
         listingVersion: current.listingVersion + 1,
         offerDeadline,
       });
-      // Whatever the old round left open is declined: the new round starts clean.
+      // Whatever the old round left open is declined, and its investor told: the new round starts
+      // clean. After a fall-through these are the backups the agent chose not to promote (T377).
       const declined = await repos.offers.declineOpen(packageId, current.round);
       const property = await repos.properties.findById(pkg.propertyId);
       if (!property) throw new NotFoundError(NOT_FOUND);
+      for (const offer of declined) {
+        await notifyInvestor(repos, offer.investorId, {
+          type: "OFFER_DECLINED",
+          packageId,
+          title: "Your offer was declined",
+          body: `The listing in ${placeOf(property)} opened a new offer round, so your earlier offer was closed.`,
+        });
+      }
       // Matching runs again for the new round, so every matched investor is told again (FR-058).
       await snapshotAndQueueMatching(repos, pkg, property, "REOPEN");
       await scheduleRoundClose(repos, pkg);
@@ -173,7 +180,7 @@ export class PublicationWorkflow implements IPublicationWorkflow {
   }
 
   async extendDeadline(actor: Actor, packageId: string, input: unknown): Promise<AgentPackage> {
-    const agentId = this.agentOf(actor);
+    const agentId = agentOf(actor, AGENTS_ONLY);
     const data = offerDeadlineInputSchema.parse(input);
     const offerDeadline = this.checkDeadline(data.offerDeadline);
 
@@ -187,13 +194,22 @@ export class PublicationWorkflow implements IPublicationWorkflow {
           { field: "offerDeadline", message: "Must be later than the current deadline" },
         ]);
       }
+      const property = await repos.properties.findById(current.propertyId);
+      if (!property) throw new NotFoundError(NOT_FOUND);
+      // Matching runs only while offers are open, so an edit made with none open was not matched:
+      // it is matched now, as the next listing version (FR-020).
+      const last = await repos.listingVersions.find(packageId, current.listingVersion);
+      if (!last)
+        throw new Error(`Listing version ${current.listingVersion} of ${packageId} is missing`);
+      const edited = isMaterialChange(last.snapshot, toListingFacts(current, property));
       const pkg = await repos.packages.update(packageId, data.version, {
         status: "ACCEPTING_OFFERS",
         offerDeadline,
+        listingVersion: edited ? current.listingVersion + 1 : undefined,
       });
+      if (edited) await snapshotAndQueueMatching(repos, pkg, property, "PACKAGE_EDIT");
       // The old deadline's job finds the deadline changed and does nothing.
       await scheduleRoundClose(repos, pkg);
-      const property = await repos.properties.findById(pkg.propertyId);
       for (const match of await repos.matches.listByPackage(packageId, pkg.round)) {
         await notifyInvestor(repos, match.investorId, {
           type: "OFFER_DEADLINE_EXTENDED",
@@ -204,7 +220,11 @@ export class PublicationWorkflow implements IPublicationWorkflow {
       }
       await repos.audit.append({
         ...auditEntry(actor, packageId, "OFFER_DEADLINE_EXTENDED"),
-        details: { round: pkg.round, offerDeadline: offerDeadline.toISOString() },
+        details: {
+          round: pkg.round,
+          offerDeadline: offerDeadline.toISOString(),
+          ...(edited && { listingVersion: pkg.listingVersion }),
+        },
       });
       return loadAgentPackage(repos, pkg);
     });
@@ -224,11 +244,6 @@ export class PublicationWorkflow implements IPublicationWorkflow {
       throw new ValidationError("Some fields are invalid", [{ field: "offerDeadline", message }]);
     }
     return deadline;
-  }
-
-  private agentOf(actor: Actor): string {
-    if (actor.role !== "AGENT") throw new ForbiddenError("Only agents publish listing packages");
-    return actor.agentId;
   }
 
   private async ownPackage(repos: UnitOfWorkRepositories, agentId: string, id: string) {
@@ -253,22 +268,17 @@ function publishBlockers(
   offerDeadline: Date,
   now: Date,
 ): FieldError[] {
-  const errors: FieldError[] = [];
+  const errors = missingToPublish(pkg, property, photos.length);
   const need = (field: string, message: string) => errors.push({ field, message });
-  const today = now.toISOString().slice(0, 10);
+  // The agent's own today counts, wherever they are (T387).
+  const today = earliestToday(now);
 
-  if (photos.length === 0) need("photos", "Add at least one photo");
   if (offerDeadline <= now) need("offerDeadline", "Must be in the future");
   else if (offerDeadline.getTime() > now.getTime() + MAX_OFFER_WINDOW_DAYS * 24 * HOUR) {
     need("offerDeadline", `Must be within ${MAX_OFFER_WINDOW_DAYS} days`);
   }
-  if (pkg.closingWindowStart === null) need("closingWindowStart", "Enter the closing window");
-  else if (pkg.closingWindowStart < today) need("closingWindowStart", "Cannot be in the past");
-  if (pkg.closingWindowEnd === null) need("closingWindowEnd", "Enter the closing window");
-  if (pkg.currentlyListed === null) need("currentlyListed", "Say whether the home is listed");
-  if (pkg.eligiblePrograms.length === 0) need("eligiblePrograms", "Choose at least one program");
-  for (const fact of REQUIRED_FACTS[property.propertyType]) {
-    if (property[fact] === null) need(`property.${fact}`, "Required to publish this type of home");
+  if (pkg.closingWindowStart !== null && pkg.closingWindowStart < today) {
+    need("closingWindowStart", "Cannot be in the past");
   }
   return errors;
 }

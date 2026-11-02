@@ -144,12 +144,18 @@ Index: `(zip)`, `(addressHash)`.
 | specialCircumstances | string? | ≤ 2,000 chars |
 | offerDeadline | timestamptz | at publish: > now and ≤ now + 30 days; default now + 72 h (config) |
 | publishedAt | timestamptz? | |
-| listingVersion | int | 0 while DRAFT; 1 at publish; +1 on each material edit and on reopen. Each value has a `ListingVersion` snapshot |
+| listingVersion | int | 0 while DRAFT; 1 at publish; +1 on each material edit and on reopen, and on a deadline extension that follows a material edit made while NO_OFFERS_RECEIVED. Each value has a `ListingVersion` snapshot |
 | version | int | optimistic concurrency (unrelated to `listingVersion`) |
 
 Material fields are every listing field a criterion reads (`MATERIAL_FIELDS`, derived from the
 registry's `listingFields`). Editing one after publish creates a new `listingVersion` and
 re-runs matching.
+
+The agent may change a package's details and photos only while it is DRAFT, ACCEPTING_OFFERS, or
+NO_OFFERS_RECEIVED (`EDITABLE_STATUSES`, T375); in any other status the change is refused (409
+`PACKAGE_LOCKED`), and after a fall-through the agent reopens first. Once published, an edit may
+not empty a field publishing needs (FR-012), and an edit made while NO_OFFERS_RECEIVED is matched
+when the deadline is extended or the package reopens.
 
 Indexes:
 - `(agentId, status)`
@@ -177,7 +183,8 @@ Indexes:
 | sizeBytes | int | ≤ 10 MB |
 | position | int | 0–19; unique `(packageId, position)` |
 
-At least 1 photo is required to publish (FR-012); at most 20.
+At least 1 photo is required to publish (FR-012), and a published package keeps at least 1; at
+most 20. Photos change only while the package is editable (`EDITABLE_STATUSES`, T375).
 
 ---
 
@@ -301,17 +308,19 @@ matches (FR-022). It is the investor's access grant (FR-040) and the notificatio
 | packageId | cuid → ListingPackage | cascade |
 | investorId | cuid → Investor | cascade |
 | round | int | |
-| matchedBuyBoxIds | cuid[] | every box that matched, across listing versions of this round |
+| matchedBuyBoxIds | cuid[] | every box that matched, across listing versions of this round (the boxes a change notice checks); the boxes that match the current version are in that version's `MATCH_DECISION` entries. A job adds its boxes in one `INSERT … ON CONFLICT DO UPDATE`, so two jobs at once keep both |
 | trigger | `PUBLISH` \| `PACKAGE_EDIT` \| `BUY_BOX_CHANGE` | what first created the match |
 | firstMatchedAt | timestamptz | |
 | notifiedAt | timestamptz? | set when the `package.matched` event is written |
 | lastNotifiedListingVersion | int? | the listing version the investor was last told about |
-| digestedAt | timestamptz? | set when a BUY_BOX_CHANGE match is sent in the daily digest |
+| digestedAt | timestamptz? | set when a BUY_BOX_CHANGE match is sent in the daily digest; the run claims matches by setting it in one `UPDATE … RETURNING`, so two runs at once never send one twice |
 
 Unique `(packageId, investorId, round)`, so a re-run never sends a second notification.
 Index `(investorId)` for the dashboard.
 - A later edit that stops a box matching does not delete the row: shared packages stay visible
-  (spec Story 5, scenario 1).
+  (spec Story 5, scenario 1). Each new listing version records a `MATCH_DECISION` for every
+  investor matched before, told or not, naming the boxes that still match (none after a drop-out),
+  so "Why?" answers for the current version (T383).
 - After a material edit, `package.changed` goes to investors with `notifiedAt` set, only if a
   changed field is in the `listingFields` of a non-null criterion of one of their matched
   boxes.
@@ -365,7 +374,8 @@ Constraints:
 - Partial unique `(packageId, investorId, round)` where status in
   (`ACTIVE`, `COUNTERED`, `BACKUP`, `ACCEPTED`) — at most one active offer per investor per
   package (FR-042, FR-045).
-- New offers and revisions are refused when `now > package.offerDeadline` (FR-044).
+- New offers and revisions are refused when `now > package.offerDeadline` (FR-044), except a
+  revision that answers the agent's counter, which the agent may send after the deadline (T377).
 
 Derived (not stored): `estimatedNetProceeds = price − feesAndConcessions − round(price ×
 closingCostPct) − flatFees`, using `ConfigEntry["netProceeds"]` (FR-050, FR-051). The breakdown is
@@ -426,7 +436,7 @@ Partial unique: `(packageId)` where status not in (`FELL_THROUGH`, `CLOSED`, `RE
 | payload / result | JSONB | validated per type with Zod on read (VI) |
 | error | string? | redacted |
 | retryCount / maxRetries | int | default 0 / 3 |
-| lockedAt / lockedBy | timestamptz? / string? | reclaimed when older than 60 s |
+| lockedAt / lockedBy | timestamptz? / string? | the lease: renewed every 20 s by the running worker, reclaimed when older than 60 s (a used try; FAILED once retries are used); only `lockedBy` can complete or fail the job (T378) |
 
 Partial unique `(type, dedupeKey)` where status in (`QUEUED`, `PROCESSING`) (VIII).
 Index: `(status, runAt)`.
@@ -435,10 +445,11 @@ Index: `(status, runAt)`.
 | Field | Type | Rules |
 | --- | --- | --- |
 | id | cuid | also used as the event ID downstream |
+| sequence | bigserial, unique | taken when the row is written, while the change holds its package's row, so a package's events number in commit order; the CRM keeps the highest (T380) |
 | type | text, checked against the event union in code ([contracts/events.md](./contracts/events.md)) | |
 | aggregateType / aggregateId | string / cuid | `ListingPackage` / its id, or `Investor` / its id for the daily digest |
 | payload | JSONB | PII-free (FR-032); the CRM target adds the seller's contact at send time |
-| occurredAt | timestamptz | the CRM keeps the newest update by this time |
+| occurredAt | timestamptz | when the change was written (the writer's clock, to the millisecond); shown, not used for ordering |
 | relayedAt | timestamptz? | set once by the relay after the Delivery rows exist; a trigger refuses any other change and any delete |
 | correlationId | string? | the trace ID of the request or job that wrote it |
 
@@ -453,7 +464,7 @@ for the operations trace.
 | target | `CRM` \| `EMAIL` \| `SMS` | in-app notices stay in the change itself (Sprint 6) |
 | recipientRef | string | the investor's ID (EMAIL, SMS) or the package's ID (CRM); never contact data |
 | status | `PENDING` \| `SENDING` \| `SENT` \| `RETRYING` \| `NEEDS_ATTENTION` | CHECK: `SENT` exactly when `sentAt` is set |
-| attempts | int | CHECK ≥ 0; counted by the dispatcher |
+| attempts | int | CHECK ≥ 0; counted by the dispatcher; an attempt's outcome is written only while the row is still on that attempt |
 | lastError | string? | redacted, at most 500 characters |
 | nextAttemptAt / sentAt | timestamptz? | |
 | queuedAt | timestamptz? | set when the relay puts it on the BullMQ queue; reset by an operations retry |
@@ -492,8 +503,17 @@ One `Idempotency-Key` a user sent with a POST or PATCH, stored in Postgres inste
 | method / path | string | a retry must match them |
 | bodyHash | string | SHA-256 of the JSON body; a retry must match it |
 | status | `IN_PROGRESS` \| `DONE` | |
-| responseStatus / responseBody | int? / text? | set when DONE; a 5xx is never stored (the row is deleted). The body can hold seller details (a package view), so it is the JSON encrypted with the PII cipher (XII). A replay returns it as first sent; the screens re-read the package after a save |
-| createdAt | timestamp | a key older than 24 hours is ignored and claimed again |
+| claimToken | string | the claim holding the key; only its holder can complete, release, or commit under it (T367) |
+| lockedUntil | timestamp | the claim's 30-second lease; past it, a retry takes the key over if nothing committed |
+| committedAt | timestamp? | set in the same transaction as the request's first write, only while the lease holds; a request that outlived its lease is rolled back |
+| responseStatus / responseBody | int? / text? | set when DONE; a 5xx is never stored (the row is deleted if nothing committed; if something did, a retry is told it was applied). The body can hold seller details (a package view), so it is the JSON encrypted with the PII cipher (XII). A replay returns it as first sent; the screens re-read the package after a save |
+| createdAt | timestamp | a key older than 24 hours is ignored and claimed again, and the worker purges it (T390; indexed) |
+
+### EffectMarker (added 2026-11-01, T368; FR-072)
+`key` (primary key), `createdAt`. A one-time effect a job has applied, such as
+`OFFER_ROUND_CLOSED:<packageId>:<round>:<deadline>`. A job that may run twice (its worker died
+after the change committed, before the job was marked done) claims the key in the same
+transaction as the effect; a second claim fails and the run does nothing. Append-only.
 
 ### ImportBatch / ImportRowResult
 - `ImportBatch`: `id, jobId, fileName, totalRows, imported, updated, rejected, createdBy`.
@@ -519,6 +539,7 @@ time), `nearMiss` (`{ windowDays, minCount }`, defaults 30 and 5; `minCount` may
 | DRAFT | publish (valid) | ACCEPTING_OFFERS |
 | DRAFT, ACCEPTING_OFFERS, NO_OFFERS_RECEIVED | withdraw | WITHDRAWN ■ |
 | ACCEPTING_OFFERS | deadline passes with 0 offers | NO_OFFERS_RECEIVED |
+| ACCEPTING_OFFERS | decline all after the deadline (T377) | NO_OFFERS_RECEIVED |
 | ACCEPTING_OFFERS | seller accepts an offer | OFFER_ACCEPTED |
 | NO_OFFERS_RECEIVED | reopen / extend deadline | ACCEPTING_OFFERS (round + 1 on reopen) |
 | OFFER_ACCEPTED | milestone | UNDER_CONTRACT |
@@ -527,21 +548,24 @@ time), `nearMiss` (`{ windowDays, minCount }`, defaults 30 and 5; `minCount` may
 | CLOSING | milestone | CLOSED ■ |
 | OFFER_ACCEPTED … CLOSING | fell through (reason required) | FELL_THROUGH |
 | FELL_THROUGH | promoted backup reconfirms | OFFER_ACCEPTED |
-| FELL_THROUGH | reopen (no usable backups) | ACCEPTING_OFFERS (round + 1) |
-| FELL_THROUGH | withdraw | WITHDRAWN ■ |
+| FELL_THROUGH | reopen (backups left are declined and told, T377) | ACCEPTING_OFFERS (round + 1) |
+| FELL_THROUGH | withdraw (backups left are declined) | WITHDRAWN ■ |
 
 - `■` marks final states: CLOSED and WITHDRAWN.
 - Out-of-order milestones are refused, and the response lists the allowed next states (spec
   edge case).
 - If the deadline passes with ≥ 1 offer, the package stays ACCEPTING_OFFERS with
   `offersClosed = true` (derived from the deadline). New offers are refused, and the agent can
-  still decide.
+  still decide; declining all then moves the package to NO_OFFERS_RECEIVED, since no offer can
+  come (T377). Before the deadline a decline all leaves the round open for new offers.
+- From FELL_THROUGH, reopen and withdraw are refused (409 `BACKUP_PENDING`) while a promoted
+  backup's deal is PENDING_RECONFIRMATION.
 
 ### OfferStatus
 
 ```text
 ACTIVE ─revise─▶ ACTIVE (new revision)
-ACTIVE ─agent counter─▶ COUNTERED ─investor accepts counter / revises─▶ ACTIVE
+ACTIVE ─agent counter─▶ COUNTERED ─investor accepts counter / revises (even after the deadline)─▶ ACTIVE
 COUNTERED ─investor declines counter─▶ ACTIVE (at the investor's last own revision; agent notified)
 ACTIVE|COUNTERED ─withdraw─▶ WITHDRAWN ■
 ACTIVE|COUNTERED ─expiresAt passes─▶ EXPIRED ■

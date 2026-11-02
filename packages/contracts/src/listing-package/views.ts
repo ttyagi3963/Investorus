@@ -20,6 +20,12 @@ export type AgentPackageParts = {
   matchSummary: MatchSummary | null;
 };
 
+/** What a package's row in the agent's list is built from: no seller, no match summary (T386). */
+export type AgentPackageSummaryParts = Pick<
+  AgentPackageParts,
+  "package" | "property" | "photos" | "matchedCount"
+>;
+
 /**
  * How a package fared in matching (T343; design 04): how many eligible buy boxes were weighed, and
  * the criteria the others failed most often, with how many boxes failed each. Counts only: never
@@ -126,7 +132,9 @@ export function toAgentPackageView(parts: AgentPackagePartsWithUrls): AgentPacka
   };
 }
 
-export function toAgentPackageSummary(parts: AgentPackagePartsWithUrls): AgentPackageSummary {
+export function toAgentPackageSummary(
+  parts: Omit<AgentPackageSummaryParts, "photos"> & Pick<AgentPackagePartsWithUrls, "photos">,
+): AgentPackageSummary {
   const { package: pkg, property } = parts;
   const first = [...parts.photos].sort((a, b) => a.position - b.position)[0];
   return {

@@ -1,14 +1,14 @@
 // In-memory stand-ins for the repositories and the unit of work, so service tests run offline
 // (constitution XV). They copy the behavior the services rely on: agent-filtered reads, the stale
 // version refusal, one package per address, stage 1 of matching, one match per investor and
-// round, and one live job per dedupe key. `run` does not roll back.
+// round, and one live job per dedupe key. `run` rolls back on a throw, as a transaction does.
 import type { BuyBox, BuyBoxInput } from "@clever/contracts/buy-box";
-import type { AuditEntry } from "@clever/contracts/audit";
+import type { AuditAction, AuditEntry } from "@clever/contracts/audit";
 import { BusinessRuleError, ConflictError, ValidationError } from "@clever/contracts/common";
 import type { Deal, Decision } from "@clever/contracts/deal";
 import type { Investor } from "@clever/contracts/investor";
 import type { Job } from "@clever/contracts/jobs";
-import type { ListingPackage } from "@clever/contracts/listing-package";
+import { ADDRESS_FREEING_STATUSES, type ListingPackage } from "@clever/contracts/listing-package";
 import type { Match } from "@clever/contracts/match";
 import type { Notification } from "@clever/contracts/notification";
 import type { Offer, OfferStatus, OfferTerms, RevisionAuthor } from "@clever/contracts/offer";
@@ -31,6 +31,7 @@ import { withOutboxEvents } from "../../src/outbox/with-outbox-events.js";
 import type {
   Delivery,
   IDeliveryRepository,
+  RetryAllFilter,
 } from "../../src/repositories/delivery/IDeliveryRepository.js";
 import type { DeliveryPlan } from "@clever/contracts/events";
 import type { IOpsQueryRepository } from "../../src/repositories/ops/IOpsQueryRepository.js";
@@ -38,6 +39,7 @@ import type {
   BrandRecord,
   IBrandRepository,
 } from "../../src/repositories/brand/IBrandRepository.js";
+import type { IEffectMarkerRepository } from "../../src/repositories/effect-marker/IEffectMarkerRepository.js";
 import {
   ALREADY_ACCEPTED,
   type DealPatch,
@@ -99,6 +101,9 @@ const apply = <T extends object>(target: T, patch: object): T => ({
 
 export class InMemoryUserRepository implements IUserRepository {
   constructor(private readonly credentials: UserCredentials[] = []) {}
+  async canAct(userId: string) {
+    return this.credentials.find((c) => c.user.id === userId)?.user.active === true;
+  }
   async findByEmail(email: string) {
     return this.credentials.find((c) => c.user.email === email) ?? null;
   }
@@ -146,6 +151,14 @@ export class InMemoryPropertyRepository implements IPropertyRepository {
   async findById(id: string) {
     return this.rows.get(id) ?? null;
   }
+  async findByIds(ids: string[]) {
+    return new Map<string, Property>(
+      ids.flatMap((id) => {
+        const row = this.rows.get(id);
+        return row ? [[id, row] as const] : [];
+      }),
+    );
+  }
   async update(id: string, patch: PropertyPatch) {
     const row = apply(this.rows.get(id)!, patch);
     this.rows.set(id, row);
@@ -155,14 +168,23 @@ export class InMemoryPropertyRepository implements IPropertyRepository {
 
 export class InMemoryListingPackageRepository implements IListingPackageRepository {
   readonly rows = new Map<string, ListingPackage & { addressHash: string }>();
-  async create(pkg: NewListingPackage) {
-    if (
-      [...this.rows.values()].some(
-        (r) => r.addressHash === pkg.addressHash && r.status !== "WITHDRAWN",
-      )
-    ) {
-      throw new Error("unique constraint ListingPackage_one_active_per_address");
+  /** The partial unique index, answered as the Prisma repository answers it (T383, T403). */
+  private assertAddressFree(addressHash: string, exceptId?: string) {
+    const taken = [...this.rows.values()].some(
+      (r) =>
+        r.id !== exceptId &&
+        r.addressHash === addressHash &&
+        !(ADDRESS_FREEING_STATUSES as readonly string[]).includes(r.status),
+    );
+    if (taken) {
+      throw new BusinessRuleError(
+        "This address already has a listing package",
+        "DUPLICATE_ACTIVE_LISTING",
+      );
     }
+  }
+  async create(pkg: NewListingPackage) {
+    this.assertAddressFree(pkg.addressHash);
     const row: ListingPackage & { addressHash: string } = {
       id: nextId("package"),
       ...pkg,
@@ -185,6 +207,14 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
   async findById(id: string) {
     return this.rows.get(id) ?? null;
   }
+  async findByIds(ids: string[]) {
+    return new Map<string, ListingPackage>(
+      ids.flatMap((id) => {
+        const row = this.rows.get(id);
+        return row ? [[id, row] as const] : [];
+      }),
+    );
+  }
   async listByAgent(agentId: string) {
     return [...this.rows.values()].filter((r) => r.agentId === agentId);
   }
@@ -195,7 +225,9 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
   }
   async findByAddressHash(addressHash: string) {
     const row = [...this.rows.values()].find(
-      (r) => r.addressHash === addressHash && r.status !== "WITHDRAWN",
+      (r) =>
+        r.addressHash === addressHash &&
+        !(ADDRESS_FREEING_STATUSES as readonly string[]).includes(r.status),
     );
     return row ? { id: row.id, agentId: row.agentId } : null;
   }
@@ -205,6 +237,7 @@ export class InMemoryListingPackageRepository implements IListingPackageReposito
     const row = this.rows.get(id);
     if (!row || row.version !== version)
       throw new ConflictError("This package changed since you opened it.");
+    if (patch.addressHash !== undefined) this.assertAddressFree(patch.addressHash, id);
     const next = { ...apply(row, patch), version: row.version + 1 };
     this.rows.set(id, next);
     return next;
@@ -220,6 +253,14 @@ export class InMemoryPhotoRepository implements IPhotoRepository {
   }
   async listByPackage(packageId: string) {
     return [...this.rows.values()].filter((r) => r.packageId === packageId);
+  }
+  async listByPackages(packageIds: string[]) {
+    const byPackage = new Map<string, Photo[]>();
+    for (const id of packageIds) {
+      const photos = await this.listByPackage(id);
+      if (photos.length > 0) byPackage.set(id, photos);
+    }
+    return byPackage;
   }
   async remove(packageId: string, photoId: string) {
     const row = this.rows.get(photoId);
@@ -244,9 +285,28 @@ export class InMemoryAuditRepository implements IAuditRepository {
       .filter((e) => e.entityType === entityType && e.entityId === entityId)
       .reverse();
   }
+  async findLatest(
+    entityType: string,
+    entityId: string,
+    action: AuditAction,
+    details: Record<string, string | number>,
+  ) {
+    return (
+      this.entries.findLast(
+        (e) =>
+          e.entityType === entityType &&
+          e.entityId === entityId &&
+          e.action === action &&
+          Object.entries(details).every(([key, value]) => e.details?.[key] === value),
+      ) ?? null
+    );
+  }
 }
 
-/** Stage 1 as the SQL does it: the hard cuts and geography. Investors default to ACTIVE, funded. */
+/**
+ * Stage 1 as the SQL does it: the hard cuts and geography. Like the SQL join, a box whose investor
+ * is not in `investors` never matches; the unit of work seeds one per investor login it is given.
+ */
 export class InMemoryBuyBoxRepository implements IBuyBoxRepository {
   readonly boxes: BuyBox[] = [];
   readonly investors = new Map<string, Pick<Investor, "status" | "proofOfFundsExpiresAt">>();
@@ -261,12 +321,10 @@ export class InMemoryBuyBoxRepository implements IBuyBoxRepository {
       return this.canMatch(box, now) && covers;
     });
   }
-  /** Box ACTIVE, investor ACTIVE, proof of funds after `now` (a day ahead unless a test says). */
+  /** Box ACTIVE, its investor seeded and ACTIVE, proof of funds after `now`. */
   private canMatch(box: BuyBox, now: Date) {
-    const investor = this.investors.get(box.investorId) ?? {
-      status: "ACTIVE",
-      proofOfFundsExpiresAt: new Date(now.getTime() + 86_400_000),
-    };
+    const investor = this.investors.get(box.investorId);
+    if (!investor) return false;
     const funded = investor.proofOfFundsExpiresAt !== null && investor.proofOfFundsExpiresAt > now;
     return box.status === "ACTIVE" && investor.status === "ACTIVE" && funded;
   }
@@ -369,12 +427,21 @@ export class InMemoryMatchRepository implements IMatchRepository {
   async countByPackage(packageId: string, round: number) {
     return (await this.listByPackage(packageId, round)).length;
   }
-  readonly digestedAt = new Map<string, Date>();
-  async listUndigested() {
-    return this.rows.filter((r) => r.trigger === "BUY_BOX_CHANGE" && !this.digestedAt.has(r.id));
+  async countByPackages(packages: { id: string; round: number }[]) {
+    const counts = new Map<string, number>();
+    for (const { id, round } of packages) {
+      const count = await this.countByPackage(id, round);
+      if (count > 0) counts.set(id, count);
+    }
+    return counts;
   }
-  async markDigested(ids: string[], at: Date) {
-    for (const id of ids) if (!this.digestedAt.has(id)) this.digestedAt.set(id, at);
+  readonly digestedAt = new Map<string, Date>();
+  async claimUndigested(at: Date) {
+    const pending = this.rows.filter(
+      (r) => r.trigger === "BUY_BOX_CHANGE" && !this.digestedAt.has(r.id),
+    );
+    for (const match of pending) this.digestedAt.set(match.id, at);
+    return pending;
   }
 }
 
@@ -445,6 +512,14 @@ export class InMemoryOfferRepository implements IOfferRepository {
       (r) => r.packageId === packageId && r.investorId === investorId && r.round === round,
     );
     return mine.find((r) => LIVE_OFFER_STATUSES.includes(r.status)) ?? mine.at(-1) ?? null;
+  }
+  async findLatestForInvestor(investorId: string, packages: { id: string; round: number }[]) {
+    const latest = new Map<string, Offer>();
+    for (const { id, round } of packages) {
+      const offer = await this.findLatest(id, investorId, round);
+      if (offer) latest.set(id, offer);
+    }
+    return latest;
   }
   async listByPackage(packageId: string, round: number) {
     return this.rows.filter((r) => r.packageId === packageId && r.round === round);
@@ -517,13 +592,16 @@ export class InMemoryJobRepository implements IJobRepository {
   claimNext(): Promise<Job | null> {
     throw new Error("not used by the services");
   }
-  reclaimStale(): Promise<number> {
+  renewLease(): Promise<boolean> {
     throw new Error("not used by the services");
   }
-  complete(): Promise<void> {
+  reclaimStale(): Promise<Job[]> {
     throw new Error("not used by the services");
   }
-  fail(): Promise<Job> {
+  complete(): Promise<boolean> {
+    throw new Error("not used by the services");
+  }
+  fail(): Promise<Job | null> {
     throw new Error("not used by the services");
   }
 }
@@ -543,8 +621,13 @@ export class InMemoryConfigRepository implements IConfigRepository {
 export class InMemoryInvestorRepository implements IInvestorRepository {
   readonly names = new Map<string, string>();
   readonly contacts = new Map<string, { email: string; phone: string | null }>();
+  /** Investors operations deactivated; every other investor is ACTIVE. */
+  readonly inactive = new Set<string>();
   async findCompanyNames(ids: string[]) {
     return new Map(ids.map((id) => [id, this.names.get(id) ?? id]));
+  }
+  async findInactive(ids: string[]) {
+    return new Set(ids.filter((id) => this.inactive.has(id)));
   }
   async findContact(id: string) {
     return this.contacts.get(id) ?? null;
@@ -630,9 +713,20 @@ export class InMemoryDealRepository implements IDealRepository {
 
 /** The events changes appended, in order, with the relay's mark. */
 export class InMemoryOutboxRepository implements IOutboxRepository {
-  readonly rows: (NewOutboxEvent & { id: string; occurredAt: Date; relayedAt: Date | null })[] = [];
+  readonly rows: (NewOutboxEvent & {
+    id: string;
+    occurredAt: Date;
+    sequence: number;
+    relayedAt: Date | null;
+  })[] = [];
   async append(event: NewOutboxEvent) {
-    this.rows.push({ ...event, id: nextId("event"), occurredAt: NOW, relayedAt: null });
+    this.rows.push({
+      ...event,
+      id: nextId("event"),
+      occurredAt: NOW,
+      sequence: this.rows.length + 1,
+      relayedAt: null,
+    });
   }
   async claimUnrelayed(limit: number) {
     return this.rows.filter((r) => r.relayedAt === null).slice(0, limit);
@@ -683,45 +777,56 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
     }
     return count;
   }
-  async claimUnqueued(limit: number) {
-    return this.rows
+  async claimUnqueued(limit: number, at: Date) {
+    const claimed = this.rows
       .filter((r) => r.status === "PENDING" && r.queuedAt === null)
-      .slice(0, limit)
-      .map((r) => r.id);
+      .slice(0, limit);
+    for (const row of claimed) row.queuedAt = at;
+    return claimed.map((r) => r.id);
   }
-  async markQueued(ids: string[], at: Date) {
-    for (const row of this.rows) if (ids.includes(row.id)) row.queuedAt = at;
+  async releaseQueued(ids: string[], at: Date) {
+    for (const row of this.rows) {
+      if (ids.includes(row.id) && row.status === "PENDING" && row.queuedAt === at) {
+        row.queuedAt = null;
+      }
+    }
   }
   async findWithEvent(id: string) {
     const row = this.rows.find((r) => r.id === id);
     const event = row && this.outbox.rows.find((e) => e.id === row.outboxEventId);
     return row && event ? { ...row, event } : null;
   }
-  private move(id: string, from: Delivery["status"][], patch: Partial<Delivery>) {
-    const row = this.rows.find((r) => r.id === id && from.includes(r.status));
+  private move(id: string, from: Delivery["status"][], patch: Partial<Delivery>, attempt?: number) {
+    const row = this.rows.find(
+      (r) =>
+        r.id === id && from.includes(r.status) && (attempt === undefined || r.attempts === attempt),
+    );
     if (row) Object.assign(row, patch);
     return Boolean(row);
   }
   async markSending(id: string) {
-    const row = this.rows.find((r) => r.id === id);
-    return this.move(id, ["PENDING", "RETRYING"], {
+    const attempts = (this.rows.find((r) => r.id === id)?.attempts ?? 0) + 1;
+    const started = this.move(id, ["PENDING", "RETRYING"], {
       status: "SENDING",
-      attempts: (row?.attempts ?? 0) + 1,
+      attempts,
       nextAttemptAt: null,
     });
+    return started ? attempts : null;
   }
-  async markSent(id: string, at: Date) {
-    this.move(id, ["SENDING"], { status: "SENT", sentAt: at, lastError: null });
+  async markSent(id: string, attempt: number, at: Date) {
+    return this.move(id, ["SENDING"], { status: "SENT", sentAt: at, lastError: null }, attempt);
   }
-  async markRetrying(id: string, error: string, nextAttemptAt: Date) {
-    this.move(id, ["SENDING"], { status: "RETRYING", lastError: error, nextAttemptAt });
+  async markRetrying(id: string, attempt: number, error: string, nextAttemptAt: Date) {
+    const patch = { status: "RETRYING" as const, lastError: error, nextAttemptAt };
+    return this.move(id, ["SENDING"], patch, attempt);
   }
-  async markNeedsAttention(id: string, error: string) {
-    this.move(id, ["SENDING"], {
-      status: "NEEDS_ATTENTION",
-      lastError: error,
-      nextAttemptAt: null,
-    });
+  async markNeedsAttention(id: string, attempt: number, error: string) {
+    const patch = { status: "NEEDS_ATTENTION" as const, lastError: error, nextAttemptAt: null };
+    return this.move(id, ["SENDING"], patch, attempt);
+  }
+  async giveUp(id: string, error: string) {
+    const patch = { status: "NEEDS_ATTENTION" as const, lastError: error, nextAttemptAt: null };
+    this.move(id, ["PENDING", "SENDING", "RETRYING"], patch);
   }
   async resetForRetry(id: string) {
     return this.move(id, ["NEEDS_ATTENTION"], {
@@ -730,6 +835,18 @@ export class InMemoryDeliveryRepository implements IDeliveryRepository {
       queuedAt: null,
       nextAttemptAt: null,
     });
+  }
+  async resetAllForRetry({ target, packageId }: RetryAllFilter) {
+    let count = 0;
+    for (const row of this.rows) {
+      const event = this.outbox.rows.find((e) => e.id === row.outboxEventId);
+      const chosen =
+        (target === undefined || row.target === target) &&
+        (packageId === undefined ||
+          (event?.aggregateType === "ListingPackage" && event.aggregateId === packageId));
+      if (chosen && (await this.resetForRetry(row.id))) count += 1;
+    }
+    return count;
   }
 }
 
@@ -756,6 +873,16 @@ export class InMemoryBrandRepository implements IBrandRepository {
   }
 }
 
+/** Effect keys already claimed. */
+export class InMemoryEffectMarkerRepository implements IEffectMarkerRepository {
+  readonly keys = new Set<string>();
+  async claimOnce(key: string) {
+    if (this.keys.has(key)) return false;
+    this.keys.add(key);
+    return true;
+  }
+}
+
 export class InMemoryUnitOfWork implements IUnitOfWork {
   readonly repos: UnitOfWorkRepositories & {
     sellers: InMemorySellerRepository;
@@ -777,9 +904,21 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
     outbox: InMemoryOutboxRepository;
     deliveries: InMemoryDeliveryRepository;
     brands: InMemoryBrandRepository;
+    effects: InMemoryEffectMarkerRepository;
   };
   constructor(users: UserCredentials[] = []) {
     const outbox = new InMemoryOutboxRepository();
+    const investors = new InMemoryInvestorRepository();
+    // An investor login means an investor row, as in Postgres: ACTIVE, with proof of funds.
+    const buyBoxes = new InMemoryBuyBoxRepository();
+    for (const { user } of users) {
+      if (user.role === "INVESTOR") {
+        buyBoxes.investors.set(user.investorId, {
+          status: "ACTIVE",
+          proofOfFundsExpiresAt: new Date("2100-01-01T00:00:00Z"),
+        });
+      }
+    }
     this.repos = {
       users: new InMemoryUserRepository(users),
       sellers: new InMemorySellerRepository(),
@@ -787,14 +926,14 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       packages: new InMemoryListingPackageRepository(),
       photos: new InMemoryPhotoRepository(),
       audit: new InMemoryAuditRepository(),
-      buyBoxes: new InMemoryBuyBoxRepository(),
+      buyBoxes,
       listingVersions: new InMemoryListingVersionRepository(),
       matches: new InMemoryMatchRepository(),
       notifications: new InMemoryNotificationRepository(),
       offers: new InMemoryOfferRepository(),
       jobs: new InMemoryJobRepository(),
       config: new InMemoryConfigRepository(),
-      investors: new InMemoryInvestorRepository(),
+      investors,
       decisions: new InMemoryDecisionRepository(),
       deals: new InMemoryDealRepository(),
       imports: new InMemoryImportRepository(),
@@ -802,9 +941,31 @@ export class InMemoryUnitOfWork implements IUnitOfWork {
       deliveries: new InMemoryDeliveryRepository(outbox),
       opsQuery: OPS_QUERIES_NEED_POSTGRES,
       brands: new InMemoryBrandRepository(),
+      effects: new InMemoryEffectMarkerRepository(),
     };
   }
-  run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {
-    return work(withOutboxEvents(this.repos));
+  /** Rolls back like a transaction: if `work` throws, every store is put back as it was. */
+  async run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {
+    const saved = Object.values(this.repos).flatMap((repo) =>
+      Object.values(repo as object)
+        .filter((store) => store instanceof Array || store instanceof Map || store instanceof Set)
+        .map((store) => [store, structuredClone(store)] as const),
+    );
+    try {
+      return await work(withOutboxEvents(this.repos));
+    } catch (err) {
+      // In place, because tests hold the same arrays, maps, and sets.
+      for (const [store, copy] of saved) {
+        if (store instanceof Array) store.splice(0, store.length, ...(copy as unknown[]));
+        else if (store instanceof Map) {
+          store.clear();
+          for (const [key, value] of copy as Map<unknown, unknown>) store.set(key, value);
+        } else {
+          store.clear();
+          for (const value of copy as Set<unknown>) store.add(value);
+        }
+      }
+      throw err;
+    }
   }
 }

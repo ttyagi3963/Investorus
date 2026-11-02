@@ -2,7 +2,9 @@
 // only operations can use it; "why not matched" replays the buy box as it was when the package was
 // matched, not as the investor edited it later, while a match returns the stored decision; the trace
 // counts what was matched, sent, and set aside, and lists who was not matched; and only a delivery
-// set aside can be retried, by one or by target, each retry audited.
+// set aside can be retried, by one or by target, each retry audited; a backlog far past what the
+// old row-by-row reset finished inside the 5 s transaction limit resets in one call (T386); the CRM
+// comparison finds each package's unsent CRM delivery in one query (T399).
 import { randomBytes } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
 import type { BuyBoxInput } from "@clever/contracts/buy-box";
@@ -18,6 +20,7 @@ import { BuyBoxService } from "../src/services/buy-box/BuyBoxService.js";
 import { ListingPackageService } from "../src/services/listing-package/ListingPackageService.js";
 import { DeliveryOpsService } from "../src/services/ops/DeliveryOpsService.js";
 import { OpsQueryService } from "../src/services/ops/OpsQueryService.js";
+import { OutsideServicesService } from "../src/services/ops/OutsideServicesService.js";
 import { PrismaUnitOfWorkImpl } from "../src/unit-of-work/PrismaUnitOfWorkImpl.js";
 import { DealLifecycleWorkflow } from "../src/workflows/deal-lifecycle/DealLifecycleWorkflow.js";
 import { MatchingWorkflow } from "../src/workflows/matching/MatchingWorkflow.js";
@@ -84,7 +87,7 @@ beforeAll(async () => {
 
   const clock = { now: () => new Date() };
   const geo = new StaticGeoProviderImpl();
-  const boxes = new BuyBoxService(uow, { geo });
+  const boxes = new BuyBoxService(uow, { geo, clock: { now: () => new Date() } });
   await boxes.create(
     summit,
     box({ name: "Austin flips", geographyMode: "ZIPS", geography: ["78704"] }),
@@ -104,7 +107,7 @@ beforeAll(async () => {
       const job = await uow.run((repos) => repos.jobs.claimNext("worker", new Date()));
       if (!job) return;
       await handlers[job.type](job.payload);
-      await uow.run((repos) => repos.jobs.complete(job.id));
+      await uow.run((repos) => repos.jobs.complete(job.id, "worker"));
     }
   };
   await drain();
@@ -161,6 +164,26 @@ describe("operations console", () => {
     expect(matched).toMatchObject({ source: "STORED", matched: true });
   });
 
+  it("explains a CRM difference by the package's CRM delivery not yet sent", async () => {
+    const crm = await db.query<{ id: string }>(`SELECT id FROM "Delivery" WHERE target = 'CRM'`);
+    const outside = new OutsideServicesService(uow, {
+      crm: { listListings: async () => [] },
+      simulation: {
+        get: () => Promise.reject(new Error("unused")),
+        set: () => Promise.reject(new Error("unused")),
+      },
+    });
+
+    expect(await outside.crmComparison(ops)).toEqual([
+      expect.objectContaining({
+        packageId,
+        crmStatus: null,
+        inSync: false,
+        pendingDelivery: { id: crm.rows[0]!.id, status: "PENDING" },
+      }),
+    ]);
+  });
+
   it("traces who matched, what was sent or set aside, and who was not matched", async () => {
     await db.query(
       `UPDATE "Delivery" SET status = 'NEEDS_ATTENTION', attempts = 10, "lastError" = 'The sandbox answered 503'
@@ -199,5 +222,33 @@ describe("operations console", () => {
       `SELECT count(*)::int AS n FROM "AuditLog" WHERE action = 'DELIVERY_RETRIED'`,
     );
     expect(audit.rows[0]).toEqual({ n: 2 });
+  });
+
+  it("retries a large backlog set aside in one call, only the package asked for, audited once", async () => {
+    const backlog = 20_000;
+    await db.query(`
+      INSERT INTO "OutboxEvent" (id, type, "aggregateType", "aggregateId", payload)
+        VALUES ('backlog', 'offer.submitted', 'ListingPackage', 'another-package', '{}');
+      INSERT INTO "Delivery" (id, "outboxEventId", target, "recipientRef", status, attempts, "queuedAt", "updatedAt")
+        SELECT 'backlog-' || n, 'backlog', 'EMAIL', 'investor-' || n, 'NEEDS_ATTENTION', 10, now(), now()
+        FROM generate_series(1, ${backlog}) AS n;
+    `);
+
+    expect(await deliveries().retryAll(ops, { packageId })).toEqual({ count: 0 });
+    expect(await deliveries().retryAll(ops, {})).toEqual({ count: backlog });
+
+    const states = await db.query(
+      `SELECT status, attempts, "queuedAt", "nextAttemptAt", count(*)::int AS n
+       FROM "Delivery" WHERE "outboxEventId" = 'backlog' GROUP BY 1, 2, 3, 4`,
+    );
+    expect(states.rows).toEqual([
+      { status: "PENDING", attempts: 0, queuedAt: null, nextAttemptAt: null, n: backlog },
+    ]);
+    const audit = await db.query(
+      `SELECT count(*)::int AS n FROM "AuditLog"
+       WHERE action = 'DELIVERY_RETRIED' AND (details->>'deliveries')::int = $1`,
+      [backlog],
+    );
+    expect(audit.rows[0]).toEqual({ n: 1 });
   });
 });

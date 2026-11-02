@@ -7,8 +7,8 @@
 import { randomUUID } from "node:crypto";
 import type { Actor } from "@clever/contracts/auth";
 import {
+  ConflictError,
   DomainError,
-  ForbiddenError,
   NotFoundError,
   ValidationError,
 } from "@clever/contracts/common";
@@ -24,6 +24,7 @@ import type { UploadInstruction } from "@clever/contracts/photo";
 import type { IClock } from "../../providers/clock/IClock.js";
 import type { IGeoProvider } from "../../providers/geo/IGeoProvider.js";
 import type { IStorageProvider } from "../../providers/storage/IStorageProvider.js";
+import { assertOps } from "../../services/actor-guards.js";
 import { keepVersionAndMatch, matchingTermsOf } from "../../services/buy-box/keep-version.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import { FileRefusedError, parseLegacyCsv, type ParsedRow } from "./parse-legacy-csv.js";
@@ -46,9 +47,7 @@ export interface IInvestorImportWorkflow {
 
 const CSV = "text/csv";
 
-function assertOps(actor: Actor) {
-  if (actor.role !== "OPS") throw new ForbiddenError("Only operations import investors");
-}
+const OPS_ONLY = "Only operations import investors";
 
 export class InvestorImportWorkflow implements IInvestorImportWorkflow {
   constructor(
@@ -57,19 +56,25 @@ export class InvestorImportWorkflow implements IInvestorImportWorkflow {
   ) {}
 
   async requestUpload(actor: Actor, input: unknown) {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const { sizeBytes } = importUploadRequestSchema.parse(input);
     const storageKey = `imports/${randomUUID()}.csv`;
     return { storageKey, upload: await this.deps.storage.createUpload(storageKey, CSV, sizeBytes) };
   }
 
   async start(actor: Actor, input: unknown) {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const { storageKey, fileName } = startImportSchema.parse(input);
     const stored = await this.deps.storage.stat(storageKey);
     if (!stored) {
       throw new ValidationError("Upload the file first", [
         { field: "storageKey", message: "No file was uploaded under this key" },
+      ]);
+    }
+    // The upload link allows only a CSV, so anything else is not the file that was uploaded (T384).
+    if (stored.contentType !== CSV) {
+      throw new ValidationError("Upload the file as a CSV", [
+        { field: "storageKey", message: "The stored file is not a CSV" },
       ]);
     }
     if (stored.sizeBytes > MAX_IMPORT_BYTES) {
@@ -97,7 +102,7 @@ export class InvestorImportWorkflow implements IInvestorImportWorkflow {
     if (!found || found.batch.finishedAt) return;
     const { batch } = found;
 
-    const file = await this.deps.storage.read(batch.storageKey);
+    const file = await this.deps.storage.read(batch.storageKey, MAX_IMPORT_BYTES);
     let parsed;
     try {
       if (!file) throw new FileRefusedError("The uploaded file is missing");
@@ -116,8 +121,9 @@ export class InvestorImportWorkflow implements IInvestorImportWorkflow {
           await repos.imports.addRowResult(batchId, await this.importRow(repos, row));
         });
       } catch (err) {
-        // A row the database refuses (an email another investor has) leaves nothing behind.
-        if (!(err instanceof DomainError)) throw err;
+        // A row the database refuses (an email another investor has) leaves nothing behind. A buy
+        // box saved while the row ran is no reason to refuse it: the job runs again (T376).
+        if (!(err instanceof DomainError) || err instanceof ConflictError) throw err;
         const fields = (err.details?.fields ?? []) as { message: string }[];
         await this.uow.run((repos) =>
           repos.imports.addRowResult(batchId, {
@@ -137,7 +143,7 @@ export class InvestorImportWorkflow implements IInvestorImportWorkflow {
   }
 
   async getBatch(actor: Actor, batchId: string): Promise<ImportBatchDetail> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const found = await this.uow.run((repos) => repos.imports.findBatch(batchId));
     if (!found) throw new NotFoundError("Import not found");
     return found;

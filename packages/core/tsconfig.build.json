@@ -5,12 +5,6 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": [
-    "src"
-  ],
-  "exclude": [
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx",
-    "src/**/*.int.test.ts"
-  ]
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.int.test.ts"]
 }

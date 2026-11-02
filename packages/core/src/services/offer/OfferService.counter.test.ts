@@ -1,7 +1,8 @@
 // Guards how an investor answers a counter and keeps a backup offer (T310; FR-052, FR-054):
 // accepting a counter takes its terms as the investor's own revision; declining goes back to the
 // investor's last own terms and tells the agent; terms that have expired are not revived; a
-// revision replaces a counter, but not after the deadline; only the offer's investor answers; and
+// revision replaces a counter, even after the deadline, though an active offer then takes no
+// revision (T377); only the offer's investor answers; and
 // a backup offer's expiry can move later, even after the deadline, while every other term stays
 // fixed.
 import { describe, expect, it } from "vitest";
@@ -72,21 +73,20 @@ describe("OfferService counter responses", () => {
     ).rejects.toMatchObject({ code: "TERMS_EXPIRED" });
   });
 
-  it("replaces a counter with the investor's revision, but not after the deadline", async () => {
-    const first = await countered();
-    await expect(
-      first.offers.revise(summit, first.counter.id, {
-        ...offer({ price: 288_000 }),
-        version: first.counter.version,
-      }),
-    ).resolves.toMatchObject({ status: "ACTIVE", price: 288_000 });
+  it("replaces a counter with the investor's revision even after the deadline, but no other revision then (T377)", async () => {
+    const { clock, pkg, offers, counter } = await countered();
+    clock.at = new Date(pkg.offerDeadline!.getTime() + 1);
+    const later = "2026-11-10T12:00:00Z";
+    const answered = await offers.revise(summit, counter.id, {
+      ...offer({ price: 288_000, expiresAt: later }),
+      version: counter.version,
+    });
+    expect(answered).toMatchObject({ status: "ACTIVE", price: 288_000 });
 
-    const late = await countered();
-    late.clock.at = new Date(late.pkg.offerDeadline!.getTime() + 1);
     await expect(
-      late.offers.revise(summit, late.counter.id, {
-        ...offer({ price: 288_000, expiresAt: "2026-11-10T12:00:00Z" }),
-        version: late.counter.version,
+      offers.revise(summit, counter.id, {
+        ...offer({ price: 289_000, expiresAt: later }),
+        version: answered.version,
       }),
     ).rejects.toMatchObject({ code: "OFFER_DEADLINE_PASSED" });
   });

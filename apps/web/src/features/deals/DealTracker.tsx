@@ -2,8 +2,10 @@
 // The agent's deal tracker (T316, restyled in T330; FR-055 to FR-058): the buyer's terms, the
 // milestones as a stepper with the current one marked, a button only for the allowed next milestone,
 // a fall-through dialog that needs a reason, and after a fall-through the backups ranked by net
-// proceeds with Promote. With no usable backup left, the agent reopens the package for a new round
-// or withdraws it. Nothing changes on screen until the api answers (never optimistic, XIII).
+// proceeds with Promote (an inactive investor's backup is flagged, for the agent to weigh, T398).
+// While no promoted backup is deciding, the agent can instead reopen the package for a new round or
+// withdraw it, declining any backups left (T377). Nothing changes on screen until the api answers
+// (never optimistic, XIII); the fall-through and reopen dialogs stay open on a refusal (T385).
 import type { DealView } from "@clever/contracts/deal";
 import type { AgentPackageView } from "@clever/contracts/listing-package";
 import {
@@ -22,9 +24,11 @@ import { DEAL_STATUS_LABELS, formatUsd } from "@/features/listing-package/labels
 import { packageKeys } from "@/features/listing-package/queries";
 import { deals, listingPackages } from "@/lib/bff-client";
 import { useAction } from "@/lib/use-action";
+import { whenDone } from "@/lib/when-done";
 
 const STEPS = ["OFFER_ACCEPTED", "UNDER_CONTRACT", "INSPECTION", "CLOSING", "CLOSED"] as const;
 const OPEN = ["OFFER_ACCEPTED", "UNDER_CONTRACT", "INSPECTION", "CLOSING"];
+const CHANGE_FAILED = "That change could not be saved. Try again.";
 const when = (iso: string) =>
   new Date(iso).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 /** A `YYYY-MM-DD` date, read as that calendar day wherever the browser is. */
@@ -63,10 +67,7 @@ function Milestones({ current }: { current: number }) {
 }
 
 export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealView }) {
-  const { run, isBusy, error } = useAction(
-    "That change could not be saved. Try again.",
-    packageKeys.all,
-  );
+  const { run, isBusy, error } = useAction(CHANGE_FAILED, packageKeys.all);
   const current = STEPS.indexOf(deal.status as (typeof STEPS)[number]);
   const usable = deal.backups.filter((b) => !b.expired);
   const decided = pkg.status === "FELL_THROUGH" && deal.status !== "PENDING_RECONFIRMATION";
@@ -82,11 +83,17 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
         <div className="grid grid-cols-1 gap-inline-md sm:grid-cols-2 lg:grid-cols-4">
           <StatTile label="Buyer" value={deal.investorName} />
           <StatTile label="Price" value={formatUsd(deal.offer.price)} />
-          <StatTile label="Payment" value={deal.offer.paymentType === "CASH" ? "Cash" : "Financed"} />
+          <StatTile
+            label="Payment"
+            value={deal.offer.paymentType === "CASH" ? "Cash" : "Financed"}
+          />
           <StatTile label="Closing" value={day(deal.offer.closingDate)} />
         </div>
         {deal.status === "PENDING_RECONFIRMATION" && deal.reconfirmBy && (
-          <p role="status" className="rounded-control bg-status-offers-in p-inset-md text-status-offers-in">
+          <p
+            role="status"
+            className="rounded-control bg-status-offers-in p-inset-md text-status-offers-in"
+          >
             Waiting for {deal.investorName} to reconfirm by {when(deal.reconfirmBy)}.
           </p>
         )}
@@ -120,11 +127,14 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
                 cancelLabel="Keep the deal"
                 isDisabled={isBusy}
                 onSubmit={(values) =>
-                  run(() =>
-                    deals.fallThrough(deal.id, {
-                      reason: String(values.get("reason") ?? ""),
-                      version: deal.version,
-                    }),
+                  whenDone(
+                    run,
+                    () =>
+                      deals.fallThrough(deal.id, {
+                        reason: String(values.get("reason") ?? ""),
+                        version: deal.version,
+                      }),
+                    CHANGE_FAILED,
                   )
                 }
               >
@@ -162,6 +172,7 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
                     {backup.expired && (
                       <StatusChip tone={OFFER_STATUS_TONES.EXPIRED}>Expired</StatusChip>
                     )}
+                    {!backup.investorActive && <StatusChip tone="draft">Inactive</StatusChip>}
                   </span>
                   <span className="text-body text-muted">
                     {formatUsd(backup.offer.price)} · net {formatUsd(backup.netProceeds)} · closing{" "}
@@ -189,22 +200,30 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
               </li>
             ))}
           </ul>
-          {decided && usable.length === 0 && (
+          {decided && (
             <div className="flex flex-wrap gap-inline-md">
               <DeadlineDialog
                 label="Reopen for a new round"
                 title="Reopen the package?"
-                note="Matched investors are told again and can make new offers."
-                triggerVariant="primary"
+                note={
+                  deal.backups.length > 0
+                    ? "The backup offers are declined and their investors told. Matched investors are told again and can make new offers."
+                    : "Matched investors are told again and can make new offers."
+                }
+                triggerVariant={usable.length === 0 ? "primary" : "secondary"}
                 isDisabled={isBusy}
                 onSubmit={(offerDeadline) =>
-                  run(() => listingPackages.reopen(pkg.id, { version: pkg.version, offerDeadline }))
+                  whenDone(
+                    run,
+                    () => listingPackages.reopen(pkg.id, { version: pkg.version, offerDeadline }),
+                    CHANGE_FAILED,
+                  )
                 }
               />
               <ConfirmDialog
                 triggerLabel="Withdraw"
                 title="Withdraw this package?"
-                message="Open offers are declined and matched investors are told. This cannot be undone."
+                message="Backup offers are declined and matched investors are told. This cannot be undone."
                 confirmLabel="Yes, withdraw"
                 cancelLabel="Keep it"
                 isDisabled={isBusy}

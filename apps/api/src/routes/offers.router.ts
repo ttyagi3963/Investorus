@@ -13,7 +13,9 @@ export function createOffersRouter(offers: IOfferService): Router {
   });
   router.get("/listing-packages/:id/offers", async (req, res) => {
     const list = await offers.listForPackage(res.locals.actor, req.params.id);
-    res.status(200).json(list.map(toOfferView));
+    res
+      .status(200)
+      .json(list.map(({ offer, investorActive }) => ({ ...toOfferView(offer), investorActive })));
   });
   router.patch("/offers/:offerId", async (req, res) => {
     const revised = await offers.revise(res.locals.actor, req.params.offerId, req.body);

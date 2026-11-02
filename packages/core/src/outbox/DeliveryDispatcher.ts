@@ -3,12 +3,16 @@
 // seller's contact, a read it audits (PII_ACCESSED). The send happens outside any transaction, with
 // the delivery's ID as its Idempotency-Key. A second transaction records the outcome: SENT (a
 // stale CRM update counts), RETRYING with the next try's time, or NEEDS_ATTENTION when the service
-// refused it, the investor cannot be reached, or the last allowed attempt failed. The caller (the
-// worker's queue consumer) waits `delayMs` before the next try; this class never sleeps.
+// refused it, the investor cannot be reached, or the last allowed attempt failed. Each outcome
+// names its attempt, so a run that lost its claim (the stale sweep gave the delivery to a newer
+// run) records nothing and is SKIPPED (T379). The caller (the worker's queue consumer) waits
+// `delayMs` before the next try, and calls giveUp when every try threw; this class never sleeps.
+// A failure's text is scrubbed here, where it is made, since it is stored, queued, and logged (XII).
 import type { DeliveryRetryPolicy } from "@clever/contracts/config";
 import { outboxEventInputSchema, type OutboxEventInput } from "@clever/contracts/events";
 import { DeliveryRejectedError } from "../errors/DeliveryRejectedError.js";
 import { InfrastructureError } from "../errors/InfrastructureError.js";
+import { scrubPiiText } from "../errors/redact-pii.js";
 import type { IClock } from "../providers/clock/IClock.js";
 import type { ICrmProvider } from "../providers/crm/ICrmProvider.js";
 import type { IMessagingProvider } from "../providers/messaging/IMessagingProvider.js";
@@ -19,7 +23,7 @@ import { retryDelayMs } from "./retry-delay.js";
 
 export type DispatchResult =
   | { outcome: "SENT" }
-  /** Already sent, set aside, or gone: a duplicate or late job does nothing. */
+  /** Already sent, set aside, gone, or taken over by a newer run: a late job does nothing. */
   | { outcome: "SKIPPED" }
   | { outcome: "RETRY"; delayMs: number; error: string }
   | { outcome: "NEEDS_ATTENTION"; error: string };
@@ -37,7 +41,9 @@ export type DeliveryDispatcherDeps = {
 /** The send, prepared inside the first transaction and run after it commits. */
 type Send = () => Promise<void>;
 
-const describe = (err: unknown) => (err instanceof Error ? err.message : "Unknown failure");
+/** A provider's error may quote the recipient, so its emails and phone numbers are scrubbed. */
+const describe = (err: unknown) =>
+  err instanceof Error ? scrubPiiText(err.message) : "Unknown failure";
 
 export class DeliveryDispatcher {
   constructor(
@@ -48,45 +54,61 @@ export class DeliveryDispatcher {
   async dispatch(deliveryId: string): Promise<DispatchResult> {
     const prepared = await this.uow.run(async (repos) => {
       const delivery = await repos.deliveries.findWithEvent(deliveryId);
-      if (!delivery || !(await repos.deliveries.markSending(deliveryId))) return null;
-      const attempts = delivery.attempts + 1;
+      const attempt = delivery && (await repos.deliveries.markSending(deliveryId));
+      if (!delivery || !attempt) return null;
       try {
-        return { kind: "send" as const, attempts, send: await this.prepare(repos, delivery) };
+        return { kind: "send" as const, attempt, send: await this.prepare(repos, delivery) };
       } catch (err) {
         // Nothing to send to (an investor without an email, an unreadable event). Returned, not
         // thrown, so the attempt this transaction started is kept and can be set aside.
         if (err instanceof DeliveryRejectedError) {
-          return { kind: "rejected" as const, error: err.message };
+          return { kind: "rejected" as const, attempt, error: describe(err) };
         }
         throw err;
       }
     });
     if (!prepared) return { outcome: "SKIPPED" };
-    if (prepared.kind === "rejected") return this.setAside(deliveryId, prepared.error);
-    const { attempts, send } = prepared;
+    const { attempt } = prepared;
+    if (prepared.kind === "rejected") return this.setAside(deliveryId, attempt, prepared.error);
 
     try {
-      await send();
+      await prepared.send();
     } catch (err) {
       const error = describe(err);
-      if (err instanceof DeliveryRejectedError || attempts >= this.deps.retry.attempts) {
-        return this.setAside(deliveryId, error);
+      if (err instanceof DeliveryRejectedError || attempt >= this.deps.retry.attempts) {
+        return this.setAside(deliveryId, attempt, error);
       }
-      const delayMs = retryDelayMs(this.deps.retry, attempts, this.deps.random);
+      const delayMs = retryDelayMs(this.deps.retry, attempt, this.deps.random);
       const nextAttemptAt = new Date(this.deps.clock.now().getTime() + delayMs);
-      await this.uow.run((repos) =>
-        repos.deliveries.markRetrying(deliveryId, error, nextAttemptAt),
+      const recorded = await this.uow.run((repos) =>
+        repos.deliveries.markRetrying(deliveryId, attempt, error, nextAttemptAt),
       );
-      return { outcome: "RETRY", delayMs, error };
+      return recorded ? { outcome: "RETRY", delayMs, error } : { outcome: "SKIPPED" };
     }
 
-    await this.uow.run((repos) => repos.deliveries.markSent(deliveryId, this.deps.clock.now()));
-    return { outcome: "SENT" };
+    const recorded = await this.uow.run((repos) =>
+      repos.deliveries.markSent(deliveryId, attempt, this.deps.clock.now()),
+    );
+    return recorded ? { outcome: "SENT" } : { outcome: "SKIPPED" };
   }
 
-  private async setAside(deliveryId: string, error: string): Promise<DispatchResult> {
-    await this.uow.run((repos) => repos.deliveries.markNeedsAttention(deliveryId, error));
-    return { outcome: "NEEDS_ATTENTION", error };
+  /**
+   * Sets the delivery aside when its job used every try without an outcome (each dispatch threw,
+   * say on a database outage), so it shows in operations' queue instead of looping unseen.
+   */
+  async giveUp(deliveryId: string, error: string): Promise<void> {
+    await this.uow.run((repos) => repos.deliveries.giveUp(deliveryId, error));
+  }
+
+  private async setAside(
+    deliveryId: string,
+    attempt: number,
+    error: string,
+  ): Promise<DispatchResult> {
+    const recorded = await this.uow.run((repos) =>
+      repos.deliveries.markNeedsAttention(deliveryId, attempt, error),
+    );
+    return recorded ? { outcome: "NEEDS_ATTENTION", error } : { outcome: "SKIPPED" };
   }
 
   private async prepare(repos: UnitOfWorkRepositories, delivery: DeliveryWithEvent): Promise<Send> {
@@ -99,7 +121,7 @@ export class DeliveryDispatcher {
     const key = delivery.id;
 
     if (delivery.target === "CRM") {
-      return this.prepareCrm(repos, event, delivery.event.occurredAt, key);
+      return this.prepareCrm(repos, event, delivery.event, key);
     }
     const contact = await repos.investors.findContact(delivery.recipientRef);
     const brand = await repos.brands.findById(this.deps.brandId);
@@ -126,7 +148,7 @@ export class DeliveryDispatcher {
   private async prepareCrm(
     repos: UnitOfWorkRepositories,
     event: OutboxEventInput,
-    occurredAt: Date,
+    { occurredAt, sequence }: { occurredAt: Date; sequence: number },
     key: string,
   ): Promise<Send> {
     if (
@@ -155,6 +177,7 @@ export class DeliveryDispatcher {
       ...crm,
       sellerContact: { fullName: seller.fullName, email: seller.email, phone: seller.phone },
       occurredAt,
+      sequence,
     };
     return async () => {
       await this.deps.crm.upsertListing(record, key);

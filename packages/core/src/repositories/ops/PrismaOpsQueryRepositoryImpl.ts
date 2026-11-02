@@ -90,6 +90,18 @@ export class PrismaOpsQueryRepositoryImpl implements IOpsQueryRepository {
     return rows.map(toOpsDelivery);
   }
 
+  async unsentCrmDeliveries(packageIds: string[]) {
+    const rows = await this.db.$queryRaw<
+      (Pick<OpsDelivery, "id" | "status"> & { packageId: string })[]
+    >`
+      SELECT DISTINCT ON (e."aggregateId") e."aggregateId" AS "packageId", d.id, d.status
+      FROM "Delivery" d JOIN "OutboxEvent" e ON e.id = d."outboxEventId"
+      WHERE e."aggregateType" = 'ListingPackage' AND e."aggregateId" = ANY(${packageIds})
+        AND d.target = 'CRM' AND d.status <> 'SENT'
+      ORDER BY e."aggregateId", d."createdAt" DESC`;
+    return new Map(rows.map(({ packageId, ...delivery }) => [packageId, delivery]));
+  }
+
   async listDeliveries(
     { status, target, packageId }: DeliveryFilter,
     limit: number,

@@ -44,7 +44,10 @@ export default defineConfig(
     files: ["**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/consistent-type-imports": ["error", { fixStyle: "inline-type-imports" }],
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       // Constitution XII: observability goes through the error translators, not console.
       "no-console": "error",
     },

@@ -22,6 +22,7 @@ export interface IImportRepository {
   ): Promise<{ batch: ImportBatch; rows: ImportRowResult[]; jobStatus: JobStatus | null } | null>;
   /** The rows already done, so a retried job skips them. */
   doneRowNumbers(batchId: string): Promise<Set<number>>;
+  /** Records the row's result; a row that already has one keeps it (a second run of the batch). */
   addRowResult(batchId: string, result: ImportRowResult): Promise<void>;
   finish(batchId: string, finish: ImportBatchFinish): Promise<void>;
 }

@@ -73,7 +73,11 @@ beforeAll(async () => {
   };
 
   const clock = { now: () => new Date() };
-  queue = new BullMqDeliveryQueueImpl({ redisUrl: redis.getConnectionUrl(), retry: RETRY });
+  queue = new BullMqDeliveryQueueImpl({
+    redisUrl: redis.getConnectionUrl(),
+    retry: RETRY,
+    reporter: { report: () => {} },
+  });
   relay = new OutboxRelay(uow, { queue, clock });
   const dispatcher = new DeliveryDispatcher(uow, {
     crm: new SandboxCrmProviderImpl(target),
@@ -82,7 +86,7 @@ beforeAll(async () => {
     retry: RETRY,
     brandId: "test",
   });
-  queue.startConsumer((id) => dispatcher.dispatch(id), { concurrency: 3, onSetAside: () => {} });
+  queue.startConsumer(dispatcher, { concurrency: 3, onSetAside: () => {} });
 
   await db.query(`
     INSERT INTO "Brand" (id, name, tokens, content, hosts, "updatedAt")

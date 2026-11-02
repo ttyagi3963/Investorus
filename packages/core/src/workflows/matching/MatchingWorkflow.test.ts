@@ -1,7 +1,9 @@
 // Guards the matching run (T292; FR-022, XII): one Match per matched investor naming every box that
 // matched, one notification per newly matched investor with no seller detail, one audited decision
-// per matched investor; a re-run adds nothing; after a material edit, matched investors hear once
-// that the listing changed and new ones that it matches; and a stale job does nothing.
+// per matched investor; a re-run adds nothing; after a material edit, an investor matched before
+// hears that it changed only if a field their boxes check changed, even when it no longer fits them,
+// and new ones hear that it matches (T366); each of them gets a decision at every new version, told
+// or not, naming the boxes that still match (T383); and a stale job does nothing.
 import type { Actor } from "@clever/contracts/auth";
 import type { BuyBox } from "@clever/contracts/buy-box";
 import type { CreateListingPackageInput } from "@clever/contracts/listing-package";
@@ -214,39 +216,119 @@ describe("MatchingWorkflow", () => {
     expect(actions(uow, "MATCH_DECISION")).toHaveLength(2);
   });
 
-  it("after a material edit, tells matched investors once that it changed and new ones that it matches", async () => {
+  it("after a material edit, tells a notified investor only when a field their boxes check changed, even if they no longer match", async () => {
     const { uow, packages, pkg, matching } = await published();
+    const run = (listingVersion: number, trigger: "PUBLISH" | "PACKAGE_EDIT") =>
+      matching.evaluatePackage({ packageId: pkg.id, round: 1, listingVersion, trigger });
+    const edit = async (priceExpectationMax: number) => {
+      const current = (await uow.repos.packages.findById(pkg.id))!;
+      const { package: edited } = await packages.update(avery, pkg.id, {
+        version: current.version,
+        priceExpectationMax,
+      });
+      await run(edited.listingVersion, "PACKAGE_EDIT");
+      await run(edited.listingVersion, "PACKAGE_EDIT");
+    };
+    const told = (from: number) =>
+      uow.repos.notifications.rows.slice(from).map((n) => [n.userId, n.type]);
+    await run(1, "PUBLISH");
+
+    // Price lowered: summit's Texas box checks price, harbor's box checks nothing, ridge now fits.
+    await edit(275_000);
+    expect(told(2)).toEqual([
+      ["user-summit", "PACKAGE_CHANGED"],
+      ["user-ridge", "PACKAGE_MATCHED"],
+    ]);
+    expect(uow.repos.matches.rows.find((m) => m.investorId === "investor-ridge")?.trigger).toBe(
+      "PACKAGE_EDIT",
+    );
+
+    // Price raised past ridge's maximum: ridge no longer matches but is told; harbor still is not.
+    await edit(290_000);
+    expect(told(4)).toEqual([
+      ["user-summit", "PACKAGE_CHANGED"],
+      ["user-ridge", "PACKAGE_CHANGED"],
+    ]);
+  });
+
+  it("records once, at each new version, which boxes still match every investor matched before, told or not (T383)", async () => {
+    const { uow, packages, pkg, matching } = await published();
+    const edit = async (priceExpectationMax: number) => {
+      const current = (await uow.repos.packages.findById(pkg.id))!;
+      const { package: edited } = await packages.update(avery, pkg.id, {
+        version: current.version,
+        priceExpectationMax,
+      });
+      for (const _rerun of [1, 2]) {
+        await matching.evaluatePackage({
+          packageId: pkg.id,
+          round: 1,
+          listingVersion: edited.listingVersion,
+          trigger: "PACKAGE_EDIT",
+        });
+      }
+    };
     await matching.evaluatePackage({
       packageId: pkg.id,
       round: 1,
       listingVersion: 1,
       trigger: "PUBLISH",
     });
-    const { package: edited } = await packages.update(avery, pkg.id, {
-      version: pkg.version,
-      priceExpectationMax: 275_000,
-    });
-    await matching.evaluatePackage({
+    await edit(275_000); // ridge's box now fits
+
+    // Past summit's Texas box and ridge's box; harbor's box checks nothing, so harbor is not told.
+    await edit(310_000);
+
+    const atVersion3 = actions(uow, "MATCH_DECISION")
+      .filter((d) => d.details?.listingVersion === 3)
+      .map((d) => [
+        d.details?.investorId,
+        (d.details?.buyBoxes as { id: string }[]).map((b) => b.id),
+      ]);
+    expect(atVersion3).toEqual([
+      ["investor-summit", ["Austin flips"]],
+      ["investor-harbor", ["Anywhere"]],
+      ["investor-ridge", []],
+    ]);
+  });
+
+  it("tells an investor matched but never told that the listing matches, when it is next evaluated (T373)", async () => {
+    const { uow, pkg, matching } = await published();
+    // A match recorded without a notice, as the deal demo's seed once wrote them.
+    await uow.repos.matches.upsert({
       packageId: pkg.id,
+      investorId: "investor-harbor",
       round: 1,
-      listingVersion: edited.listingVersion,
-      trigger: "PACKAGE_EDIT",
-    });
-    await matching.evaluatePackage({
-      packageId: pkg.id,
-      round: 1,
-      listingVersion: edited.listingVersion,
-      trigger: "PACKAGE_EDIT",
+      matchedBuyBoxIds: ["Anywhere"],
+      trigger: "PUBLISH",
     });
 
-    expect(uow.repos.notifications.rows.slice(2).map((n) => [n.userId, n.type])).toEqual([
-      ["user-summit", "PACKAGE_CHANGED"],
-      ["user-harbor", "PACKAGE_CHANGED"],
-      ["user-ridge", "PACKAGE_MATCHED"],
-    ]);
-    expect(uow.repos.matches.rows.find((m) => m.investorId === "investor-ridge")?.trigger).toBe(
-      "PACKAGE_EDIT",
-    );
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
+
+    const harbor = uow.repos.notifications.rows.filter((n) => n.userId === "user-harbor");
+    expect(harbor.map((n) => n.type)).toEqual(["PACKAGE_MATCHED"]);
+  });
+
+  it("records every matching box of an investor a saved box already matched to this version (T406)", async () => {
+    const { uow, pkg, matching } = await published();
+    // Summit saves one box before the publish's run: it matches, and summit is told at version 1.
+    await matching.evaluateBuyBox({ buyBoxId: "Austin flips", version: 3 });
+
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
+
+    const summit = uow.repos.matches.rows.find((m) => m.investorId === "investor-summit");
+    expect(summit?.matchedBuyBoxIds).toEqual(["Austin flips", "Texas rentals"]);
+    expect(uow.repos.notifications.rows.filter((n) => n.userId === "user-summit")).toHaveLength(1);
   });
 
   it("does nothing for an older listing version or a withdrawn package", async () => {

@@ -1,25 +1,33 @@
 "use client";
 // What an investor can do with their offer after it is made (T317; FR-043, FR-052, FR-054, FR-057):
-// withdraw it (after a confirmation); answer the agent's counter; keep a backup offer alive longer
+// withdraw it (after a confirmation); answer the agent's counter, seeing their own terms beside it
+// (T377); keep a backup offer alive longer
 // or withdraw it; reconfirm a promoted backup before its time runs out; and, for the winner, the
 // seller's contact card. Each is a card in the package page's side column (T331). Each action waits for the api's answer (never optimistic, XIII), then
 // refreshes the investor's packages; a refusal shows its message and request ID.
-import type { WinningInvestorPackageView } from "@clever/contracts/listing-package";
+import type {
+  InvestorPackageView,
+  WinningInvestorPackageView,
+} from "@clever/contracts/listing-package";
 import type { OfferView } from "@clever/contracts/offer";
 import { Button, Card, ConfirmDialog, FormDialog, TextField } from "@clever/ui";
 
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import { formatUsd } from "@/features/listing-package/labels";
 import { investor } from "@/lib/bff-client";
-import { toLocalInput } from "@/lib/local-time";
+import { checkLocalInput, toLocalInput } from "@/lib/local-time";
 import { useAction } from "@/lib/use-action";
+import { whenDone } from "@/lib/when-done";
 import { investorKeys } from "./queries";
 import { timeLeft, useNow } from "./time-left";
 
+const SAVE_FAILED = "That could not be saved. Try again.";
 const TERMS = "rounded-control bg-soft p-inset-md text-body";
 const lower = (code: string) => code.toLowerCase().replaceAll("_", " ");
 
-function Terms({ offer }: { offer: OfferView }) {
+type OwnTerms = NonNullable<InvestorPackageView["myOwnTerms"]>;
+
+function Terms({ offer }: { offer: OfferView | OwnTerms }) {
   return (
     <p className={TERMS}>
       {formatUsd(offer.price)}, {offer.paymentType === "CASH" ? "cash" : "financed"}, closing{" "}
@@ -32,7 +40,7 @@ function Terms({ offer }: { offer: OfferView }) {
 }
 
 export function WithdrawOfferButton({ offer }: { offer: OfferView }) {
-  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
+  const { run, isBusy, error } = useAction(SAVE_FAILED, investorKeys.all);
   return (
     <div className="flex flex-col gap-stack-sm">
       <div>
@@ -51,22 +59,38 @@ export function WithdrawOfferButton({ offer }: { offer: OfferView }) {
   );
 }
 
-export function CounterPanel({ offer }: { offer: OfferView }) {
-  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
+export function CounterPanel({ offer, ownTerms }: { offer: OfferView; ownTerms: OwnTerms | null }) {
+  const { run, isBusy, error } = useAction(SAVE_FAILED, investorKeys.all);
+  const now = useNow();
+  // Expired terms cannot come back, so then the investor accepts or revises with a new expiry.
+  const ownExpired = ownTerms !== null && Date.parse(ownTerms.expiresAt) <= now;
   const answer = (action: "ACCEPT" | "DECLINE") =>
     run(() => investor.respondToCounter(offer.id, { action, version: offer.version }));
   return (
     <Card title="The seller countered your offer">
+      <p className="text-label text-muted">The seller&apos;s terms</p>
       <Terms offer={offer} />
+      {ownTerms && (
+        <>
+          <p className="text-label text-muted">Your terms</p>
+          <Terms offer={ownTerms} />
+        </>
+      )}
       <p className="text-helper text-muted">
-        Accept these terms, keep your own, or send a revision below.
+        {ownExpired
+          ? "Your terms have expired. Accept the seller's terms, or send a revision below with a new expiry."
+          : "Accept the seller's terms, keep your own, or send a revision below."}
       </p>
       {error && <ErrorNotice error={error} />}
       <div className="flex flex-wrap gap-inline-md">
         <Button onPress={() => answer("ACCEPT")} isPending={isBusy}>
           Accept the counter
         </Button>
-        <Button variant="secondary" onPress={() => answer("DECLINE")} isDisabled={isBusy}>
+        <Button
+          variant="secondary"
+          onPress={() => answer("DECLINE")}
+          isDisabled={isBusy || ownExpired}
+        >
           Decline, keep my terms
         </Button>
       </div>
@@ -75,7 +99,7 @@ export function CounterPanel({ offer }: { offer: OfferView }) {
 }
 
 export function BackupPanel({ offer }: { offer: OfferView }) {
-  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
+  const { run, isBusy, error } = useAction(SAVE_FAILED, investorKeys.all);
   return (
     <Card title="Your offer is a backup offer">
       <p className="text-body">
@@ -92,17 +116,20 @@ export function BackupPanel({ offer }: { offer: OfferView }) {
           cancelLabel="Cancel"
           isDisabled={isBusy}
           onSubmit={(values) =>
-            run(() =>
-              investor.reviseOffer(offer.id, {
-                price: offer.price,
-                paymentType: offer.paymentType,
-                closingDate: offer.closingDate,
-                earnestMoney: offer.earnestMoney,
-                contingencies: offer.contingencies,
-                feesAndConcessions: offer.feesAndConcessions,
-                expiresAt: new Date(String(values.get("expiresAt"))).toISOString(),
-                version: offer.version,
-              }),
+            whenDone(
+              run,
+              () =>
+                investor.reviseOffer(offer.id, {
+                  price: offer.price,
+                  paymentType: offer.paymentType,
+                  closingDate: offer.closingDate,
+                  earnestMoney: offer.earnestMoney,
+                  contingencies: offer.contingencies,
+                  feesAndConcessions: offer.feesAndConcessions,
+                  expiresAt: new Date(String(values.get("expiresAt"))).toISOString(),
+                  version: offer.version,
+                }),
+              SAVE_FAILED,
             )
           }
         >
@@ -111,6 +138,7 @@ export function BackupPanel({ offer }: { offer: OfferView }) {
             name="expiresAt"
             type="datetime-local"
             label="New expiry"
+            validate={checkLocalInput}
             defaultValue={toLocalInput(
               new Date(Date.parse(offer.expiresAt) + 7 * 86_400_000).toISOString(),
             )}
@@ -124,7 +152,7 @@ export function BackupPanel({ offer }: { offer: OfferView }) {
 }
 
 export function ReconfirmPanel({ offer, reconfirmBy }: { offer: OfferView; reconfirmBy: string }) {
-  const { run, isBusy, error } = useAction("That could not be saved. Try again.", investorKeys.all);
+  const { run, isBusy, error } = useAction(SAVE_FAILED, investorKeys.all);
   const now = useNow();
   const answer = (action: "CONFIRM" | "DECLINE") =>
     run(() => investor.reconfirm(offer.id, { action }));

@@ -1,6 +1,8 @@
 // Guards the photo rules (T113): an upload is trusted only after storage confirms it, with the type
 // and size storage holds, never the browser's claim; a package cannot attach another package's
-// upload; at most 20 photos, one per position; and only the owning agent can change them.
+// upload; at most 20 photos, one per position; and only the owning agent can change them, only
+// while the package is editable, never removing a published package's last photo (T375); the
+// stored bytes must start like the image type stored (T384); and a retried remove is done (T392).
 import type { Actor } from "@clever/contracts/auth";
 import { BusinessRuleError, NotFoundError, ValidationError } from "@clever/contracts/common";
 import { describe, expect, it } from "vitest";
@@ -26,19 +28,24 @@ async function setup() {
     currentlyListed: null,
     eligiblePrograms: [],
   });
-  return { photos: new PhotoService(uow, storage), storage, packageId: pkg.id };
+  return { photos: new PhotoService(uow, storage), uow, storage, packageId: pkg.id };
 }
 
-/** Requests an upload and pretends the browser stored `stored` under the returned key. */
+/** The first bytes of every JPEG file. */
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+
+/** Requests an upload and pretends the browser stored `stored` (`bytes`) under the returned key. */
 async function upload(
   s: Awaited<ReturnType<typeof setup>>,
   stored = { contentType: "image/jpeg", sizeBytes: 2_000 },
+  bytes = JPEG,
 ) {
   const { storageKey } = await s.photos.requestUpload(avery, s.packageId, {
     contentType: "image/jpeg",
     sizeBytes: 2_000,
   });
   s.storage.objects.set(storageKey, stored);
+  s.storage.files.set(storageKey, bytes);
   return storageKey;
 }
 
@@ -74,6 +81,14 @@ describe("PhotoService", () => {
     ).rejects.toBeInstanceOf(ValidationError);
   });
 
+  it("refuses a file whose bytes are not the image type it was stored as (T384)", async () => {
+    const s = await setup();
+    const page = await upload(s, undefined, Buffer.from("<html><script>alert(1)</script>"));
+    await expect(
+      s.photos.attach(avery, s.packageId, { storageKey: page, position: 0 }),
+    ).rejects.toMatchObject({ details: { fields: [{ field: "storageKey" }] } });
+  });
+
   it("allows at most 20 photos, one per position", async () => {
     const s = await setup();
     await s.photos.attach(avery, s.packageId, { storageKey: await upload(s), position: 0 });
@@ -87,6 +102,38 @@ describe("PhotoService", () => {
     ).rejects.toBeInstanceOf(BusinessRuleError);
   });
 
+  it("keeps at least one photo on a published package (T375)", async () => {
+    const s = await setup();
+    const first = await s.photos.attach(avery, s.packageId, {
+      storageKey: await upload(s),
+      position: 0,
+    });
+    const second = await s.photos.attach(avery, s.packageId, {
+      storageKey: await upload(s),
+      position: 1,
+    });
+    s.uow.repos.packages.rows.get(s.packageId)!.status = "ACCEPTING_OFFERS";
+    await s.photos.remove(avery, s.packageId, first.id);
+    await expect(s.photos.remove(avery, s.packageId, second.id)).rejects.toMatchObject({
+      code: "PHOTO_REQUIRED",
+    });
+  });
+
+  it("refuses photo changes once the package is closed (T375)", async () => {
+    const s = await setup();
+    const key = await upload(s);
+    const photo = await s.photos.attach(avery, s.packageId, { storageKey: key, position: 0 });
+    s.uow.repos.packages.rows.get(s.packageId)!.status = "CLOSED";
+    const locked = { code: "PACKAGE_LOCKED" };
+    await expect(
+      s.photos.requestUpload(avery, s.packageId, { contentType: "image/jpeg", sizeBytes: 10 }),
+    ).rejects.toMatchObject(locked);
+    await expect(
+      s.photos.attach(avery, s.packageId, { storageKey: key, position: 1 }),
+    ).rejects.toMatchObject(locked);
+    await expect(s.photos.remove(avery, s.packageId, photo.id)).rejects.toMatchObject(locked);
+  });
+
   it("lets only the owning agent request, attach, or remove", async () => {
     const s = await setup();
     const key = await upload(s);
@@ -98,8 +145,19 @@ describe("PhotoService", () => {
       NotFoundError,
     );
     await s.photos.remove(avery, s.packageId, photo.id);
-    await expect(s.photos.remove(avery, s.packageId, photo.id)).rejects.toBeInstanceOf(
-      NotFoundError,
-    );
+  });
+
+  it("answers a retried remove as done, even of a published package's last photo (T392)", async () => {
+    const s = await setup();
+    const first = await s.photos.attach(avery, s.packageId, {
+      storageKey: await upload(s),
+      position: 0,
+    });
+    await s.photos.attach(avery, s.packageId, { storageKey: await upload(s), position: 1 });
+    s.uow.repos.packages.rows.get(s.packageId)!.status = "ACCEPTING_OFFERS";
+    await s.photos.remove(avery, s.packageId, first.id);
+    // The answer was lost and the browser asks again: the photo is gone, which is what it asked.
+    await s.photos.remove(avery, s.packageId, first.id);
+    expect(await s.uow.repos.photos.listByPackage(s.packageId)).toHaveLength(1);
   });
 });

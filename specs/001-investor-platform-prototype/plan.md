@@ -48,7 +48,7 @@ with retries, a "needs attention" list, outage simulation, and a per-package tim
 **Storage**:
 - PostgreSQL 17: system of record, durable jobs, outbox, audit, typed buy-box columns, and
   append-only buy box and listing versions.
-- Redis 7: the worker's BullMQ delivery queues (Sprint 6, T339): 64 MB, no eviction, no persistence. Idempotency keys (24 h) are stored in PostgreSQL in Sprint 2
+- Redis 7: the worker's BullMQ delivery queues (Sprint 6, T339): 64 MB, no eviction, no persistence. Idempotency keys (24 h) are stored in PostgreSQL in Sprint 2, and the worker's job loop purges older ones (T390)
   (Complexity Tracking, XX.2).
 - Object storage: the sandbox stand-in, reached through `IStorageProvider`.
 
@@ -129,7 +129,9 @@ introduce no new violations. Design checks made:
 - The design system keeps brand values in data and gives components semantic utilities only,
   which satisfies X and XVI. An automated contrast check per brand enforces XI.
 - The single-image build keeps the full constitution architecture (including Redis and the
-  separate worker) within the 2 GB limit, so no architecture simplification is needed.
+  separate worker) within the 2 GB limit, so no architecture simplification is needed. At run
+  time each Node service has a V8 heap cap set in compose.yaml from measured use (T391), because
+  Node's default heap grows with the machine and four defaults together exceed 2 GB.
 - XIX re-check after the 6.0.0 amendment: the registry is split across three files only
   because IV (Prisma only in adapters) and XXI (apps/web never imports server code) require
   it. XIX.3 accepts this, because each layer is a record over the same key list and a missing
@@ -271,7 +273,7 @@ behind an **anti-corruption layer at the perimeter** of the application:
     buy box criteria);
   - rate limits, timeouts, and HTTP errors;
   - response validation;
-  - ordering (`409 STALE`, or `lastSyncedAt` in a HubSpot adapter).
+  - ordering (`409 STALE` by event `sequence`, or `lastSyncedSequence` in a HubSpot adapter).
 - Each adapter is tested against its port contract. Lint keeps `*Impl` imports in
   `container.ts` only.
 
@@ -303,7 +305,7 @@ comparison screen. The full adapter table and migration steps are in
 | Each listing package has its own Seller row (`ListingPackage.sellerId` unique), so one homeowner's sales are not grouped | A Person or Contact record that groups a homeowner's per-listing Seller rows, so the seller dashboard can sign them in once and show every sale; the same pattern as the physical-home record for Property |
 | One login per investor (User ↔ Investor is 1:1) | Several Users per investor company, with offers and audit entries recording the acting user (for example `submittedByUserId`) |
 | No seller access; the agent presents offers | Read-only seller dashboard: a SELLER role and unique `User.sellerId`, magic-link sign-in (so `passwordHash` becomes nullable or moves to a credentials table); Seller data unchanged |
-| Email/password demo auth, 8 h JWT, no refresh, revocation, or MFA | SSO for agents and ops (Okta/Google), magic link or passkeys for investors, short-lived tokens with rotation |
+| Email/password demo auth, 8 h JWT, no refresh or MFA; each request checks in Postgres that the login is not banned, so a ban takes effect at once (T370; an inactive investor keeps access, T398) | SSO for agents and ops (Okta/Google), magic link or passkeys for investors, short-lived tokens with rotation and a revocation list |
 | Sandbox stand-ins for CRM, email/SMS, storage | HubSpot, SendGrid/Twilio, and S3 provider implementations behind the same ports (S3 storage is T274–T275, after Sprint 1) |
 | Listing photos are public: anyone with a photo's link can open it, and the link never expires (the owner's decision, 2026-11-01, T326). Import files stay private. | A private bucket served through a CDN with signed cookies, or an app address that checks access and redirects to a short-lived link, so a leaked link stops working and access can be withdrawn |
 | Brands live in the database and are chosen per request by cookie, host, or `DEFAULT_BRAND_ID`, but emails and texts always carry the default brand's name, the brand's font must be registered in the web app's code to load, and content and hosts change only through the seed files (Sprint 7, T346–T353) | Each agent and investor belongs to a brand, so messages carry that brand; brand fonts are self-hosted files stored with the brand; content, hosts, and logos are edited in the console with design review; the theme CSS is served as a cached, versioned stylesheet from a CDN |
@@ -314,9 +316,15 @@ comparison screen. The full adapter table and migration steps are in
 | Redis without persistence or HA | Managed Redis with AOF; the outbox in PostgreSQL already covers Redis loss |
 | Milestones entered manually by the agent | Title and escrow integrations as events |
 | Two brands seeded from JSON files (Clever and a fictional partner) | Brand onboarding through the ops theme API and the content/config layer, with design review |
-| The web app's Content-Security-Policy forbids framing, plugins, and outside form posts, but not inline scripts or styles (T362) | A nonce-based CSP set per request in proxy.ts (`script-src 'nonce-…' 'strict-dynamic'`), with the brand's style element carrying the nonce |
-| No rate limiting. CSRF is covered by a SameSite=Lax cookie plus an `Origin`/`Host` check on every state-changing BFF route (meets XII), but there are no synchronizer tokens. | Edge rate limits and a WAF; add double-submit CSRF tokens if the BFF is ever exposed cross-site |
+| The web app's Content-Security-Policy limits every page to this site and the photo storage, but allows inline scripts and styles (T362, T389) | A nonce-based CSP set per request in proxy.ts (`script-src 'nonce-…' 'strict-dynamic'`), with the brand's style element carrying the nonce |
+| No rate limiting. CSRF is covered by a SameSite=Lax cookie plus a full-origin check (scheme and `Host`) on every state-changing BFF route (meets XII), but there are no synchronizer tokens. | Edge rate limits and a WAF; add double-submit CSRF tokens if the BFF is ever exposed cross-site |
 | Plain HTTP (no TLS) on localhost and the Compose network (see Complexity Tracking) | TLS at the load balancer or ingress; mTLS between services |
-| No horizontal scaling tests | Multiple worker replicas are already safe (`SKIP LOCKED`, unique constraints); load test before launch |
+| No horizontal scaling tests | Multiple worker replicas are already safe (`SKIP LOCKED`, a job lease the running worker renews, unique constraints); load test before launch |
 | "Why not matched?" replays non-matches with the current evaluator and flags `replayedWithNewerRules` when the rules changed since matching ran | Keep every released `EVALUATOR_VERSION` runnable (versioned evaluator modules) so old decisions replay exactly |
-| A buy box save re-matches against every package still accepting offers in one job; the near-miss summary replays recent listings in memory on request | Incremental matching by changed criteria, and near-miss counts precomputed in a reporting table |
+| A buy box save re-matches against every package still accepting offers in one job | Incremental matching by changed criteria |
+| List routes have no cursor pagination: each returns a plain array, and the delivery list stops at the newest 200 (T386). The agent's and the investor's package lists read the properties in one query but each row's photos and match count or offer separately, as the CRM comparison does each package's deliveries | Keyset pagination as contracts/api.md describes (`?cursor=&limit=`, `{ items, nextCursor }`; open task T016), and list read models that join or batch every per-row read |
+| Not built, though the spec or the api contract names them (T386; each marked in contracts/api.md): the offer revision history route (FR-042; open task T150; revisions are stored and audited); the near-miss summary (FR-062, a SHOULD; T223); an operations editor for the fee assumptions (`/ops/config`; FR-051 is met by the `netProceeds` Config row, read on every comparison and changed in the database); the config-driven package form and its wizard (`/package-form`; T130, T134); a special-circumstances field and an offer deadline chosen at publish (FR-011; publish sets 72 hours and the agent extends it); `/listing-packages/:id/matches` (the counts are on the package view, each match in the ops trace); the job status route `/jobs/:jobId` and a 202 for a material edit (T189); and the shared Table, Tabs, Notice, EmptyState, LoadingState, and ErrorState components in packages/ui (FR-094; T087; the screens use their own) | Build each against the contract already written, with the same service-owned rules and tests |
+| The investor import writes each CSV row in its own transaction and queues one MATCH_BUY_BOX job per changed box (T395 review; safe for long files since the job keeps its lease, T378) | Chunks of 100–250 rows per transaction with a savepoint per row, so one refused row does not undo its chunk, and one re-match pass for the batch |
+| "A STATES or ZIPS buy box has at least one place" is enforced by the service and the import, not the database (T395 review) | A deferred constraint trigger on BuyBoxGeography, so a direct SQL or seed write cannot leave a box with no places |
+| Service unit tests run on in-memory repositories with no contract tests: locking, constraints, and SQL are tested on Postgres instead (T403) | A shared contract suite run against both the in-memory and the Prisma repositories, so the fake cannot drift; or, with the template database (T401), service tests straight on Postgres |
+| Each brand's token file is a complete set: Larkspur repeats about 80% of Clever's tokens (156 of 195 values identical), so a shared fix is made in every file (T408, decided by the owner 2026-11-01) | A neutral base theme defines every token (structure, spacing and type scales, component tokens, motion, default colors); each brand stores only its overrides (palette, fonts, radius, logo, copy, a few semantic mappings); the api merges base and overrides on every read and validates the merged result; the ops brand editor shows inherited versus overridden values with reset to base |

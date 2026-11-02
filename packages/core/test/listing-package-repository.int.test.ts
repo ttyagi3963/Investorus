@@ -1,7 +1,10 @@
-// Guards the two rules the listing-package queries enforce against a real Postgres: an agent can
-// only load their own package, and an edit based on a stale version is refused (T247).
+// Guards the rules the listing-package queries enforce against a real Postgres: an agent can only
+// load their own package, an edit based on a stale version is refused (T247), and for every status
+// the app's duplicate-address check agrees with the database's unique index: a closed or withdrawn
+// package frees its address, any other holds it (FR-013, T369).
 import { randomBytes } from "node:crypto";
 import { ConflictError } from "@clever/contracts/common";
+import { PACKAGE_STATUSES } from "@clever/contracts/listing-package";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPrismaClient, type PrismaClient } from "../src/infra/prisma-client.js";
@@ -54,6 +57,38 @@ afterAll(async () => {
 });
 
 describe("listing-package repository", () => {
+  it("treats an address as free exactly when the database's unique index lets a second package in", async () => {
+    // For every status: the app's duplicate check and the database must agree (FR-013, T369).
+    const appSaysFree = async () =>
+      (await uow.run((repos) => repos.packages.findByAddressHash("hash-1"))) === null;
+    const databaseAllows = async () => {
+      await db.query("BEGIN");
+      try {
+        await db.query(`
+          INSERT INTO "Seller" (id, "fullName", email, "updatedAt") VALUES ('seller-again', 'v1:x', 'v1:y', now());
+          INSERT INTO "Property" (id, "streetLine", "addressHash", zip, city, state, "propertyType", "updatedAt")
+            VALUES ('property-again', 'v1:z', 'hash-1', '78701', 'Austin', 'TX', 'SINGLE_FAMILY', now());
+          INSERT INTO "ListingPackage" (id, "agentId", "sellerId", "propertyId", "addressHash", "priceExpectationMin", "priceExpectationMax", "updatedAt")
+            VALUES ('package-again', 'agent-b', 'seller-again', 'property-again', 'hash-1', 300000, 350000, now());`);
+        return true;
+      } catch {
+        return false;
+      } finally {
+        await db.query("ROLLBACK");
+      }
+    };
+
+    for (const status of PACKAGE_STATUSES) {
+      await db.query(`UPDATE "ListingPackage" SET status = $1 WHERE id = $2`, [status, packageId]);
+      expect({ status, free: await appSaysFree() }).toEqual({
+        status,
+        free: await databaseAllows(),
+      });
+    }
+    expect(await appSaysFree()).toBe(true); // the last status, WITHDRAWN, frees the address
+    await db.query(`UPDATE "ListingPackage" SET status = 'DRAFT' WHERE id = $1`, [packageId]);
+  });
+
   it("finds a package only for the agent who owns it", async () => {
     await uow.run(async (repos) => {
       expect(await repos.packages.findForAgent("agent-a", packageId)).not.toBeNull();

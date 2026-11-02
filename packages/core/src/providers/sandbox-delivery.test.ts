@@ -15,6 +15,7 @@ const RECORD = {
   acceptedPrice: null,
   sellerContact: { fullName: "Pat Seller", email: null, phone: "+15125550199" },
   occurredAt: new Date("2026-11-04T12:00:00Z"),
+  sequence: 7,
 };
 
 const answering = (status: number, body: string) =>

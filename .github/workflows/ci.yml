@@ -41,6 +41,9 @@ jobs:
       - name: Lint (ESLint, including boundary and jsx-a11y rules)
         run: pnpm lint
 
+      - name: Formatting (Prettier)
+        run: pnpm format:check
+
       - name: Typecheck
         run: pnpm typecheck
 

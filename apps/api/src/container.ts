@@ -1,7 +1,7 @@
 // The api's composition root (T255, constitution I): the one place adapters are built and wired.
 // Everything is created once from validated settings; `dispose` closes the database pool on
-// shutdown. Swapping a vendor is a change here and nowhere else: the database is one line (any
-// IDatabase, T276), and STORAGE_PROVIDER picks the sandbox or S3 behind the storage port (T275).
+// shutdown. Swapping an adapter is a change here and nowhere else: the database layer is one line
+// (any IDatabase over PostgreSQL, T276), and STORAGE_PROVIDER picks the sandbox or S3 (T275).
 import {
   AuthService,
   BuyBoxService,
@@ -57,6 +57,7 @@ import {
   toAgentPackageView,
   type AgentPackageParts,
   type AgentPackageSummary,
+  type AgentPackageSummaryParts,
   type AgentPackageView,
 } from "@clever/contracts/listing-package";
 import type { Logger } from "pino";
@@ -86,7 +87,7 @@ export type AppContainer = Readonly<{
   /** A package's view, with each photo's public address. */
   presentPackage: (parts: AgentPackageParts) => AgentPackageView;
   /** A package's list row, with its first photo's public address. */
-  presentSummary: (parts: AgentPackageParts) => AgentPackageSummary;
+  presentSummary: (parts: AgentPackageSummaryParts) => AgentPackageSummary;
   /** Each photo with its public address. */
   addPhotoUrls: AddPhotoUrls;
   checkDatabase: () => Promise<void>;
@@ -145,7 +146,7 @@ export function createContainer(env: ApiEnv): AppContainer {
     decisions: new DecisionWorkflow(uow, { clock }),
     deals: new DealLifecycleWorkflow(uow, { clock }),
     notifications: new NotificationService(uow, { clock }),
-    buyBoxes: new BuyBoxService(uow, { geo }),
+    buyBoxes: new BuyBoxService(uow, { geo, clock }),
     investorImports: new InvestorImportWorkflow(uow, { storage, geo, clock }),
     digests: new MatchDigestWorkflow(uow, { clock }),
     brands: new BrandService(uow),

@@ -1,7 +1,9 @@
 // Guards the draft package rules (T258): an unknown ZIP or future year is refused on its field, city and state
-// come from the ZIP, one package per address across all agents (FR-013), an agent only reaches their
-// own packages (FR-080), a stale edit is refused, an edit is checked on the merged result, and each
-// change is audited without seller PII (T282, XII).
+// come from the ZIP, one active package per address across all agents, a closed or withdrawn one
+// freeing it (FR-013, T369), an agent only reaches their own packages while operations read any,
+// each read of the seller audited (FR-080, T386), a stale edit is refused, an edit is checked on
+// the merged result, and each change is audited without seller PII (T282, XII). Edits stop once an offer is accepted, and an
+// edit cannot leave a published package unpublishable (T375).
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -101,6 +103,23 @@ describe("ListingPackageService", () => {
     await expect(moved).rejects.toMatchObject({ code: "DUPLICATE_ACTIVE_LISTING" });
   });
 
+  it("frees an address once its package is closed or withdrawn (T369)", async () => {
+    const uow = new InMemoryUnitOfWork();
+    const s = service(uow);
+    for (const status of ["CLOSED", "WITHDRAWN"] as const) {
+      const ended = await s.create(avery, draft);
+      uow.repos.packages.rows.get(ended.package.id)!.status = status;
+      await expect(s.create(blake, draft)).resolves.toMatchObject({
+        package: { status: "DRAFT" },
+      });
+      await expect(s.create(avery, draft)).rejects.toMatchObject({
+        code: "DUPLICATE_ACTIVE_LISTING",
+      });
+      // The new package is active; end it too, so the next status starts from a free address.
+      for (const row of uow.repos.packages.rows.values()) row.status = "WITHDRAWN";
+    }
+  });
+
   it("keeps an agent out of another agent's packages, and other roles out of drafts", async () => {
     const s = service();
     const { package: pkg } = await s.create(avery, draft);
@@ -111,6 +130,24 @@ describe("ListingPackageService", () => {
     ).rejects.toBeInstanceOf(NotFoundError);
     const ops: Actor = { userId: "user-o", role: "OPS", agentId: null };
     await expect(s.create(ops, draft)).rejects.toMatchObject({ status: 403 });
+    await expect(
+      s.update(ops, pkg.id, { version: 1, priceExpectationMax: 1 }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("lets operations read any package, auditing each read of the seller (FR-080, XII)", async () => {
+    const uow = new InMemoryUnitOfWork();
+    const s = service(uow);
+    const { package: pkg } = await s.create(avery, draft);
+    const ops: Actor = { userId: "user-o", role: "OPS", agentId: null };
+
+    expect((await s.get(ops, pkg.id)).seller.fullName).toBe("Maria Lopez");
+    expect(uow.repos.audit.entries.at(-1)).toMatchObject({
+      actorId: "user-o",
+      action: "PII_ACCESSED",
+      entityType: "ListingPackage",
+      entityId: pkg.id,
+    });
   });
 
   it("refuses an edit based on a stale version", async () => {
@@ -132,6 +169,30 @@ describe("ListingPackageService", () => {
     expect(fields(await edit({ property: { units: 4 } }))).toEqual(["property.units"]);
     expect(fields(await edit({ priceExpectationMin: 400_000 }))).toEqual(["priceExpectationMax"]);
     expect(fields(await edit({ seller: { phone: null } }))).toEqual(["seller.email"]);
+  });
+
+  it("refuses an edit once an offer is accepted, the deal fell through, or the package ended (T375)", async () => {
+    const { uow, packages, publish } = world();
+    const pkg = await publish();
+    for (const status of ["UNDER_CONTRACT", "FELL_THROUGH", "CLOSED", "WITHDRAWN"] as const) {
+      uow.repos.packages.rows.get(pkg.id)!.status = status;
+      await expect(
+        packages.update(avery, pkg.id, { version: pkg.version, priceExpectationMax: 290_000 }),
+      ).rejects.toMatchObject({ code: "PACKAGE_LOCKED" });
+    }
+  });
+
+  it("refuses an edit that would leave a published package unpublishable, naming each field (T375)", async () => {
+    const { packages, publish } = world();
+    const pkg = await publish();
+    const err = await packages
+      .update(avery, pkg.id, {
+        version: pkg.version,
+        eligiblePrograms: [],
+        property: { beds: null },
+      })
+      .catch((e: unknown) => e);
+    expect(fields(err)).toEqual(["eligiblePrograms", "property.beds"]);
   });
 
   it("audits a create and an edit as the acting user, naming changed fields but never their values", async () => {

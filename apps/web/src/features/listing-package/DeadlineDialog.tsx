@@ -1,8 +1,9 @@
 "use client";
 // Asks for a new offer deadline (T316): extending the round, reopening it, or reopening after a
 // deal fell through. The field starts three days out; the api checks it is ahead and within 30 days.
+// Given a promise, the dialog stays open until it settles, so a refusal keeps the date (T385).
 import { FormDialog, TextField } from "@clever/ui";
-import { toLocalInput } from "@/lib/local-time";
+import { checkLocalInput, toLocalInput } from "@/lib/local-time";
 
 export function DeadlineDialog({
   label,
@@ -15,7 +16,7 @@ export function DeadlineDialog({
   label: string;
   title: string;
   note: string;
-  onSubmit: (offerDeadline: string) => void;
+  onSubmit: (offerDeadline: string) => void | Promise<unknown>;
   isDisabled: boolean;
   triggerVariant?: "primary" | "secondary";
 }) {
@@ -34,6 +35,7 @@ export function DeadlineDialog({
         name="offerDeadline"
         type="datetime-local"
         label="New offer deadline"
+        validate={checkLocalInput}
         defaultValue={toLocalInput(new Date(Date.now() + 72 * 3_600_000).toISOString())}
         isRequired
       />

@@ -1,9 +1,11 @@
 // @vitest-environment node
-// Guards the BFF's rules (T262, research R12): a state-changing request from another origin is
-// refused before it reaches the api (CSRF); the session token travels only in an HTTP-only cookie
-// and is forwarded as a bearer token; the api's answer comes back unchanged; and every call to the
+// Guards the BFF's rules (T262, research R12): a state-changing request from another origin, by
+// scheme or host (T389), is refused before it reaches the api (CSRF); the session token travels
+// only in an HTTP-only cookie and is forwarded as a bearer token; the api's answer comes back unchanged; and every call to the
 // api carries one trace ID, the caller's when its `traceparent` is valid (T283), and the caller's
-// Idempotency-Key (T285).
+// Idempotency-Key (T285), and the api's retry and replay headers come back (T381). The cookie is
+// Secure when the browser came over HTTPS (T372). The proxy never forwards to the api's sign-in,
+// whose answer carries the raw token, nor a dot segment that would leave /api/v1 (T374).
 import { describe, expect, it, vi } from "vitest";
 import { forwardToApi } from "./proxy";
 import { signIn, signOut } from "./session";
@@ -46,6 +48,25 @@ describe("forwardToApi", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("compares the whole origin: plain HTTP is refused for a site reached over HTTPS (T389)", async () => {
+    const fetch = vi.fn().mockImplementation(async () => json({}));
+    const post = (headers: Record<string, string>) =>
+      forwardToApi(
+        fromSite("/bff/listing-packages", { method: "POST", headers }),
+        ["listing-packages"],
+        { apiUrl: API, fetch },
+      );
+
+    const behindTls = { Host: "app.example", "X-Forwarded-Proto": "https" };
+    expect((await post({ ...behindTls, Origin: "http://app.example" })).status).toBe(403);
+    expect(fetch).not.toHaveBeenCalled();
+    expect((await post({ ...behindTls, Origin: "https://app.example" })).status).toBe(200);
+    // The partner brand's host and the plain-HTTP demo (T372) still pass.
+    const partner = { Host: "partner.localhost:3000", Origin: "http://partner.localhost:3000" };
+    expect((await post(partner)).status).toBe(200);
+    expect((await post({})).status).toBe(200);
+  });
+
   it("forwards a GET with the cookie's token as a bearer token, and returns the api's answer unchanged", async () => {
     const fetch = vi
       .fn()
@@ -65,6 +86,23 @@ describe("forwardToApi", () => {
   });
 });
 
+describe("forwardToApi's boundary", () => {
+  it("refuses the api's sign-in and a dot segment with 404, without calling the api", async () => {
+    const fetch = vi.fn();
+    // Express routes case-insensitively, so SESSIONS would reach sign-in too.
+    for (const path of [["sessions"], ["SESSIONS"], ["..", "health"], ["listing-packages", "."]]) {
+      const res = await forwardToApi(
+        fromSite(`/bff/${path.join("/")}`, { method: "POST", body: "{}" }),
+        path,
+        { apiUrl: API, fetch },
+      );
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: "Not found", code: "NOT_FOUND" });
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("forwarding", () => {
   it("passes the caller's Idempotency-Key to the api", async () => {
     const fetch = vi.fn().mockResolvedValue(json({ id: "p1" }, 201));
@@ -79,6 +117,26 @@ describe("forwarding", () => {
     );
     const [, init] = fetch.mock.calls[0] as [string, RequestInit];
     expect(new Headers(init.headers).get("Idempotency-Key")).toBe("action-1");
+  });
+
+  it("passes back the api's Retry-After and Idempotent-Replay headers", async () => {
+    const answers = [
+      new Response("{}", { status: 409, headers: { "Retry-After": "1" } }),
+      new Response("{}", { status: 201, headers: { "Idempotent-Replay": "true" } }),
+    ];
+    const fetch = vi.fn(async () => answers.shift()!);
+    const send = () =>
+      forwardToApi(
+        fromSite("/bff/listing-packages", {
+          method: "POST",
+          headers: { "Idempotency-Key": "action-1" },
+        }),
+        ["listing-packages"],
+        { apiUrl: API, fetch },
+      );
+
+    expect((await send()).headers.get("Retry-After")).toBe("1");
+    expect((await send()).headers.get("Idempotent-Replay")).toBe("true");
   });
 });
 
@@ -122,7 +180,7 @@ describe("session", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: "avery@example.com", password: "demo1234" }),
       }),
-      { apiUrl: API, secureCookie: true, fetch },
+      { apiUrl: API, cookieSecure: "true", fetch },
     );
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ user });
@@ -133,12 +191,34 @@ describe("session", () => {
     expect(cookie).toMatch(/Secure/);
   });
 
+  it("in auto, marks the cookie Secure only when the browser came over HTTPS", async () => {
+    const user = { id: "u1", email: "avery@example.com", role: "AGENT", displayName: "Avery" };
+    const fetch = vi.fn().mockImplementation(async () => json({ token: "tok123", user }, 201));
+    const cookieFor = async (request: Request) =>
+      (await signIn(request, { apiUrl: API, cookieSecure: "auto", fetch })).headers.get(
+        "Set-Cookie",
+      ) ?? "";
+    const post = { method: "POST", body: "{}" };
+
+    expect(await cookieFor(fromSite("/bff/session", post))).not.toMatch(/Secure/);
+    const behindTls = fromSite("/bff/session", {
+      ...post,
+      headers: { "X-Forwarded-Proto": "https", Origin: "https://localhost:3000" },
+    });
+    expect(await cookieFor(behindTls)).toMatch(/Secure/);
+    const https = new Request("https://app.example/bff/session", {
+      ...post,
+      headers: { Host: "app.example", Origin: "https://app.example" },
+    });
+    expect(await cookieFor(https)).toMatch(/Secure/);
+  });
+
   it("sets no cookie when the api refuses the sign-in, and passes its answer back unchanged", async () => {
     const refusal = { error: "Invalid email or password", code: "VALIDATION_FAILED" };
     const fetch = vi.fn().mockResolvedValue(json(refusal, 400));
     const res = await signIn(fromSite("/bff/session", { method: "POST", body: "{}" }), {
       apiUrl: API,
-      secureCookie: true,
+      cookieSecure: "true",
       fetch,
     });
     expect(res.status).toBe(400);
@@ -147,7 +227,7 @@ describe("session", () => {
   });
 
   it("clears the cookie on sign out, and refuses a sign-in from another origin", async () => {
-    const out = await signOut(fromSite("/bff/session", { method: "DELETE" }));
+    const out = await signOut(fromSite("/bff/session", { method: "DELETE" }), "true");
     expect(out.headers.get("Set-Cookie")).toMatch(/^session=; .*Max-Age=0/);
     const fetch = vi.fn();
     const evil = await signIn(
@@ -156,7 +236,7 @@ describe("session", () => {
         headers: { Origin: "https://evil.example" },
         body: "{}",
       }),
-      { apiUrl: API, secureCookie: true, fetch },
+      { apiUrl: API, cookieSecure: "true", fetch },
     );
     expect(evil.status).toBe(403);
     expect(fetch).not.toHaveBeenCalled();

@@ -8,13 +8,18 @@ export type CrmListingRecord = {
   offerCount: number;
   acceptedPrice: number | null;
   sellerContact: { fullName: string; email: string | null; phone: string | null };
-  /** The change's time: the CRM keeps the newest, so a late retry never overwrites it. */
+  /** When the change began. */
   occurredAt: Date;
+  /**
+   * The change's place in the platform's order of changes (T380): the CRM keeps the highest, so a
+   * late retry or an out-of-order delivery never overwrites a newer state.
+   */
+  sequence: number;
 };
 
 export interface ICrmProvider {
   /**
-   * APPLIED, or STALE when the CRM already holds a newer update. Throws InfrastructureError when
+   * APPLIED, or STALE when the CRM already holds a later-numbered update. Throws InfrastructureError when
    * the CRM is unavailable (retried) and DeliveryRejectedError when it refuses the update.
    */
   upsertListing(record: CrmListingRecord, idempotencyKey: string): Promise<"APPLIED" | "STALE">;

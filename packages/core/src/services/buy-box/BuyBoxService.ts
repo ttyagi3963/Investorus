@@ -1,8 +1,9 @@
 // An investor's own buy boxes (T321; FR-060, FR-023, XIX.3): they list, read, create, and save
 // them, and pause or resume one by saving its status. Input is checked with the registry's schema,
-// and every ZIP code with the ZIP lookup. A save names the version it read, keeps the new version
-// as a snapshot, is audited, and, when the box can match and its criteria or status changed,
-// queues MATCH_BUY_BOX in the same change, so packages still taking offers are matched against it.
+// every ZIP code with the ZIP lookup, and year built by the clock. A save names the version it
+// read, keeps the new version as a snapshot, is audited, and, when the box can match and its
+// criteria or status changed, queues MATCH_BUY_BOX in the same change, so packages still taking
+// offers are matched against it.
 import type { Actor } from "@clever/contracts/auth";
 import {
   buyBoxInputSchema,
@@ -10,9 +11,11 @@ import {
   type BuyBox,
   type BuyBoxInput,
 } from "@clever/contracts/buy-box";
-import { ForbiddenError, NotFoundError } from "@clever/contracts/common";
+import { NotFoundError, ValidationError, type FieldError } from "@clever/contracts/common";
+import type { IClock } from "../../providers/clock/IClock.js";
 import type { IGeoProvider } from "../../providers/geo/IGeoProvider.js";
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
+import { investorOf } from "../actor-guards.js";
 import { checkZips } from "./check-zips.js";
 import { keepVersionAndMatch, matchingTermsOf } from "./keep-version.js";
 
@@ -25,29 +28,26 @@ export interface IBuyBoxService {
 
 const NOT_FOUND = "Buy box not found";
 
-function investorOf(actor: Actor): string {
-  if (actor.role !== "INVESTOR") throw new ForbiddenError("Only investors manage buy boxes");
-  return actor.investorId;
-}
+const INVESTORS_ONLY = "Only investors manage buy boxes";
 
 export class BuyBoxService implements IBuyBoxService {
   constructor(
     private readonly uow: IUnitOfWork,
-    private readonly deps: { geo: IGeoProvider },
+    private readonly deps: { geo: IGeoProvider; clock: IClock },
   ) {}
 
   async list(actor: Actor): Promise<BuyBox[]> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     return this.uow.run((repos) => repos.buyBoxes.listForInvestor(investorId));
   }
 
   async get(actor: Actor, id: string): Promise<BuyBox> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     return this.uow.run((repos) => this.own(repos, investorId, id));
   }
 
   async create(actor: Actor, input: unknown): Promise<BuyBox> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const box = this.check(buyBoxInputSchema.parse(input));
     return this.uow.run(async (repos) => {
       const created = await repos.buyBoxes.create(investorId, box);
@@ -57,7 +57,7 @@ export class BuyBoxService implements IBuyBoxService {
   }
 
   async update(actor: Actor, id: string, input: unknown): Promise<BuyBox> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const { version, ...box } = updateBuyBoxInputSchema.parse(input);
     this.check(box);
     return this.uow.run(async (repos) => {
@@ -70,6 +70,12 @@ export class BuyBoxService implements IBuyBoxService {
 
   private check(box: BuyBoxInput): BuyBoxInput {
     checkZips(box, this.deps.geo);
+    // Up to next year by the clock: a home can be sold before it is finished (T387).
+    const latest = this.deps.clock.now().getUTCFullYear() + 1;
+    const errors: FieldError[] = (["yearBuiltMin", "yearBuiltMax"] as const)
+      .filter((field) => (box[field] ?? 0) > latest)
+      .map((field) => ({ field, message: "Must not be after next year" }));
+    if (errors.length > 0) throw new ValidationError("Some fields are invalid", errors);
     return box;
   }
 

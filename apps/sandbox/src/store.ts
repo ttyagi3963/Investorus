@@ -1,6 +1,6 @@
 // The sandbox's own tables, in the `sandbox` schema of the platform's database (T338): the CRM's
-// listing records, captured email and SMS, answers stored per Idempotency-Key, and the outage mode
-// per service. It is a stand-in, so the tables are created at startup instead of by migrations.
+// listing records, captured email and SMS, answers stored per route and Idempotency-Key, and the
+// outage mode per service. It is a stand-in, so the tables are created at startup, not migrated.
 import type pg from "pg";
 
 export const SERVICES = ["crm", "messaging", "storage"] as const;
@@ -20,6 +20,8 @@ export type CrmUpdate = {
   acceptedPrice: number | null;
   sellerContact: SellerContact;
   occurredAt: string;
+  /** The platform's number for the change: the record keeps the highest (T380). */
+  sequence: number;
 };
 export type CrmListing = Omit<CrmUpdate, "occurredAt"> & {
   packageId: string;
@@ -47,6 +49,8 @@ CREATE TABLE IF NOT EXISTS sandbox.crm_listings (
   occurred_at    timestamptz NOT NULL,
   updated_at     timestamptz NOT NULL DEFAULT now()
 );
+-- Added by T380; a database started before it gets the column here, and its records count as 0.
+ALTER TABLE sandbox.crm_listings ADD COLUMN IF NOT EXISTS sequence bigint NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS sandbox.messages (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   channel     text NOT NULL CHECK (channel IN ('email', 'sms')),
@@ -57,12 +61,26 @@ CREATE TABLE IF NOT EXISTS sandbox.messages (
 );
 CREATE INDEX IF NOT EXISTS messages_received_at_idx ON sandbox.messages (received_at DESC);
 CREATE TABLE IF NOT EXISTS sandbox.idempotency_keys (
-  key           text PRIMARY KEY,
+  key           text NOT NULL,
   route         text NOT NULL,
   status_code   integer NOT NULL,
   response_body jsonb NOT NULL,
-  created_at    timestamptz NOT NULL DEFAULT now()
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT idempotency_keys_route_key_pkey PRIMARY KEY (route, key)
 );
+-- T392: a key is kept per route. A table from before it, keyed by the key alone, is rekeyed here.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'idempotency_keys_pkey'
+      AND conrelid = 'sandbox.idempotency_keys'::regclass
+  ) THEN
+    ALTER TABLE sandbox.idempotency_keys
+      DROP CONSTRAINT idempotency_keys_pkey,
+      ADD CONSTRAINT idempotency_keys_route_key_pkey PRIMARY KEY (route, key);
+  END IF;
+END $$;
 CREATE TABLE IF NOT EXISTS sandbox.simulation_modes (
   service    text PRIMARY KEY CHECK (service IN ('crm', 'messaging', 'storage')),
   mode       text NOT NULL CHECK (mode IN ('up', 'down', 'slow', 'garbage')),
@@ -77,8 +95,9 @@ export type SandboxStore = ReturnType<typeof createStore>;
 
 export function createStore(pool: pg.Pool) {
   /**
-   * Runs `apply` at most once per key: in one transaction it takes a lock on the key, replays the
-   * stored answer if there is one, and otherwise applies the change and stores its answer with it.
+   * Runs `apply` at most once per key and route: in one transaction it takes a lock on the key,
+   * replays the answer stored for this route if there is one, and otherwise applies the change and
+   * stores its answer with it. The same key on another route is another request (T392).
    */
   async function once(
     key: string,
@@ -90,8 +109,9 @@ export function createStore(pool: pg.Pool) {
       await tx.query("BEGIN");
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [key]);
       const stored = await tx.query<{ status_code: number; response_body: unknown }>(
-        "SELECT status_code, response_body FROM sandbox.idempotency_keys WHERE key = $1",
-        [key],
+        `SELECT status_code, response_body FROM sandbox.idempotency_keys
+         WHERE route = $1 AND key = $2`,
+        [route, key],
       );
       const found = stored.rows[0];
       if (found) {
@@ -120,13 +140,13 @@ export function createStore(pool: pg.Pool) {
       await pool.query(SCHEMA_SQL);
     },
 
-    /** Upserts the record unless the stored one occurred later (409 STALE); once per key. */
+    /** Upserts the record unless the stored one is numbered the same or higher (409 STALE); once per key. */
     applyCrmUpdate(key: string, packageId: string, update: CrmUpdate): Promise<StoredAnswer> {
       return once(key, `PUT /crm/listings/${packageId}`, async (tx) => {
         const applied = await tx.query(
           `INSERT INTO sandbox.crm_listings
-             (package_id, status, round, offer_count, accepted_price, seller_contact, occurred_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+             (package_id, status, round, offer_count, accepted_price, seller_contact, occurred_at, sequence)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (package_id) DO UPDATE SET
              status = EXCLUDED.status,
              round = EXCLUDED.round,
@@ -134,8 +154,9 @@ export function createStore(pool: pg.Pool) {
              accepted_price = EXCLUDED.accepted_price,
              seller_contact = EXCLUDED.seller_contact,
              occurred_at = EXCLUDED.occurred_at,
+             sequence = EXCLUDED.sequence,
              updated_at = now()
-           WHERE sandbox.crm_listings.occurred_at <= EXCLUDED.occurred_at`,
+           WHERE sandbox.crm_listings.sequence < EXCLUDED.sequence`,
           [
             packageId,
             update.status,
@@ -144,6 +165,7 @@ export function createStore(pool: pg.Pool) {
             update.acceptedPrice,
             JSON.stringify(update.sellerContact),
             update.occurredAt,
+            update.sequence,
           ],
         );
         return applied.rowCount === 1
@@ -161,6 +183,7 @@ export function createStore(pool: pg.Pool) {
         accepted_price: number | null;
         seller_contact: SellerContact;
         occurred_at: Date;
+        sequence: string;
         updated_at: Date;
       }>("SELECT * FROM sandbox.crm_listings ORDER BY updated_at DESC, package_id");
       return rows.map((r) => ({
@@ -171,6 +194,7 @@ export function createStore(pool: pg.Pool) {
         acceptedPrice: r.accepted_price,
         sellerContact: r.seller_contact,
         occurredAt: r.occurred_at,
+        sequence: Number(r.sequence),
         updatedAt: r.updated_at,
       }));
     },

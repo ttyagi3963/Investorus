@@ -12,8 +12,10 @@ import { NotFoundError } from "@clever/contracts/common";
 import type { ICrmMirrorReader } from "../../providers/crm/ICrmMirrorReader.js";
 import type { ISimulationControlProvider } from "../../providers/simulation/ISimulationControlProvider.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
-import { assertOps } from "./assert-ops.js";
+import { assertOps } from "../actor-guards.js";
 import { auditAddressRead } from "./audit-address-read.js";
+
+const OPS_ONLY = "Only operations can use the console";
 
 export interface IOutsideServicesService {
   crmComparison(actor: Actor): Promise<CrmComparisonRow[]>;
@@ -28,26 +30,23 @@ export class OutsideServicesService implements IOutsideServicesService {
   ) {}
 
   async crmComparison(actor: Actor): Promise<CrmComparisonRow[]> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const crm = new Map((await this.deps.crm.listListings()).map((r) => [r.packageId, r]));
     return this.uow.run(async (repos) => {
-      const rows: CrmComparisonRow[] = [];
-      for (const pkg of await repos.opsQuery.listPackages()) {
-        // A draft has never been published, so the CRM has no copy to compare.
-        if (pkg.status === "DRAFT") continue;
+      // A draft has never been published, so the CRM has no copy to compare.
+      const published = (await repos.opsQuery.listPackages()).filter((p) => p.status !== "DRAFT");
+      const unsent = await repos.opsQuery.unsentCrmDeliveries(published.map((pkg) => pkg.id));
+      const rows: CrmComparisonRow[] = published.map((pkg) => {
         const record = crm.get(pkg.id);
-        const unsent = (await repos.opsQuery.deliveriesForPackage(pkg.id)).findLast(
-          (d) => d.target === "CRM" && d.status !== "SENT",
-        );
-        rows.push({
+        return {
           packageId: pkg.id,
           streetLine: pkg.streetLine,
           platformStatus: pkg.status,
           crmStatus: record?.status ?? null,
           inSync: record?.status === pkg.status,
-          pendingDelivery: unsent ? { id: unsent.id, status: unsent.status } : null,
-        });
-      }
+          pendingDelivery: unsent.get(pkg.id) ?? null,
+        };
+      });
       await auditAddressRead(
         repos,
         actor,
@@ -59,18 +58,23 @@ export class OutsideServicesService implements IOutsideServicesService {
   }
 
   async simulations(actor: Actor): Promise<SimulationModes> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     return this.deps.simulation.get();
   }
 
   async setSimulation(actor: Actor, service: string, input: unknown): Promise<SimulationModes> {
-    assertOps(actor);
+    assertOps(actor, OPS_ONLY);
     const known = SIMULATION_SERVICES.find((s) => s === service);
     if (!known) throw new NotFoundError("No such outside service");
     const { mode } = simulationInputSchema.parse(input);
-    // The audit entry commits only if the sandbox took the change, so no switch goes unrecorded.
-    return this.uow.run(async (repos) => {
-      await repos.audit.append({
+    // The sandbox switches first, outside any transaction (T381), so no transaction waits on an
+    // outside call and a refused switch is never audited. If the audit then fails to commit, the
+    // answer is a 5xx, which frees the idempotency key: a retry sets the same mode again and
+    // records it. Auditing first was rejected: that commit would mark the key applied, so a switch
+    // the sandbox then refused could not be retried under its key.
+    const modes = await this.deps.simulation.set(known, mode);
+    await this.uow.run((repos) =>
+      repos.audit.append({
         actorType: "USER",
         actorId: actor.userId,
         action: "SIMULATION_CHANGED",
@@ -78,8 +82,8 @@ export class OutsideServicesService implements IOutsideServicesService {
         entityId: known,
         outcome: "SUCCESS",
         details: { mode },
-      });
-      return this.deps.simulation.set(known, mode);
-    });
+      }),
+    );
+    return modes;
   }
 }

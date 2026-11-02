@@ -1,6 +1,7 @@
 // Guards the sandbox stand-ins against a real Postgres (T338): the CRM applies a keyed update once
-// and refuses an older one, a repeated message key stores one message, writes need the shared
-// token, outage modes are per service, and the inspection page escapes what it shows.
+// and refuses one numbered below the stored one (T380), a repeated message key stores one message, writes need the shared
+// token, a key replays only on its own route (T392), outage modes are per service, and the
+// inspection page escapes what it shows.
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,7 +29,7 @@ beforeAll(async () => {
     storageDir: mkdtempSync(join(tmpdir(), "sandbox-int-")),
     signingKey: "test-signing-key",
     internalToken: TOKEN,
-    webOrigin: "http://localhost:3000",
+    webOrigins: ["http://localhost:3000"],
     now: () => new Date(),
     store,
     slowDelayMs: SLOW_MS,
@@ -47,6 +48,7 @@ const crmUpdate = (overrides: Record<string, unknown> = {}) => ({
   acceptedPrice: null,
   sellerContact: { fullName: "Sam Seller", email: "sam@example.com", phone: null },
   occurredAt: "2026-11-01T10:00:00.000Z",
+  sequence: 2,
   ...overrides,
 });
 
@@ -91,9 +93,15 @@ describe("sandbox CRM", () => {
     expect((await crmRecord("pkg-once"))?.status).toBe("ACCEPTING_OFFERS");
   });
 
-  it("refuses an update older than the stored one with 409 STALE and keeps the newer record", async () => {
+  it("refuses an update numbered below the stored one with 409 STALE, whatever its time, and keeps the newer record", async () => {
     await putCrm("pkg-stale", "delivery-2", crmUpdate({ status: "UNDER_CONTRACT" })).expect(200);
-    const older = crmUpdate({ status: "ACCEPTING_OFFERS", occurredAt: "2026-11-01T09:00:00.000Z" });
+    // A change that waited for the package's lock began earlier but committed later (T380): the
+    // number, not the time, says which is newer, and an equal time is no tie.
+    const older = crmUpdate({
+      status: "ACCEPTING_OFFERS",
+      sequence: 1,
+      occurredAt: "2026-11-01T11:00:00.000Z",
+    });
     await putCrm("pkg-stale", "delivery-3", older).expect(409, { code: "STALE" });
     await putCrm("pkg-stale", "delivery-3", older).expect(409, { code: "STALE" });
     expect((await crmRecord("pkg-stale"))?.status).toBe("UNDER_CONTRACT");
@@ -125,6 +133,12 @@ describe("sandbox messaging", () => {
     const second = await sendSms("delivery-6").expect(201);
     expect(second.body).toEqual(first.body);
     expect(await count()).toBe(before + 1);
+  });
+
+  it("keeps a key's answer to its route: the same key on another route is applied (T392)", async () => {
+    await sendSms("delivery-shared").expect(201);
+    await putCrm("pkg-shared", "delivery-shared", crmUpdate()).expect(200, { result: "APPLIED" });
+    expect((await crmRecord("pkg-shared"))?.status).toBe("ACCEPTING_OFFERS");
   });
 });
 

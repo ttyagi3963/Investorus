@@ -1,9 +1,11 @@
 // The storage port (T250, T275, T326, contracts/providers.md): signed links the browser uploads to
 // directly (the api never proxies file bytes, constitution XIV), a photo's permanent public address,
 // and `stat` so the api can check an upload before trusting it. Signing is async because S3 resolves
-// its credentials. `read` is for the worker, which processes an uploaded file (the investor import).
+// its credentials. `read` is for the worker, which processes an uploaded file (the investor import);
+// `readHead` lets the api check a photo's first bytes (T384).
 import type { UploadInstruction } from "@clever/contracts/photo";
 
+/** `contentType` is the media type alone, without parameters such as charset (T397). */
 export type StoredObject = { contentType: string; sizeBytes: number };
 
 export interface IStorageProvider {
@@ -13,6 +15,11 @@ export interface IStorageProvider {
   getPublicUrl(key: string): string;
   /** The stored object's type and size, or null if nothing was uploaded under `key`. */
   stat(key: string): Promise<StoredObject | null>;
-  /** The stored bytes of `key`, or null if nothing was uploaded under it. */
-  read(key: string): Promise<Buffer | null>;
+  /**
+   * The stored bytes of `key`, or null if nothing was uploaded under it. An object larger than
+   * `maxBytes` is refused (InfrastructureError) without being read whole.
+   */
+  read(key: string, maxBytes: number): Promise<Buffer | null>;
+  /** The first `bytes` bytes of `key` (fewer if it is shorter), or null if nothing is there. */
+  readHead(key: string, bytes: number): Promise<Buffer | null>;
 }

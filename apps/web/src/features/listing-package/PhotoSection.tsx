@@ -1,20 +1,25 @@
 "use client";
 // The photo card of a saved package (T270, T330): the photos in order as a grid of tiles, each with
 // a remove button, and a picker to add more. Photos are optional on a draft, so this appears only
-// after the first save; publishing needs one, and a publish blocker links here (#photos).
+// after the first save; publishing needs one, and a publish blocker links here (#photos). Once the
+// package's details are fixed (T375), the photos show without the remove buttons and the picker.
 import { PHOTO_CONTENT_TYPES } from "@clever/contracts/photo";
 import type { AgentPackageView } from "@clever/contracts/listing-package";
 import { Button, Card, FilePicker, Thumbnail } from "@clever/ui";
 import { usePhotoUpload } from "./usePhotoUpload";
 
-export function PhotoSection({ pkg }: { pkg: AgentPackageView }) {
+export function PhotoSection({ pkg, editable }: { pkg: AgentPackageView; editable: boolean }) {
   const { upload, remove, isBusy, error } = usePhotoUpload(pkg.id, pkg.photos);
 
   return (
     <div id="photos">
       <Card
         title="Photos"
-        description="At least one is needed to publish. JPEG, PNG, or WebP, up to 10 MB each and 20 in all."
+        description={
+          editable
+            ? "At least one is needed to publish. JPEG, PNG, or WebP, up to 10 MB each and 20 in all."
+            : undefined
+        }
       >
         {pkg.photos.length === 0 ? (
           <p className="text-body text-muted">No photos yet.</p>
@@ -27,16 +32,18 @@ export function PhotoSection({ pkg }: { pkg: AgentPackageView }) {
                   alt={`${pkg.property.streetLine}, view ${index + 1}`}
                   size="fill"
                 />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  fullWidth
-                  isDisabled={isBusy}
-                  onPress={() => void remove(photo.id)}
-                  aria-label={`Remove view ${index + 1}`}
-                >
-                  Remove
-                </Button>
+                {editable && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    fullWidth
+                    isDisabled={isBusy}
+                    onPress={() => void remove(photo.id)}
+                    aria-label={`Remove view ${index + 1}`}
+                  >
+                    Remove
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
@@ -46,20 +53,22 @@ export function PhotoSection({ pkg }: { pkg: AgentPackageView }) {
             {error}
           </p>
         )}
-        <div className="flex items-center gap-inline-md">
-          <FilePicker
-            label="Add photos"
-            allowsMultiple
-            acceptedTypes={PHOTO_CONTENT_TYPES}
-            onSelect={(files) => void upload(files)}
-            isDisabled={isBusy}
-          />
-          {isBusy && (
-            <span role="status" className="text-label text-muted">
-              Working…
-            </span>
-          )}
-        </div>
+        {editable && (
+          <div className="flex items-center gap-inline-md">
+            <FilePicker
+              label="Add photos"
+              allowsMultiple
+              acceptedTypes={PHOTO_CONTENT_TYPES}
+              onSelect={(files) => void upload(files)}
+              isDisabled={isBusy}
+            />
+            {isBusy && (
+              <span role="status" className="text-label text-muted">
+                Working…
+              </span>
+            )}
+          </div>
+        )}
       </Card>
     </div>
   );

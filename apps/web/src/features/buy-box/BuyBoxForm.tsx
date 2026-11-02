@@ -4,7 +4,9 @@
 // registry's form metadata; SECTION_OF is a record over the registry's keys, so a new criterion
 // fails the build until it is given a heading. Every criterion can be left as "any"; a list set to
 // "only these" with nothing checked is sent as an empty list, which the api refuses with a reason.
-// Each input is named after its api field, so an api error shows on its field.
+// Each input is named after its api field, so an api error shows on its field. Numbers use React
+// Aria's NumberField, which reads "250,000" or "$250,000" as a number and accepts nothing else; a
+// list's mode follows its chips, so a checked chip is never silently dropped (T371).
 import {
   BUY_BOX_STRATEGIES,
   CRITERIA,
@@ -15,8 +17,8 @@ import {
   type CriterionForm,
   type CriterionKey,
 } from "@clever/contracts/buy-box";
-import { Button, Card, CheckboxGroup, Select, TextField } from "@clever/ui";
-import { useId, type FormEvent } from "react";
+import { Button, Card, CheckboxGroup, NumberField, Select, TextField } from "@clever/ui";
+import { useId, useState, type FormEvent } from "react";
 import { ErrorNotice } from "@/features/errors/ErrorNotice";
 import {
   CONDITION_LABELS,
@@ -24,6 +26,7 @@ import {
   PROPERTY_TYPE_LABELS,
 } from "@/features/listing-package/labels";
 import { STRATEGY_LABELS } from "./labels";
+import { chooseMode, pickChoices, type ChoiceState } from "./choice-mode";
 import { ANY, LISTED, NO_STRATEGY, ONLY, readForm } from "./read-form";
 import { useBuyBoxForm } from "./useBuyBoxForm";
 
@@ -90,8 +93,16 @@ function inRows(section: Section): Entry[][] {
 
 const value = (box: BuyBoxView | undefined, field: string) => {
   const found = box?.[field as keyof BuyBoxView];
-  return typeof found === "number" ? String(found) : undefined;
+  return typeof found === "number" ? found : undefined;
 };
+
+/** How each number shows: whole dollars, years without a thousands comma, baths to one decimal. */
+function numberFormat(field: string, usd: boolean | undefined): Intl.NumberFormatOptions {
+  if (usd) return { style: "currency", currency: "USD", maximumFractionDigits: 0 };
+  if (field.startsWith("yearBuilt")) return { useGrouping: false, maximumFractionDigits: 0 };
+  if (field.startsWith("baths")) return { maximumFractionDigits: 1 };
+  return { maximumFractionDigits: 0 };
+}
 
 /** A min and a max side by side, with "to" between them on the inputs' line. */
 function RangeFields({
@@ -105,10 +116,10 @@ function RangeFields({
 }) {
   const field = (name: string, label: string) => (
     <div className="min-w-0 flex-1">
-      <TextField
+      <NumberField
         name={name}
         label={form.usd ? `${label} (USD)` : label}
-        inputMode="decimal"
+        formatOptions={numberFormat(name, form.usd)}
         defaultValue={value(existing, name)}
         errorMessage={error(name)}
       />
@@ -124,6 +135,51 @@ function RangeFields({
       </span>
       {field(form.max, form.maxLabel)}
     </div>
+  );
+}
+
+/** A list criterion: its mode and its chips, kept in step (checking a chip means "only these"). */
+function ChoiceFields({
+  label,
+  form,
+  existing,
+  error,
+}: {
+  label: string;
+  form: Extract<CriterionForm, { kind: "choices" }>;
+  existing: BuyBoxView | undefined;
+  error: ErrorOf;
+}) {
+  const chosen = existing?.[form.field as keyof BuyBoxView] as string[] | null | undefined;
+  const [state, setState] = useState<ChoiceState>({
+    mode: chosen ? ONLY : ANY,
+    picked: chosen ?? [],
+  });
+  const labels = OPTION_LABELS[form.field] ?? {};
+  return (
+    <fieldset className="flex flex-col gap-stack-sm">
+      <legend className="pb-inset-sm text-body-lg font-semibold text-heading">{label}</legend>
+      <div className="grid grid-cols-1 gap-x-inline-lg gap-y-stack-md md:grid-cols-3">
+        <Select
+          name={`${form.field}.mode`}
+          label="Accept"
+          options={choiceModes}
+          selectedKey={state.mode}
+          onSelectionChange={(key) => setState((now) => chooseMode(now, key === ONLY ? ONLY : ANY))}
+        />
+        <div className="md:col-span-2">
+          <CheckboxGroup
+            name={form.field}
+            label="Only these"
+            variant="chips"
+            options={form.options.map((id) => ({ id, label: labels[id] ?? id }))}
+            value={state.picked}
+            onChange={(picked) => setState((now) => pickChoices(now, picked))}
+            errorMessage={error(form.field)}
+          />
+        </div>
+      </div>
+    </fieldset>
   );
 }
 
@@ -162,41 +218,16 @@ function CriterionFields({
       return <RangeFields form={form} existing={existing} error={error} />;
     case "limit":
       return (
-        <TextField
+        <NumberField
           name={form.field}
           label={form.usd ? `${form.label} (USD)` : form.label}
-          inputMode="numeric"
+          formatOptions={numberFormat(form.field, form.usd)}
           defaultValue={value(existing, form.field)}
           errorMessage={error(form.field)}
         />
       );
-    case "choices": {
-      const chosen = existing?.[form.field as keyof BuyBoxView] as string[] | null | undefined;
-      const labels = OPTION_LABELS[form.field] ?? {};
-      return (
-        <fieldset className="flex flex-col gap-stack-sm">
-          <legend className="pb-inset-sm text-body-lg font-semibold text-heading">{label}</legend>
-          <div className="grid grid-cols-1 gap-x-inline-lg gap-y-stack-md md:grid-cols-3">
-            <Select
-              name={`${form.field}.mode`}
-              label="Accept"
-              options={choiceModes}
-              defaultSelectedKey={chosen ? ONLY : ANY}
-            />
-            <div className="md:col-span-2">
-              <CheckboxGroup
-                name={form.field}
-                label="Only these"
-                variant="chips"
-                options={form.options.map((id) => ({ id, label: labels[id] ?? id }))}
-                defaultValue={chosen ?? []}
-                errorMessage={error(form.field)}
-              />
-            </div>
-          </div>
-        </fieldset>
-      );
-    }
+    case "choices":
+      return <ChoiceFields label={label} form={form} existing={existing} error={error} />;
     case "toggle":
       return (
         <CheckboxGroup

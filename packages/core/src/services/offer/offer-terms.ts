@@ -2,15 +2,19 @@
 // Zod cannot check without the clock, and an offer's terms on their own, as a revision keeps them.
 import { ValidationError, type FieldError } from "@clever/contracts/common";
 import type { Offer, OfferTerms } from "@clever/contracts/offer";
+import { earliestToday } from "../../providers/clock/earliest-today.js";
 
-/** The closing date is not in the past and the expiry is ahead; each failure names its field. */
+/**
+ * The closing date is not in the past (today anywhere counts, T387) and the expiry is ahead; each
+ * failure names its field.
+ */
 export function checkOfferDates(
   input: Omit<OfferTerms, "expiresAt"> & { expiresAt: string },
   now: Date,
   prefix = "",
 ): OfferTerms {
   const errors: FieldError[] = [];
-  if (input.closingDate < now.toISOString().slice(0, 10)) {
+  if (input.closingDate < earliestToday(now)) {
     errors.push({ field: `${prefix}closingDate`, message: "Cannot be in the past" });
   }
   const expiresAt = new Date(input.expiresAt);

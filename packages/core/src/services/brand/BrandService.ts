@@ -3,7 +3,9 @@
 // with the same validator the seed uses; one that is unsafe, misses a variable the theme reads, or has
 // a text pair under WCAG AA is refused with each failure as a field error. A save names the version
 // the editor loaded and is refused if another save came first (T353). A saved theme bumps the
-// brand's version (caches replace it) and is audited.
+// brand's version (caches replace it) and is audited. The answer is built in the saving transaction
+// (T381): once the save commits its idempotency key counts as applied, so a read failing afterward
+// would leave a retry with 409 IDEMPOTENCY_ALREADY_APPLIED instead of the theme.
 import type { Actor } from "@clever/contracts/auth";
 import {
   brandContentSchema,
@@ -12,21 +14,33 @@ import {
   type BrandThemeView,
   type BrandTokensView,
 } from "@clever/contracts/brand";
-import {
-  ConflictError,
-  ForbiddenError,
-  NotFoundError,
-  ValidationError,
-} from "@clever/contracts/common";
+import { ConflictError, NotFoundError, ValidationError } from "@clever/contracts/common";
 import { z } from "zod";
 import { InfrastructureError } from "../../errors/InfrastructureError.js";
+import type { BrandRecord } from "../../repositories/brand/IBrandRepository.js";
 import type { IUnitOfWork } from "../../unit-of-work/IUnitOfWork.js";
+import { assertOps } from "../actor-guards.js";
 
 const NOT_FOUND = "Brand not found";
 const themeInputSchema = z.object({ tokens: z.unknown(), tokenVersion: z.int().min(1) });
 
-function requireOps(actor: Actor): void {
-  if (actor.role !== "OPS") throw new ForbiddenError("Only operations can change a brand");
+const OPS_ONLY = "Only operations can change a brand";
+
+/** The theme the web app renders from a stored brand. */
+function themeView(brand: BrandRecord): BrandThemeView {
+  const checked = validateBrandTokens(brand.tokens);
+  const content = brandContentSchema.safeParse(brand.content);
+  // Stored data passed the same checks when saved; failing now means it was changed outside.
+  if (!checked.ok || !content.success) {
+    throw new InfrastructureError(`The ${brand.id} brand's stored theme is unusable`, 502);
+  }
+  return {
+    brandId: brand.id,
+    tokenVersion: brand.tokenVersion,
+    cssVariables: checked.variables,
+    fontFamily: checked.fontFamily,
+    content: content.data,
+  };
 }
 
 export interface IBrandService {
@@ -47,37 +61,26 @@ export class BrandService implements IBrandService {
   async getTheme(brandId: string): Promise<BrandThemeView> {
     const brand = await this.uow.run((repos) => repos.brands.findById(brandId));
     if (!brand) throw new NotFoundError(NOT_FOUND);
-    const checked = validateBrandTokens(brand.tokens);
-    const content = brandContentSchema.safeParse(brand.content);
-    // Stored data passed the same checks when saved; failing now means it was changed outside.
-    if (!checked.ok || !content.success) {
-      throw new InfrastructureError(`The ${brandId} brand's stored theme is unusable`, 502);
-    }
-    return {
-      brandId,
-      tokenVersion: brand.tokenVersion,
-      cssVariables: checked.variables,
-      fontFamily: checked.fontFamily,
-      content: content.data,
-    };
+    return themeView(brand);
   }
 
   async getTokens(actor: Actor, brandId: string): Promise<BrandTokensView> {
-    requireOps(actor);
+    assertOps(actor, OPS_ONLY);
     const brand = await this.uow.run((repos) => repos.brands.findById(brandId));
     if (!brand) throw new NotFoundError(NOT_FOUND);
     return { brandId, tokenVersion: brand.tokenVersion, tokens: brand.tokens };
   }
 
   async updateTheme(actor: Actor, brandId: string, input: unknown): Promise<BrandThemeView> {
-    requireOps(actor);
+    assertOps(actor, OPS_ONLY);
     const { tokens, tokenVersion: loaded } = themeInputSchema.parse(input);
     const checked = validateBrandTokens(tokens);
     if (!checked.ok) {
       throw new ValidationError("This token set cannot be used", checked.problems);
     }
-    await this.uow.run(async (repos) => {
-      if (!(await repos.brands.findById(brandId))) throw new NotFoundError(NOT_FOUND);
+    return this.uow.run(async (repos) => {
+      const brand = await repos.brands.findById(brandId);
+      if (!brand) throw new NotFoundError(NOT_FOUND);
       const tokenVersion = await repos.brands.updateTokens(brandId, tokens, loaded);
       if (tokenVersion === null) {
         throw new ConflictError(
@@ -93,7 +96,7 @@ export class BrandService implements IBrandService {
         outcome: "SUCCESS",
         details: { tokenVersion },
       });
+      return themeView({ ...brand, tokens, tokenVersion });
     });
-    return this.getTheme(brandId);
   }
 }

@@ -1,10 +1,16 @@
 # One-command start (T232; T101 extends it): `docker compose up --build`, nothing else.
 #
 # Start order: postgres and redis (both healthchecked) → migrate (migrations and seed, then exits)
-# → api and worker → web, once the api answers its health check (every page reads its brand from
-# the api, T349). The sandbox waits only for postgres (its records live in the `sandbox` schema).
-# Every server listens on 0.0.0.0 inside its container. migrate must not run before the database
-# accepts connections, and the worker needs Redis for its delivery queue.
+# and, beside it, the sandbox → api and worker, once the sandbox listens (they send it files, CRM
+# records, and messages) → web, once the api answers its health check (every page reads its brand
+# from the api, T349). The sandbox waits only for postgres (its records live in the `sandbox`
+# schema). Every server listens on 0.0.0.0 inside its container. migrate must not run before the
+# database accepts connections, and the worker needs Redis for its delivery queue.
+#
+# Memory (T391): the whole stack must fit a 2 GB machine. Postgres and Redis are capped by their
+# settings; each Node service gets a V8 heap cap (NODE_OPTIONS), because Node's default grows with
+# the machine's memory and four defaults together exceed 2 GB. The caps sit well above what each
+# service was measured to use, so they make V8 collect sooner rather than run out.
 #
 # Redis carries the outbox deliveries for the worker (T339; constitution XVIII). It keeps no data
 # (no snapshots, no append-only file) and never evicts: the deliveries' state is in PostgreSQL, and
@@ -65,10 +71,24 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      # Measured at about 35 MiB resident under load; uploaded bytes are Buffers, outside this cap.
+      NODE_OPTIONS: --max-old-space-size=128
     ports:
       - "4100:4100"
     volumes:
       - sandbox-objects:/data/sandbox-objects
+    # It listens only once its schema exists, so an open port means ready. No health route is
+    # needed: Node opens a connection to the port.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "require('node:net').connect(4100, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))"
+      interval: 2s
+      timeout: 3s
+      retries: 30
     restart: unless-stopped
 
   migrate:
@@ -93,9 +113,14 @@ services:
       - .env
       - path: .env.local
         required: false
+    environment:
+      # Measured at about 150 MiB resident under concurrent page loads.
+      NODE_OPTIONS: --max-old-space-size=256
     depends_on:
       migrate:
         condition: service_completed_successfully
+      sandbox:
+        condition: service_healthy
     ports:
       - "4000:4000"
     # The image has no curl; Node's fetch asks the api's own health route.
@@ -125,10 +150,14 @@ services:
     environment:
       # Only the worker uses Redis; the api never does (Sprint 6 decisions in tasks.md).
       REDIS_URL: redis://redis:6379
+      # Parsing an investor file at the 5 MB cap alone holds about 120 MiB of live heap.
+      NODE_OPTIONS: --max-old-space-size=384
     depends_on:
       migrate:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      sandbox:
         condition: service_healthy
     restart: unless-stopped
 
@@ -138,6 +167,14 @@ services:
       target: web
     image: investor-platform-web:local
     env_file: .env
+    environment:
+      # Measured at about 290 MiB resident under concurrent page loads.
+      NODE_OPTIONS: --max-old-space-size=384
+      # Where photos live, for the Content-Security-Policy (T389, T397): only these three settings,
+      # never the cloud keys in .env.local. S3 mode passes them with `--env-file .env.local`.
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-sandbox}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

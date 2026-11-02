@@ -1,11 +1,14 @@
 // The offer rules (T296, T307; FR-042, FR-043, XII): a matched investor makes one offer per package
-// and round and can revise it until the deadline; each revise restates every term, names the
-// version it read, and is kept as a revision with its own expiry job. The investor can withdraw an
+// and round and can revise it until the deadline, or answer a counter with a revision even after it
+// (T377); each revise restates every term, names the version it read, and is kept as a revision
+// with its own expiry job. The investor can withdraw an
 // offer until it is accepted, even after the deadline. A refusal says why (the deadline passed, the
 // package was withdrawn, an offer already exists). The investor answers an agent's counter by
 // taking its terms or keeping their own (T310), and can push out a backup offer's expiry, even after
-// the deadline, but change nothing else. Only the package's agent lists its offers. Every change is
-// audited.
+// the deadline, but change nothing else. A revision or an answer to a counter waits for the package's
+// lock and reads the offer after it, so an accept turning the other offers into backups happens wholly
+// before or after it (T390). Only the package's agent and operations (read-only, FR-080) list its
+// offers. Every change is audited.
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -30,9 +33,11 @@ import {
 import type { IUnitOfWork, UnitOfWorkRepositories } from "../../unit-of-work/IUnitOfWork.js";
 import type { AuditAction } from "@clever/contracts/audit";
 import { placeOf } from "../../workflows/notice-text.js";
+import { releasePromotedBackup } from "../../workflows/deal-lifecycle/release-promoted-backup.js";
 import { scheduleOfferExpiry } from "../../workflows/offer-round/schedule.js";
 import { checkOfferDates, termsOf } from "./offer-terms.js";
-import { investorOf } from "../investor-package/InvestorPackageQueryService.js";
+import { investorOf } from "../actor-guards.js";
+import { required } from "../../errors/required.js";
 import { crmSnapshot } from "../../outbox/crm-snapshot.js";
 import { writeEvent } from "../../outbox/write-event.js";
 
@@ -41,10 +46,16 @@ export interface IOfferService {
   revise(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
   withdraw(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
   respondToCounter(actor: Actor, offerId: string, input: unknown): Promise<Offer>;
-  listForPackage(actor: Actor, packageId: string): Promise<Offer[]>;
+  /** A package's offers for its agent or operations (T386), each with whether operations
+   * deactivated its investor (T370). */
+  listForPackage(
+    actor: Actor,
+    packageId: string,
+  ): Promise<{ offer: Offer; investorActive: boolean }[]>;
 }
 
 const NOT_FOUND = "Package not found";
+const INVESTORS_ONLY = "Only investors see matched packages";
 
 export class OfferService implements IOfferService {
   constructor(
@@ -53,7 +64,7 @@ export class OfferService implements IOfferService {
   ) {}
 
   async create(actor: Actor, packageId: string, input: unknown): Promise<Offer> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const terms = checkOfferDates(createOfferInputSchema.parse(input), this.deps.clock.now());
     return this.uow.run(async (repos) => {
       // Offers on one package are made one at a time, so each CRM offer count includes the others.
@@ -88,12 +99,11 @@ export class OfferService implements IOfferService {
   }
 
   async revise(actor: Actor, offerId: string, input: unknown): Promise<Offer> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const { version, ...rest } = reviseOfferInputSchema.parse(input);
     const now = this.deps.clock.now();
     return this.uow.run(async (repos) => {
-      const current = await repos.offers.findById(offerId);
-      if (!current || current.investorId !== investorId) throw new NotFoundError("Offer not found");
+      const current = await this.lockedOffer(repos, offerId, investorId);
       if (current.status === "BACKUP")
         return this.extendBackup(repos, actor, current, version, rest);
       if (current.status !== "ACTIVE" && current.status !== "COUNTERED") {
@@ -102,8 +112,9 @@ export class OfferService implements IOfferService {
       const terms = checkOfferDates(rest, now);
       const pkg = await repos.packages.findById(current.packageId);
       if (!pkg) throw new NotFoundError(NOT_FOUND);
-      this.assertOpen(pkg);
-      // A revision of a countered offer replaces the counter (FR-052).
+      // A revision of a countered offer replaces the counter (FR-052). The agent may counter after
+      // the deadline, so the investor may answer then too; any other revision is refused (FR-044).
+      this.assertOpen(pkg, current.status === "COUNTERED");
       const offer = await repos.offers.revise(offerId, version, terms, { status: "ACTIVE" });
       await scheduleOfferExpiry(repos, offer);
       await audit(repos, actor, offer, "OFFER_REVISED");
@@ -112,7 +123,7 @@ export class OfferService implements IOfferService {
   }
 
   async withdraw(actor: Actor, offerId: string, input: unknown): Promise<Offer> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const { version } = withdrawOfferInputSchema.parse(input);
     return this.uow.run(async (repos) => {
       const current = await repos.offers.findById(offerId);
@@ -124,6 +135,8 @@ export class OfferService implements IOfferService {
       await repos.packages.lock(current.packageId);
       const offer = await repos.offers.updateStatus(offerId, version, "WITHDRAWN");
       await audit(repos, actor, offer, "OFFER_WITHDRAWN");
+      // A promoted backup that withdraws stops waiting to reconfirm (T365).
+      await releasePromotedBackup(repos, offer, "WITHDRAWN", actor);
       // The CRM's offer count goes back down in the same change (FR-077).
       const pkg = await repos.packages.findById(offer.packageId);
       if (pkg) {
@@ -142,11 +155,10 @@ export class OfferService implements IOfferService {
   }
 
   async respondToCounter(actor: Actor, offerId: string, input: unknown): Promise<Offer> {
-    const investorId = investorOf(actor);
+    const investorId = investorOf(actor, INVESTORS_ONLY);
     const { action, version } = counterResponseSchema.parse(input);
     return this.uow.run(async (repos) => {
-      const current = await repos.offers.findById(offerId);
-      if (!current || current.investorId !== investorId) throw new NotFoundError("Offer not found");
+      const current = await this.lockedOffer(repos, offerId, investorId);
       if (current.status !== "COUNTERED") {
         throw new BusinessRuleError("There is no counter-offer to answer", "NOT_COUNTERED");
       }
@@ -161,7 +173,10 @@ export class OfferService implements IOfferService {
       const terms =
         action === "ACCEPT"
           ? termsOf(current)
-          : (await repos.offers.findLastTerms(offerId, "INVESTOR"))!;
+          : required(
+              await repos.offers.findLastTerms(offerId, "INVESTOR"),
+              `The investor's own terms on offer ${offerId}`,
+            );
       // Terms that have already expired cannot come back to life; a revision sets new ones.
       if (terms.expiresAt <= this.deps.clock.now()) {
         throw new BusinessRuleError(
@@ -196,6 +211,19 @@ export class OfferService implements IOfferService {
     });
   }
 
+  /** The investor's offer, read again once its package's lock is held, as the decisions take it. */
+  private async lockedOffer(
+    repos: UnitOfWorkRepositories,
+    offerId: string,
+    investorId: string,
+  ): Promise<Offer> {
+    const found = await repos.offers.findById(offerId);
+    if (!found || found.investorId !== investorId) throw new NotFoundError("Offer not found");
+    await repos.packages.lock(found.packageId);
+    // Offers are never deleted, so it is still there.
+    return required(await repos.offers.findById(offerId), `Offer ${offerId}`);
+  }
+
   /** A backup offer can only last longer: its expiry may move later, and nothing else changes. */
   private async extendBackup(
     repos: UnitOfWorkRepositories,
@@ -226,25 +254,36 @@ export class OfferService implements IOfferService {
     return offer;
   }
 
-  async listForPackage(actor: Actor, packageId: string): Promise<Offer[]> {
-    if (actor.role !== "AGENT")
-      throw new ForbiddenError("Only the package's agent sees its offers");
+  async listForPackage(
+    actor: Actor,
+    packageId: string,
+  ): Promise<{ offer: Offer; investorActive: boolean }[]> {
+    if (actor.role === "INVESTOR") {
+      throw new ForbiddenError("Only the package's agent and operations see its offers");
+    }
     return this.uow.run(async (repos) => {
-      const pkg = await repos.packages.findForAgent(actor.agentId, packageId);
+      // Operations see every package's offers, read-only (FR-080).
+      const pkg =
+        actor.role === "OPS"
+          ? await repos.packages.findById(packageId)
+          : await repos.packages.findForAgent(actor.agentId, packageId);
       if (!pkg) throw new NotFoundError(NOT_FOUND);
-      return repos.offers.listByPackage(packageId, pkg.round);
+      const offers = await repos.offers.listByPackage(packageId, pkg.round);
+      const inactive = await repos.investors.findInactive(offers.map((o) => o.investorId));
+      return offers.map((offer) => ({ offer, investorActive: !inactive.has(offer.investorId) }));
     });
   }
 
-  /** Offers are taken only while the package accepts them and before its deadline. */
-  private assertOpen(pkg: ListingPackage) {
+  /** Offers are taken only while the package accepts them and before its deadline, except an
+   * investor's answer to a counter, which the deadline does not stop. */
+  private assertOpen(pkg: ListingPackage, answeringCounter = false) {
     if (pkg.status !== "ACCEPTING_OFFERS") {
       throw new BusinessRuleError(
         "This package is no longer accepting offers",
         "PACKAGE_NOT_ACCEPTING_OFFERS",
       );
     }
-    if (pkg.offerDeadline && this.deps.clock.now() >= pkg.offerDeadline) {
+    if (!answeringCounter && pkg.offerDeadline && this.deps.clock.now() >= pkg.offerDeadline) {
       throw new BusinessRuleError("The offer deadline has passed", "OFFER_DEADLINE_PASSED");
     }
   }

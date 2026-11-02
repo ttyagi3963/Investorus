@@ -1,7 +1,8 @@
 "use client";
 // A labelled text input (T268) on React Aria's TextField. `description` adds a hint and
 // `errorMessage` marks the field invalid; both are linked to the input, so a screen reader reads
-// them with the field. `rows` makes it a multi-line text area (T353).
+// them with the field. `rows` makes it a multi-line text area (T353). Without `errorMessage` the
+// field's own checks (`isRequired`, `validate`) decide, and their message shows under it (T385).
 import {
   TextField as AriaTextField,
   FieldError,
@@ -23,7 +24,7 @@ export type TextFieldProps = Omit<AriaTextFieldProps, "className" | "style" | "i
 
 export function TextField({ label, description, errorMessage, rows, ...props }: TextFieldProps) {
   return (
-    <AriaTextField {...props} isInvalid={Boolean(errorMessage)} className={FIELD_GROUP}>
+    <AriaTextField {...props} isInvalid={errorMessage ? true : undefined} className={FIELD_GROUP}>
       <Label className={FIELD_LABEL}>{label}</Label>
       {rows ? (
         <TextArea rows={rows} className={`${FIELD} ${FOCUS_RING} py-inset-sm font-mono`} />

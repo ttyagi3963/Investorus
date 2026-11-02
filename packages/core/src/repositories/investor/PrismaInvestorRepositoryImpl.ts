@@ -16,6 +16,14 @@ export class PrismaInvestorRepositoryImpl implements IInvestorRepository {
     return new Map(rows.map((row) => [row.id, row.companyName]));
   }
 
+  async findInactive(ids: string[]): Promise<Set<string>> {
+    const rows = await this.db.investor.findMany({
+      where: { id: { in: ids }, status: "INACTIVE" },
+      select: { id: true },
+    });
+    return new Set(rows.map((row) => row.id));
+  }
+
   async findContact(id: string): Promise<{ email: string; phone: string | null } | null> {
     return this.db.investor.findUnique({ where: { id }, select: { email: true, phone: true } });
   }

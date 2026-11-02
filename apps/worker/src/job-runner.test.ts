@@ -1,13 +1,14 @@
 // Guards how the worker runs and fails a job (T294; constitution VII, VIII, XII): a job runs inside
 // the trace of the request that queued it; an unexpected failure is retried, logged with the job ID
 // and its payload redacted, and reported once retries run out; an expected one (a domain error or a
-// bad payload) fails at once and is never reported.
+// bad payload) fails at once and is never reported; and a long run keeps renewing its lease, so no
+// other worker takes it over (T378).
 import { Writable } from "node:stream";
-import { NotFoundError } from "@clever/contracts/common";
+import { ConflictError, NotFoundError } from "@clever/contracts/common";
 import type { Job } from "@clever/contracts/jobs";
 import { currentTraceId, type IUnitOfWork, type UnitOfWorkRepositories } from "@clever/core";
 import { pino } from "pino";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runNextJob } from "./job-runner.js";
 
 const TRACE = "4bf92f3577b34da6a3ce929d0e0e4736";
@@ -37,7 +38,8 @@ function setup(handler: () => Promise<void>, failedStatus: Job["status"]) {
   );
   const jobs = {
     claimNext: vi.fn().mockResolvedValue(job),
-    complete: vi.fn().mockResolvedValue(undefined),
+    renewLease: vi.fn().mockResolvedValue(true),
+    complete: vi.fn().mockResolvedValue(true),
     fail: vi.fn().mockResolvedValue({ ...job, status: failedStatus }),
   };
   const uow: IUnitOfWork = {
@@ -72,13 +74,13 @@ describe("runNextJob", () => {
     }, "COMPLETED");
     expect(await run()).toBe(true);
     expect(seen).toBe(TRACE);
-    expect(jobs.complete).toHaveBeenCalledWith("job-1");
+    expect(jobs.complete).toHaveBeenCalledWith("job-1", "worker-a");
   });
 
   it("retries an unexpected failure, logs it with the payload redacted, and reports it once FAILED", async () => {
     const retrying = setup(() => Promise.reject(new Error("database timeout")), "QUEUED");
     await retrying.run();
-    expect(retrying.jobs.fail).toHaveBeenCalledWith("job-1", "database timeout", true);
+    expect(retrying.jobs.fail).toHaveBeenCalledWith("job-1", "worker-a", "database timeout", true);
     expect(retrying.report).not.toHaveBeenCalled();
     const [line] = retrying.lines;
     expect(line).toMatchObject({ job_id: "job-1", type: "MATCH_PACKAGE" });
@@ -95,7 +97,44 @@ describe("runNextJob", () => {
       "FAILED",
     );
     await run();
-    expect(jobs.fail).toHaveBeenCalledWith("job-1", "Package not found", false);
+    expect(jobs.fail).toHaveBeenCalledWith("job-1", "worker-a", "Package not found", false);
     expect(report).not.toHaveBeenCalled();
+  });
+
+  it("retries a version conflict, since a retry reads the changed row again (T376)", async () => {
+    const { run, jobs } = setup(
+      () => Promise.reject(new ConflictError("This offer changed since you opened it.")),
+      "QUEUED",
+    );
+    await run();
+    expect(jobs.fail).toHaveBeenCalledWith(
+      "job-1",
+      "worker-a",
+      "This offer changed since you opened it.",
+      true,
+    );
+  });
+
+  describe("on a long run", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("renews the job's lease while the handler runs, and stops when it ends (T378)", async () => {
+      let finish!: () => void;
+      const { run, jobs } = setup(() => new Promise<void>((done) => (finish = done)), "COMPLETED");
+      const running = run();
+      await vi.advanceTimersByTimeAsync(45_000);
+      expect(jobs.renewLease).toHaveBeenCalledTimes(2);
+      expect(jobs.renewLease).toHaveBeenCalledWith("job-1", "worker-a");
+
+      finish();
+      await running;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(jobs.renewLease).toHaveBeenCalledTimes(2);
+    });
   });
 });

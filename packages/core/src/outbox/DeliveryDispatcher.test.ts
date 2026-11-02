@@ -110,7 +110,7 @@ describe("DeliveryDispatcher", () => {
     expect(ctx.messaging.sendSms).not.toHaveBeenCalled();
   });
 
-  it("sends the CRM the seller's contact read at send time, audits the read, and takes STALE as sent", async () => {
+  it("sends the CRM the seller's contact read at send time and the event's number, audits the read, and takes STALE as sent", async () => {
     const ctx = setup();
     const seller = await ctx.uow.repos.sellers.create({
       fullName: "Pat Seller",
@@ -144,6 +144,8 @@ describe("DeliveryDispatcher", () => {
       expect.objectContaining({
         status: "ACCEPTING_OFFERS",
         sellerContact: { fullName: "Pat Seller", email: null, phone: "+15125550199" },
+        // The CRM orders updates by this number, not by time (T380).
+        sequence: ctx.uow.repos.outbox.rows.at(-1)!.sequence,
       }),
       crm.id,
     );

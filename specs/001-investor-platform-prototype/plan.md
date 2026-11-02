@@ -271,7 +271,7 @@ behind an **anti-corruption layer at the perimeter** of the application:
     buy box criteria);
   - rate limits, timeouts, and HTTP errors;
   - response validation;
-  - ordering (`409 STALE`, or `lastSyncedAt` in a HubSpot adapter).
+  - ordering (`409 STALE` by event `sequence`, or `lastSyncedSequence` in a HubSpot adapter).
 - Each adapter is tested against its port contract. Lint keeps `*Impl` imports in
   `container.ts` only.
 

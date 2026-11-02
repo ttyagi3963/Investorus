@@ -20,7 +20,7 @@ export type Delivery = {
 
 /** A delivery with the event it carries, as the dispatcher reads it. */
 export type DeliveryWithEvent = Delivery & {
-  event: { type: string; payload: unknown; occurredAt: Date };
+  event: { type: string; payload: unknown; occurredAt: Date; sequence: number };
 };
 
 export interface IDeliveryRepository {

@@ -547,7 +547,7 @@ and `MESSAGING_PROVIDER`), the job handlers, and the outbox relay. It shares
   | Vendor quirk | Where it is handled | What the core sees |
   | --- | --- | --- |
   | Model mapping (our `PackageStatus` → HubSpot deal stage and properties; legacy sheet columns → buy box criteria) | The adapter or parser, with an explicit mapping table | Only our enums and schemas |
-  | Ordering (a delayed retry must not overwrite a newer status) | Sandbox: `409 STALE` on an older `occurredAt`. HubSpot: a stored `lastSyncedAt` property compared in the adapter | `{ result: "APPLIED" \| "STALE" }`; STALE is recorded as SENT (superseded) |
+  | Ordering (a delayed retry must not overwrite a newer status) | Sandbox: `409 STALE` on a `sequence` at or below the stored one (T380). HubSpot: a stored `lastSyncedSequence` property compared in the adapter | `{ result: "APPLIED" \| "STALE" }`; STALE is recorded as SENT (superseded) |
   | Rate limits, timeouts, 5xx | 5 s timeout per call; 408 / 429 / 5xx mapped to a retryable `InfrastructureError` | Retries with backoff in the delivery dispatcher (contracts/events.md) |
   | Malformed or unexpected responses | Zod validation of every response (VI) | `InfrastructureError`; primary data is never written from a bad response |
   | Vendor error codes and SDK exceptions | Caught and translated inside the adapter (IV) | Our `InfrastructureError` hierarchy only (VII) |

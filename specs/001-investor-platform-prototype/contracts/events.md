@@ -9,7 +9,7 @@ worker reads it. Built in Sprint 6 (T336–T341).
 
 ```text
 { id: cuid, type, aggregateType: "ListingPackage" | "Investor", aggregateId, payload,
-  occurredAt, relayedAt?, correlationId? }
+  occurredAt, sequence, relayedAt?, correlationId? }
 ```
 
 `correlationId` is the trace ID of the request or job that wrote the event, so its deliveries can
@@ -84,12 +84,14 @@ The email or text reuses the notice's in-app title and body, so every channel sa
 6. **Manual retry**: `POST /ops/deliveries/:id/retry`, or `/ops/deliveries/retry-all` with an
    optional target, sets each delivery that needs attention back to `PENDING` with `attempts = 0`,
    off the queue. Each retry is audited (`DELIVERY_RETRIED`).
-7. **Ordering**: CRM updates carry the event's `occurredAt`. The CRM refuses an update older than
-   the one it stores with `409 STALE`, which counts as sent and is not retried. A delayed retry
+7. **Ordering**: CRM updates carry the event's `sequence` (T380), a number the database assigns when
+   the event is written, while the change holds its package's row, so it follows commit order; a
+   time could tie within a millisecond or disagree across machines. The CRM refuses an update
+   numbered at or below the one it stores with `409 STALE`, which counts as sent and is not retried. A delayed retry
    therefore never overwrites a newer status, and the CRM converges on the latest platform status
    (SC-012). This uses open-source BullMQ only; per-group ordering is a BullMQ Pro feature and is
-   deliberately avoided. In production, the same "last write wins by event time" check goes in the
-   HubSpot adapter, using a stored `lastSyncedAt` property.
+   deliberately avoided. In production, the same "highest number wins" check goes in the HubSpot
+   adapter, using a stored `lastSyncedSequence` property.
 8. **Guarantee**: at-least-once sending plus the receiver's deduplication by idempotency key means
    effectively-once delivery (SC-007). Nothing is lost while Redis or a provider is down: events and
    deliveries wait in PostgreSQL until the relay can queue them. The outage-and-recovery integration

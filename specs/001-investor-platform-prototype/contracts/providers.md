@@ -14,7 +14,7 @@ Ports are exported from `@clever/core`. Implementations are exported only from
 
 | Port | Methods | Prototype implementation | Wired in | Selected by | Production target |
 | --- | --- | --- | --- | --- | --- |
-| `ICrmProvider` | `upsertListing(record, idempotencyKey)` → `"APPLIED" \| "STALE"` (the record carries the status snapshot, the seller's contact, and `occurredAt`) | `SandboxCrmProviderImpl` | worker | `CRM_PROVIDER=sandbox` | `HubspotCrmProviderImpl` (private-app access token) |
+| `ICrmProvider` | `upsertListing(record, idempotencyKey)` → `"APPLIED" \| "STALE"` (the record carries the status snapshot, the seller's contact, `occurredAt`, and the event's `sequence`) | `SandboxCrmProviderImpl` | worker | `CRM_PROVIDER=sandbox` | `HubspotCrmProviderImpl` (private-app access token) |
 | `IMessagingProvider` | `sendEmail(msg, key)`, `sendSms(msg, key)` | `SandboxMessagingProviderImpl` | worker | `MESSAGING_PROVIDER=sandbox` | SendGrid / Twilio impls |
 | `IStorageProvider` | `createUpload(key, contentType, sizeBytes)` → `Promise<UploadInstruction>`, `getPublicUrl(key)` → `string` (a photo's permanent public address, T326), `stat(key)` → `{ contentType, sizeBytes }` or `null` (the api records a photo's type and size from storage, not from the client), `read(key)` (server-side read, used by the CSV import), `put(key, body, contentType)` (server-side write, used only by the seed) | `SandboxStorageProviderImpl` (HMAC-signed URLs) | api, worker | `STORAGE_PROVIDER=sandbox` | `S3StorageProviderImpl` (presigned PUT, `STORAGE_PROVIDER=s3`) |
 | `ICrmMirrorReader` | `listListings()` (read-only) | `SandboxSimulationProviderImpl` (the sandbox's `GET /crm/listings`) | api (ops CRM comparison) | `CRM_PROVIDER=sandbox` | `HubspotCrmMirrorReaderImpl` |
@@ -82,7 +82,7 @@ Rules for every provider:
 
 | Method | Path | Behavior |
 | --- | --- | --- |
-| PUT | `/crm/listings/:packageId` | Upsert `{ status, round, offerCount, acceptedPrice: int \| null, sellerContact: { fullName, email \| null, phone \| null }, occurredAt }` (internal; shared token). Needs `Idempotency-Key` (400 without one); a repeated key replays the stored answer without applying. 200 `{ result: "APPLIED" }`; a stored record with a later `occurredAt` → 409 `{ code: "STALE" }`, also stored under the key. An equal `occurredAt` applies. 400 on a bad body. |
+| PUT | `/crm/listings/:packageId` | Upsert `{ status, round, offerCount, acceptedPrice: int \| null, sellerContact: { fullName, email \| null, phone \| null }, occurredAt, sequence }` (internal; shared token). Needs `Idempotency-Key` (400 without one); a repeated key replays the stored answer without applying. 200 `{ result: "APPLIED" }`; a stored record with the same or a higher `sequence` → 409 `{ code: "STALE" }`, also stored under the key (T380; `occurredAt` is kept for display). 400 on a bad body. |
 | GET | `/crm/listings` | `{ listings: [...] }`, newest update first, seller contact included (the CRM's copy), for the ops CRM comparison (internal; shared token, since it holds seller contacts). The inspection page shows the records without the contact. |
 | POST | `/messages/email` `{ to, subject, body }`, `/messages/sms` `{ to (E.164), body }` | Captures the message (internal; shared token). Needs `Idempotency-Key`; a repeated key returns the stored answer and stores nothing. 201 `{ id }`; 400 on a bad body. |
 | GET | `/messages?limit=` | `{ messages: [...] }`, newest first; `limit` 1–500, default 100. Open. |

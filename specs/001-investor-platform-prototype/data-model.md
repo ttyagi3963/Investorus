@@ -442,10 +442,11 @@ Index: `(status, runAt)`.
 | Field | Type | Rules |
 | --- | --- | --- |
 | id | cuid | also used as the event ID downstream |
+| sequence | bigserial, unique | taken when the row is written, while the change holds its package's row, so a package's events number in commit order; the CRM keeps the highest (T380) |
 | type | text, checked against the event union in code ([contracts/events.md](./contracts/events.md)) | |
 | aggregateType / aggregateId | string / cuid | `ListingPackage` / its id, or `Investor` / its id for the daily digest |
 | payload | JSONB | PII-free (FR-032); the CRM target adds the seller's contact at send time |
-| occurredAt | timestamptz | the CRM keeps the newest update by this time |
+| occurredAt | timestamptz | when the change was written (the writer's clock, to the millisecond); shown, not used for ordering |
 | relayedAt | timestamptz? | set once by the relay after the Delivery rows exist; a trigger refuses any other change and any delete |
 | correlationId | string? | the trace ID of the request or job that wrote it |
 

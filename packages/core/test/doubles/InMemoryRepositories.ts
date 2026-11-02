@@ -648,9 +648,20 @@ export class InMemoryDealRepository implements IDealRepository {
 
 /** The events changes appended, in order, with the relay's mark. */
 export class InMemoryOutboxRepository implements IOutboxRepository {
-  readonly rows: (NewOutboxEvent & { id: string; occurredAt: Date; relayedAt: Date | null })[] = [];
+  readonly rows: (NewOutboxEvent & {
+    id: string;
+    occurredAt: Date;
+    sequence: number;
+    relayedAt: Date | null;
+  })[] = [];
   async append(event: NewOutboxEvent) {
-    this.rows.push({ ...event, id: nextId("event"), occurredAt: NOW, relayedAt: null });
+    this.rows.push({
+      ...event,
+      id: nextId("event"),
+      occurredAt: NOW,
+      sequence: this.rows.length + 1,
+      relayedAt: null,
+    });
   }
   async claimUnrelayed(limit: number) {
     return this.rows.filter((r) => r.relayedAt === null).slice(0, limit);

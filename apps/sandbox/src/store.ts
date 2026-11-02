@@ -20,6 +20,8 @@ export type CrmUpdate = {
   acceptedPrice: number | null;
   sellerContact: SellerContact;
   occurredAt: string;
+  /** The platform's number for the change: the record keeps the highest (T380). */
+  sequence: number;
 };
 export type CrmListing = Omit<CrmUpdate, "occurredAt"> & {
   packageId: string;
@@ -47,6 +49,8 @@ CREATE TABLE IF NOT EXISTS sandbox.crm_listings (
   occurred_at    timestamptz NOT NULL,
   updated_at     timestamptz NOT NULL DEFAULT now()
 );
+-- Added by T380; a database started before it gets the column here, and its records count as 0.
+ALTER TABLE sandbox.crm_listings ADD COLUMN IF NOT EXISTS sequence bigint NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS sandbox.messages (
   id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   channel     text NOT NULL CHECK (channel IN ('email', 'sms')),
@@ -120,13 +124,13 @@ export function createStore(pool: pg.Pool) {
       await pool.query(SCHEMA_SQL);
     },
 
-    /** Upserts the record unless the stored one occurred later (409 STALE); once per key. */
+    /** Upserts the record unless the stored one is numbered the same or higher (409 STALE); once per key. */
     applyCrmUpdate(key: string, packageId: string, update: CrmUpdate): Promise<StoredAnswer> {
       return once(key, `PUT /crm/listings/${packageId}`, async (tx) => {
         const applied = await tx.query(
           `INSERT INTO sandbox.crm_listings
-             (package_id, status, round, offer_count, accepted_price, seller_contact, occurred_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+             (package_id, status, round, offer_count, accepted_price, seller_contact, occurred_at, sequence)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (package_id) DO UPDATE SET
              status = EXCLUDED.status,
              round = EXCLUDED.round,
@@ -134,8 +138,9 @@ export function createStore(pool: pg.Pool) {
              accepted_price = EXCLUDED.accepted_price,
              seller_contact = EXCLUDED.seller_contact,
              occurred_at = EXCLUDED.occurred_at,
+             sequence = EXCLUDED.sequence,
              updated_at = now()
-           WHERE sandbox.crm_listings.occurred_at <= EXCLUDED.occurred_at`,
+           WHERE sandbox.crm_listings.sequence < EXCLUDED.sequence`,
           [
             packageId,
             update.status,
@@ -144,6 +149,7 @@ export function createStore(pool: pg.Pool) {
             update.acceptedPrice,
             JSON.stringify(update.sellerContact),
             update.occurredAt,
+            update.sequence,
           ],
         );
         return applied.rowCount === 1
@@ -161,6 +167,7 @@ export function createStore(pool: pg.Pool) {
         accepted_price: number | null;
         seller_contact: SellerContact;
         occurred_at: Date;
+        sequence: string;
         updated_at: Date;
       }>("SELECT * FROM sandbox.crm_listings ORDER BY updated_at DESC, package_id");
       return rows.map((r) => ({
@@ -171,6 +178,7 @@ export function createStore(pool: pg.Pool) {
         acceptedPrice: r.accepted_price,
         sellerContact: r.seller_contact,
         occurredAt: r.occurred_at,
+        sequence: Number(r.sequence),
         updatedAt: r.updated_at,
       }));
     },

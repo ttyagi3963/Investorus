@@ -44,9 +44,16 @@ export class PrismaDeliveryRepositoryImpl implements IDeliveryRepository {
     return this.db.delivery
       .findUnique({
         where: { id },
-        include: { outboxEvent: { select: { type: true, payload: true, occurredAt: true } } },
+        include: {
+          outboxEvent: { select: { type: true, payload: true, occurredAt: true, sequence: true } },
+        },
       })
-      .then((row) => (row ? { ...row, event: row.outboxEvent } : null));
+      .then((row) =>
+        // A bigint column; event numbers stay far below 2^53, so a number carries them exactly.
+        row
+          ? { ...row, event: { ...row.outboxEvent, sequence: Number(row.outboxEvent.sequence) } }
+          : null,
+      );
   }
 
   async markSending(id: string): Promise<boolean> {

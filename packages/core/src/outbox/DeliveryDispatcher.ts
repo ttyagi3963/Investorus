@@ -99,7 +99,7 @@ export class DeliveryDispatcher {
     const key = delivery.id;
 
     if (delivery.target === "CRM") {
-      return this.prepareCrm(repos, event, delivery.event.occurredAt, key);
+      return this.prepareCrm(repos, event, delivery.event, key);
     }
     const contact = await repos.investors.findContact(delivery.recipientRef);
     const brand = await repos.brands.findById(this.deps.brandId);
@@ -126,7 +126,7 @@ export class DeliveryDispatcher {
   private async prepareCrm(
     repos: UnitOfWorkRepositories,
     event: OutboxEventInput,
-    occurredAt: Date,
+    { occurredAt, sequence }: { occurredAt: Date; sequence: number },
     key: string,
   ): Promise<Send> {
     if (
@@ -155,6 +155,7 @@ export class DeliveryDispatcher {
       ...crm,
       sellerContact: { fullName: seller.fullName, email: seller.email, phone: seller.phone },
       occurredAt,
+      sequence,
     };
     return async () => {
       await this.deps.crm.upsertListing(record, key);

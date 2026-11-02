@@ -1,6 +1,8 @@
 // Guards how the buy box editor reads "any" (T324; FR-025): a blank number and a list left at "any"
 // are sent as null, while "only these" with nothing checked is sent as an empty list, so the api can
-// refuse it with its reason instead of the form quietly turning it into "any".
+// refuse it with its reason instead of the form quietly turning it into "any". A number typed with
+// a dollar sign or commas is read as that number, and anything else that is not a number goes to the
+// api as typed, for it to refuse, never quietly as "no limit" (T371).
 import { describe, expect, it } from "vitest";
 import { ANY, LISTED, NO_STRATEGY, ONLY, readForm } from "./read-form";
 
@@ -36,6 +38,20 @@ describe("readForm", () => {
       conditionsAccepted: ["FAIR"],
       acceptsListed: true,
     });
+  });
+
+  it("reads $250,000 as 250000, and never turns text that is not a number into no limit (T371)", () => {
+    const typed = (priceMax: string, sqftMin: string) =>
+      readForm(
+        form([
+          ...base.filter(([name]) => name !== "priceMax"),
+          ["priceMax", priceMax],
+          ["sqftMin", sqftMin],
+        ]),
+        "ACTIVE",
+      );
+    expect(typed("$250,000", "1,600")).toMatchObject({ priceMax: 250_000, sqftMin: 1_600 });
+    expect(typed("about 300k", "")).toMatchObject({ priceMax: "about 300k", sqftMin: null });
   });
 
   it("sends only-these with nothing checked as an empty list, for the api to refuse", () => {

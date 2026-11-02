@@ -20,7 +20,11 @@ export function translateError(
     const fields = err.issues.map((i) => ({ field: i.path.join("."), message: i.message }));
     return {
       status: 400,
-      body: { error: "Some fields are invalid", code: "VALIDATION_FAILED", details: { fields } },
+      body: {
+        error: "Some fields need fixing. See the messages below.",
+        code: "VALIDATION_FAILED",
+        details: { fields },
+      },
     };
   }
   if (err instanceof DomainError) {

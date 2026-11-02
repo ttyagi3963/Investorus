@@ -5,7 +5,7 @@ import { z } from "zod";
 import { createOfferInputSchema } from "../offer/inputs.js";
 
 const version = z.number().int().positive();
-const note = z.string().max(1_000).optional();
+const note = z.string().max(1_000, "Use 1,000 characters or fewer").optional();
 
 /** POST /listing-packages/:id/decisions */
 export const createDecisionSchema = z.discriminatedUnion("type", [
@@ -31,7 +31,11 @@ export type MilestoneInput = z.input<typeof milestoneInputSchema>;
 
 /** POST /deals/:dealId/fall-through (T311): a reason is required (FR-056). */
 export const fallThroughInputSchema = z.object({
-  reason: z.string().trim().min(1).max(500),
+  reason: z
+    .string()
+    .trim()
+    .min(1, "Say why the deal fell through")
+    .max(500, "Use 500 characters or fewer"),
   version,
 });
 export type FallThroughInput = z.input<typeof fallThroughInputSchema>;

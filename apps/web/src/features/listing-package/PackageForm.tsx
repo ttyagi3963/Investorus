@@ -86,8 +86,8 @@ function readForm(form: FormData, empty: undefined | null) {
 }
 
 /**
- * The fields are keyed on the package's version, so a save reloads them with the saved values. The
- * save itself lives out here, outside the key, so its "Saved." notice survives that reload.
+ * The fields are keyed on the package's version, so they reload when the package changes. The save
+ * itself lives out here, outside the key, so its error notice survives that reload.
  */
 export function PackageForm({ existing }: { existing?: AgentPackageView }) {
   const saving = useSavePackage();
@@ -122,7 +122,7 @@ function PackageFields({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-stack-lg" noValidate>
-      {notice?.tone === "error" && (
+      {notice && (
         <ErrorNotice error={notice}>
           {notice.existingPackageId && (
             <Link
@@ -133,14 +133,6 @@ function PackageFields({
             </Link>
           )}
         </ErrorNotice>
-      )}
-      {notice?.tone === "saved" && (
-        <p
-          role="status"
-          className="rounded-control border border-default bg-card p-inset-md text-default"
-        >
-          {notice.message}
-        </p>
       )}
 
       <Card title="Seller" description="Investors never see the seller's name or contact details.">

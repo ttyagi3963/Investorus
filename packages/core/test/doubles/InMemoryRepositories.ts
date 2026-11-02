@@ -364,7 +364,7 @@ export class InMemoryBuyBoxRepository implements IBuyBoxRepository {
   }
   private assertNameFree(investorId: string, name: string, except: string | null) {
     if (this.boxes.some((b) => b.investorId === investorId && b.name === name && b.id !== except)) {
-      throw new ValidationError("Some fields are invalid", [
+      throw new ValidationError("Some fields need fixing. See the messages below.", [
         { field: "name", message: "You already have a buy box with this name" },
       ]);
     }

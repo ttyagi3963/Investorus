@@ -49,7 +49,8 @@ export interface IListingPackageService {
 type Deps = { geo: IGeoProvider; addressHash: AddressHasher; clock: IClock };
 
 const UNKNOWN_PLACE: ZipInfo = { city: "Unknown", state: "Unknown", neighborhood: "Unknown" };
-const invalid = (fields: FieldError[]) => new ValidationError("Some fields are invalid", fields);
+const invalid = (fields: FieldError[]) =>
+  new ValidationError("Some fields need fixing. See the messages below.", fields);
 const NOT_FOUND = "Package not found";
 const AGENTS_ONLY = "Only agents work on listing packages";
 

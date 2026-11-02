@@ -12,7 +12,7 @@ export function checkZips(
   if (box.geographyMode !== "ZIPS") return;
   const unknown = box.geography.find((zip) => geo.lookup(zip) === null);
   if (unknown !== undefined) {
-    throw new ValidationError("Some fields are invalid", [
+    throw new ValidationError("Some fields need fixing. See the messages below.", [
       { field: "geography", message: `ZIP ${unknown} is not a valid ZIP code` },
     ]);
   }

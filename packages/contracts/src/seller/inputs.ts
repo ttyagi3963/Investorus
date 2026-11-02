@@ -5,8 +5,8 @@ import { z } from "zod";
 /** E.164: a plus sign, then up to 15 digits (for example +15551234567). */
 const E164 = /^\+[1-9]\d{1,14}$/;
 
-const fullName = z.string().trim().min(1);
-const email = z.email();
+const fullName = z.string().trim().min(1, "Enter the seller's name");
+const email = z.email({ message: "Enter a valid email, for example name@example.com" });
 const phone = z.string().regex(E164, "Use international format, for example +15551234567");
 
 export const createSellerInputSchema = z

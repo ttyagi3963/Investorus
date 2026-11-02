@@ -244,7 +244,7 @@ export class OfferService implements IOfferService {
     }
     const expiresAt = new Date(input.expiresAt);
     if (expiresAt <= current.expiresAt || expiresAt <= this.deps.clock.now()) {
-      throw new ValidationError("Some fields are invalid", [
+      throw new ValidationError("Some fields need fixing. See the messages below.", [
         { field: "expiresAt", message: "Must be later than the current expiry" },
       ]);
     }

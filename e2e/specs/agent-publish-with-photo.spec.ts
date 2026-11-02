@@ -3,7 +3,7 @@
 // storage origin, so a page policy that blocked it, or the photo's display, fails here. It runs on
 // the default host and on the partner brand's host, whose origin the storage must also accept.
 import type { ConsoleMessage } from "@playwright/test";
-import { JPEG, isoDate, packageInput, street, uniqueTag, ZIP } from "../support/data.js";
+import { JPEG, isoDate, street, uniqueTag, ZIP } from "../support/data.js";
 import {
   choose,
   expect,
@@ -76,6 +76,10 @@ for (const [host, origin] of [
       await choose(page, "Is the home listed for sale now?", "No");
       await tick(page, "Cash offer");
       await page.getByRole("button", { name: "Save changes" }).click();
+      // Saving changes returns to the listings page with a toast naming the listing (T422).
+      await expect(page).toHaveURL(/\/agent$/);
+      await expect(page.getByText(`Saved changes to ${street(tag)}.`)).toBeVisible();
+      await page.getByRole("link", { name: street(tag) }).click();
       await expect(
         page.getByRole("region", { name: "Activity" }).getByText("Edited", { exact: true }),
       ).toBeVisible();
@@ -88,14 +92,3 @@ for (const [host, origin] of [
     await context.close();
   });
 }
-
-// "Saved." comes after the refetch, whose new version reloads the form's fields; the notice must
-// survive that reload (T414).
-test("an agent who saves changes to a draft is told it saved", async ({ signedIn }) => {
-  const { page, bff } = await signedIn("agent");
-  const draft = await bff.createPackage(packageInput(uniqueTag(), 250_000));
-  await page.goto(`/agent/packages/${draft.id}`);
-  await page.getByLabel("Neighborhood").fill("Bouldin Creek");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
-});

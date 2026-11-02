@@ -12,6 +12,7 @@ import {
   RadioGroup,
   SegmentedControl,
   Select,
+  showToast,
   StatTile,
   StatusChip,
   TextField,
@@ -128,6 +129,11 @@ export function ComponentGallery() {
         <PopoverPanel triggerLabel="Open a popover" panelLabel="Example popover">
           <p className="p-inset-md text-body text-default">Popover content.</p>
         </PopoverPanel>
+      </Example>
+      <Example title="Toast">
+        <Button variant="secondary" onPress={() => showToast("Saved changes to 2417 Corvina St.")}>
+          Show a toast
+        </Button>
       </Example>
     </div>
   );

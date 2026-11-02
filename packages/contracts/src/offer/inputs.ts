@@ -2,20 +2,22 @@
 // /offers/:offerId), checked with Zod against the data-model rules; errors name the field. The
 // dates against "today" and "now" need the clock, so the service checks those.
 import { z } from "zod";
+import { isoDate, isoDateTime } from "../common/dates.js";
+import { dollars, price } from "../common/fields.js";
 import { CONTINGENCIES, PAYMENT_TYPES } from "./offer.js";
 
 const terms = z
   .object({
-    price: z.number().int().positive(),
-    paymentType: z.enum(PAYMENT_TYPES),
-    closingDate: z.iso.date(),
-    earnestMoney: z.number().int().min(0),
+    price: price(),
+    paymentType: z.enum(PAYMENT_TYPES, { message: "Choose cash or financed" }),
+    closingDate: isoDate(),
+    earnestMoney: dollars(),
     // Each counts once: the comparison ranks certainty by how many there are (FR-050).
     contingencies: z
       .array(z.enum(CONTINGENCIES))
       .refine((list) => new Set(list).size === list.length, "List each contingency once"),
-    feesAndConcessions: z.number().int().min(0),
-    expiresAt: z.iso.datetime(),
+    feesAndConcessions: dollars(),
+    expiresAt: isoDateTime(),
   })
   .refine((t) => t.paymentType !== "FINANCED" || t.contingencies.includes("FINANCING"), {
     message: "A financed offer needs the financing contingency",

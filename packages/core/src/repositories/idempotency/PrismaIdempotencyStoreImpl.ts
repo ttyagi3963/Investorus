@@ -146,19 +146,37 @@ export class PrismaIdempotencyStoreImpl implements IIdempotencyStore {
 }
 
 /**
+ * The rows this session has inserted, updated, or deleted and not yet reported to the statistics
+ * collector. It only grows inside a transaction, so its rise from a transaction's start to its end
+ * is what the transaction wrote. A transaction ID is no such sign: SELECT ... FOR UPDATE takes one
+ * too, and a request that only locked a row wrote nothing (T405).
+ */
+async function rowsWritten(tx: Prisma.TransactionClient): Promise<bigint> {
+  const [row] = await tx.$queryRaw<{ n: bigint }[]>`
+    SELECT COALESCE(SUM(n_tup_ins + n_tup_upd + n_tup_del), 0)::bigint AS n
+    FROM pg_stat_xact_user_tables`;
+  return row?.n ?? 0n;
+}
+
+/** Called by the unit of work as a transaction starts: what to compare its end against. */
+export async function claimWriteBaseline(tx: Prisma.TransactionClient): Promise<bigint | null> {
+  return currentIdempotencyClaim() ? rowsWritten(tx) : null;
+}
+
+/**
  * Called by the unit of work at the end of every transaction. If the transaction wrote anything
  * and the request holds an idempotency claim, marks the claim committed in this same transaction,
  * so the two commit or roll back together. A claim that lost its lease (the request ran too long,
  * and a retry may have taken the key over) cannot be marked, and the transaction is rolled back
  * rather than letting the change run twice.
  */
-export async function markClaimCommitted(tx: Prisma.TransactionClient): Promise<void> {
+export async function markClaimCommitted(
+  tx: Prisma.TransactionClient,
+  baseline: bigint | null,
+): Promise<void> {
   const claim = currentIdempotencyClaim();
-  if (!claim) return;
-  // Postgres assigns a transaction ID on the first write: none means a read-only transaction.
-  const [row] = await tx.$queryRaw<{ wrote: boolean }[]>`
-    SELECT pg_current_xact_id_if_assigned() IS NOT NULL AS wrote`;
-  if (!row?.wrote) return;
+  if (!claim || baseline === null) return;
+  if ((await rowsWritten(tx)) === baseline) return;
   const marked = await tx.$executeRaw`
     UPDATE "IdempotencyKey" SET "committedAt" = COALESCE("committedAt", clock_timestamp())
     WHERE "userId" = ${claim.userId} AND key = ${claim.key} AND "claimToken" = ${claim.token}

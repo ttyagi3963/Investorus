@@ -13,7 +13,10 @@ import { PrismaDealRepositoryImpl } from "../repositories/deal/PrismaDealReposit
 import { PrismaDeliveryRepositoryImpl } from "../repositories/delivery/PrismaDeliveryRepositoryImpl.js";
 import { PrismaDecisionRepositoryImpl } from "../repositories/decision/PrismaDecisionRepositoryImpl.js";
 import { PrismaEffectMarkerRepositoryImpl } from "../repositories/effect-marker/PrismaEffectMarkerRepositoryImpl.js";
-import { markClaimCommitted } from "../repositories/idempotency/PrismaIdempotencyStoreImpl.js";
+import {
+  claimWriteBaseline,
+  markClaimCommitted,
+} from "../repositories/idempotency/PrismaIdempotencyStoreImpl.js";
 import { PrismaImportRepositoryImpl } from "../repositories/import/PrismaImportRepositoryImpl.js";
 import { PrismaInvestorRepositoryImpl } from "../repositories/investor/PrismaInvestorRepositoryImpl.js";
 import { PrismaJobRepositoryImpl } from "../repositories/job/PrismaJobRepositoryImpl.js";
@@ -39,6 +42,7 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
 
   run<T>(work: (repos: UnitOfWorkRepositories) => Promise<T>): Promise<T> {
     return this.prisma.$transaction(async (tx) => {
+      const writesBefore = await claimWriteBaseline(tx);
       const result = await work(
         withOutboxEvents({
           users: new PrismaUserRepositoryImpl(tx),
@@ -65,7 +69,7 @@ export class PrismaUnitOfWorkImpl implements IUnitOfWork {
           effects: new PrismaEffectMarkerRepositoryImpl(tx),
         }),
       );
-      await markClaimCommitted(tx);
+      await markClaimCommitted(tx, writesBefore);
       return result;
     });
   }

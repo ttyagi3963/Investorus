@@ -4,7 +4,8 @@
 // request that outlives its lease cannot commit once a retry has taken the key over. A crash is
 // simulated by not settling the claim, and the lease running out by moving it into the past. The
 // database's time zone is not UTC, as a server elsewhere may be, and every lease still holds. A key
-// past its 24 hours is purged with its stored answer; a newer one stays (T390).
+// past its 24 hours is purged with its stored answer; a newer one stays (T390). A transaction that
+// only locked a row wrote nothing, so a 5xx after it frees the key (T405).
 import { randomBytes } from "node:crypto";
 import type pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -32,7 +33,14 @@ beforeAll(async () => {
   uow = new PrismaUnitOfWorkImpl(prisma, cipher);
   await db.query(`
     INSERT INTO "User" (id, email, "passwordHash", role, "displayName", "updatedAt")
-      VALUES ('${USER}', 'ops@example.test', 'hash', 'OPS', 'Ops', now())`);
+      VALUES ('${USER}', 'ops@example.test', 'hash', 'OPS', 'Ops', now());
+    INSERT INTO "Agent" (id, name, email, brokerage, "updatedAt")
+      VALUES ('agent-1', 'Avery Agent', 'avery@example.test', 'Demo Realty', now());
+    INSERT INTO "Seller" (id, "fullName", email, "updatedAt") VALUES ('seller-1', 'v1:x', 'v1:y', now());
+    INSERT INTO "Property" (id, "streetLine", "addressHash", zip, city, state, "propertyType", "updatedAt")
+      VALUES ('property-1', 'v1:z', 'hash-1', '78704', 'Austin', 'TX', 'SINGLE_FAMILY', now());
+    INSERT INTO "ListingPackage" (id, "agentId", "sellerId", "propertyId", "addressHash", "priceExpectationMin", "priceExpectationMax", "updatedAt")
+      VALUES ('package-1', 'agent-1', 'seller-1', 'property-1', 'hash-1', 250000, 300000, now());`);
 });
 
 afterAll(async () => {
@@ -101,6 +109,16 @@ describe("an idempotency key after a crashed request", () => {
     expect(await store.claim(request("after-5xx"))).toEqual({ kind: "applied" });
 
     expect([await timesApplied("after-commit"), await timesApplied("after-5xx")]).toEqual([1, 1]);
+  });
+
+  it("frees the key after a 5xx when the request only locked a row and wrote nothing", async () => {
+    const token = await tokenOf("lock-only");
+    await runWithIdempotencyClaim({ userId: USER, key: "lock-only", token }, () =>
+      uow.run((repos) => repos.packages.lock("package-1")),
+    );
+    await store.release(USER, "lock-only", token);
+
+    expect((await store.claim(request("lock-only"))).kind).toBe("claimed");
   });
 
   it("refuses the commit of a request that outlived its lease once a retry took over", async () => {

@@ -123,10 +123,11 @@ export const investorClient = (api: ApiClient) => ({
 /** The investor's own buy boxes (T323). A save restates the whole box and the version it read. */
 export const buyBoxesClient = (api: ApiClient) => ({
   list: () => api.request<BuyBoxView[]>("GET", "/investor/buy-boxes"),
-  get: (id: string) => api.request<BuyBoxView>("GET", `/investor/buy-boxes/${id}`),
+  get: (id: string) =>
+    api.request<BuyBoxView>("GET", `/investor/buy-boxes/${encodeURIComponent(id)}`),
   create: (input: BuyBoxInput) => api.request<BuyBoxView>("POST", "/investor/buy-boxes", input),
   save: (id: string, input: BuyBoxInput & { version: number }) =>
-    api.request<BuyBoxView>("PUT", `/investor/buy-boxes/${id}`, input),
+    api.request<BuyBoxView>("PUT", `/investor/buy-boxes/${encodeURIComponent(id)}`, input),
 });
 
 /** Operations' legacy investor import (T323): get an upload link, start, then follow the batch. */
@@ -135,7 +136,8 @@ export const investorImportsClient = (api: ApiClient) => ({
     api.request<ImportUploadView>("POST", "/ops/investor-imports/uploads", { sizeBytes }),
   start: (input: { storageKey: string; fileName: string }) =>
     api.request<{ jobId: string; batchId: string }>("POST", "/ops/investor-imports", input),
-  get: (batchId: string) => api.request<ImportBatchView>("GET", `/ops/investor-imports/${batchId}`),
+  get: (batchId: string) =>
+    api.request<ImportBatchView>("GET", `/ops/investor-imports/${encodeURIComponent(batchId)}`),
 });
 
 /** The signed-in user's in-app inbox (T300). */

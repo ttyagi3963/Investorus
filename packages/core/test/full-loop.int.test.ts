@@ -11,6 +11,8 @@
 // The sandbox runs as its own process (its real server, started with tsx) on the database's
 // `sandbox` schema. The relay queues to a list and the test hands each delivery to the dispatcher,
 // as the worker's BullMQ consumer would, so the run needs no Redis and has no timing to wait on.
+// The real end-to-end check is the submission rehearsal (scripts/submission/rehearse.sh), which
+// runs the built stack and signs in through the BFF.
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { once } from "node:events";
@@ -48,7 +50,7 @@ import { PublicationWorkflow } from "../src/workflows/publication/PublicationWor
 import { startMigratedDatabase } from "./database.js";
 
 const SANDBOX_DIR = fileURLToPath(new URL("../../../apps/sandbox/", import.meta.url));
-const TOKEN = "end-to-end-internal-token";
+const TOKEN = "full-loop-internal-token";
 const RETRY: DeliveryRetryPolicy = { baseMs: 20, factor: 2, capMs: 100, jitter: 0, attempts: 2 };
 const avery: Actor = { userId: "user-a", role: "AGENT", agentId: "agent-a" };
 const summit: Actor = { userId: "user-summit", role: "INVESTOR", investorId: "summit" };
@@ -96,8 +98,8 @@ async function startSandbox(databaseUrl: string): Promise<void> {
     env: {
       ...process.env,
       DATABASE_URL: databaseUrl,
-      SANDBOX_STORAGE_DIR: mkdtempSync(join(tmpdir(), "end-to-end-")),
-      STORAGE_SIGNING_KEY: "end-to-end-signing-key",
+      SANDBOX_STORAGE_DIR: mkdtempSync(join(tmpdir(), "full-loop-")),
+      STORAGE_SIGNING_KEY: "full-loop-signing-key",
       SANDBOX_INTERNAL_TOKEN: TOKEN,
       WEB_ORIGIN: "http://localhost:3000",
       PORT: String(port),

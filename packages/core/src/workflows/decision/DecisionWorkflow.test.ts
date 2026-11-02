@@ -3,8 +3,8 @@
 // every matched investor the outcome, in one change; an expired offer, a stale version, or a second
 // accept is refused, and so is the offer of an investor operations deactivated (T370); a counter is
 // an agent revision only its investor hears about; decline all
-// declines every open offer; only the agent decides; and the agent's note stays out of the audit
-// log and every notice.
+// declines every open offer, and after the deadline leaves the package reopenable (T377); only
+// the agent decides; and the agent's note stays out of the audit log and every notice.
 import type { Actor } from "@clever/contracts/auth";
 import { describe, expect, it } from "vitest";
 import { avery, investor, offer, world } from "../../../test/fixtures/published-package.js";
@@ -112,6 +112,21 @@ describe("DecisionWorkflow", () => {
     }
     expect(await noticesFor("summit")).toContain("OFFER_DECLINED");
     expect(await noticesFor("harbor")).toContain("OFFER_DECLINED");
+  });
+
+  it("after the deadline, decline all leaves no offers received, so the agent can reopen (T377)", async () => {
+    const { uow, clock, publication, pkg, decisions } = await setup();
+    clock.at = new Date(pkg.offerDeadline!.getTime() + 1);
+    await decisions.record(avery, pkg.id, { type: "DECLINE_ALL", version: pkg.version });
+
+    const declined = (await uow.repos.packages.findById(pkg.id))!;
+    expect(declined.status).toBe("NO_OFFERS_RECEIVED");
+    await expect(
+      publication.reopen(avery, pkg.id, {
+        version: declined.version,
+        offerDeadline: "2026-11-08T12:00:00Z",
+      }),
+    ).resolves.toMatchObject({ package: { status: "ACCEPTING_OFFERS", round: 2 } });
   });
 
   it("lets only the agent decide: operations cannot", async () => {

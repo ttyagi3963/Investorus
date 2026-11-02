@@ -2,12 +2,24 @@
 // The seller's decision as the agent records it (T315; FR-052): accept one offer after a
 // confirmation, counter one with new terms, or decline every open offer with an optional note.
 // Each dialog moves focus in and back and works from the keyboard; nothing changes on screen until
-// the api answers (never optimistic, XIII). Payment type and contingencies stay as the investor
-// offered them; a counter changes the money, the dates, and the expiry.
+// the api answers (never optimistic, XIII). A counter may change any term the investor offered,
+// payment type and contingencies included (FR-041, FR-052; T377).
 import type { CreateDecisionInput } from "@clever/contracts/deal";
-import type { OfferView } from "@clever/contracts/offer";
-import { ConfirmDialog, FormDialog, NumberField, TextField } from "@clever/ui";
-import { formatUsd } from "@/features/listing-package/labels";
+import type { CreateOfferInput, OfferView } from "@clever/contracts/offer";
+import {
+  CheckboxGroup,
+  ConfirmDialog,
+  FormDialog,
+  NumberField,
+  Select,
+  TextField,
+} from "@clever/ui";
+import { useState } from "react";
+import {
+  CONTINGENCY_OPTIONS,
+  PAYMENT_TYPE_OPTIONS,
+  formatUsd,
+} from "@/features/listing-package/labels";
 import { toLocalInput } from "@/lib/local-time";
 
 const USD = { style: "currency", currency: "USD", maximumFractionDigits: 0 } as const;
@@ -66,10 +78,12 @@ export function CounterDialog({
           version: offer.version,
           counterTerms: {
             price: amount(values, "price"),
-            paymentType: offer.paymentType,
+            paymentType: String(values.get("paymentType")) as CreateOfferInput["paymentType"],
             closingDate: String(values.get("closingDate") ?? ""),
             earnestMoney: amount(values, "earnestMoney"),
-            contingencies: offer.contingencies,
+            contingencies: values
+              .getAll("contingencies")
+              .map(String) as CreateOfferInput["contingencies"],
             feesAndConcessions: amount(values, "feesAndConcessions"),
             expiresAt: new Date(String(values.get("expiresAt"))).toISOString(),
           },
@@ -84,6 +98,7 @@ export function CounterDialog({
         defaultValue={offer.price}
         isRequired
       />
+      <PaymentAndContingencies offer={offer} />
       <TextField
         name="closingDate"
         type="date"
@@ -115,6 +130,31 @@ export function CounterDialog({
         isRequired
       />
     </FormDialog>
+  );
+}
+
+/** How the price is paid and on what conditions, starting from the investor's offer. The dialog
+ * mounts its fields on each opening, so a cancelled change does not carry over. */
+function PaymentAndContingencies({ offer }: { offer: OfferView }) {
+  const [paymentType, setPaymentType] = useState<string>(offer.paymentType);
+  return (
+    <>
+      <Select
+        label="Payment"
+        options={PAYMENT_TYPE_OPTIONS}
+        selectedKey={paymentType}
+        onSelectionChange={(key) => setPaymentType(String(key))}
+        isRequired
+      />
+      <input type="hidden" name="paymentType" value={paymentType} />
+      <CheckboxGroup
+        name="contingencies"
+        label="Contingencies"
+        description={paymentType === "FINANCED" ? "A financed offer needs Financing." : undefined}
+        options={CONTINGENCY_OPTIONS}
+        defaultValue={offer.contingencies}
+      />
+    </>
   );
 }
 

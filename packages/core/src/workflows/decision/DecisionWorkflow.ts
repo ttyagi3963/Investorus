@@ -3,7 +3,9 @@
 // waits on the one-active-deal index and is refused; then the winner is ACCEPTED, every other open
 // offer becomes a backup, the package moves to OFFER_ACCEPTED, and every matched investor learns
 // the outcome. A counter is an agent revision only that investor sees. Decline all closes every
-// open offer. Each decision is an append-only row and an audit entry, in one change; its note stays
+// open offer; before the deadline the round stays open for new offers, and after it the package
+// has no offers left, so it moves to NO_OFFERS_RECEIVED to be extended, reopened, or withdrawn
+// (T377). Each decision is an append-only row and an audit entry, in one change; its note stays
 // with the agent (encrypted at rest, never in a notice or the audit details).
 import { assertInvestorActive } from "../assert-investor-active.js";
 import type { Actor } from "@clever/contracts/auth";
@@ -72,8 +74,14 @@ export class DecisionWorkflow implements IDecisionWorkflow {
 
       let details: Record<string, unknown>;
       if (data.type === "DECLINE_ALL") {
-        // The package's version guards a decline made from a stale screen.
-        await repos.packages.update(packageId, data.version, {});
+        // The package's version guards a decline made from a stale screen. After the deadline no
+        // new offer can come, so the round ends here as if none had come (T377).
+        const roundOver = pkg.offerDeadline !== null && now >= pkg.offerDeadline;
+        await repos.packages.update(
+          packageId,
+          data.version,
+          roundOver ? { status: "NO_OFFERS_RECEIVED" } : {},
+        );
         const declined = await repos.offers.declineOpen(packageId, pkg.round);
         for (const offer of declined) {
           await notify(offer.investorId, {

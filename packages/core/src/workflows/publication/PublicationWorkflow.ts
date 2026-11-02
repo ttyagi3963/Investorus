@@ -2,9 +2,10 @@
 // FR-014, FR-022, FR-058). Publish checks every field matching and investors need and names each
 // one that is missing, then opens offers, snapshots listing version 1, and queues matching and the
 // deadline, all in one change. Withdraw closes the package, declines its open offers, tells each
-// matched investor, and frees the address. Reopen starts a new round that is matched again;
-// extending moves the deadline of the current round, and matches an edit made while no offers were
-// open as the next listing version (T375).
+// matched investor, and frees the address. Reopen starts a new round that is matched again, and
+// declines and tells each offer the old round left open, such as a backup after a fall-through
+// (T377); extending moves the deadline of the current round, and matches an edit made while no
+// offers were open as the next listing version (T375).
 import type { Actor } from "@clever/contracts/auth";
 import {
   BusinessRuleError,
@@ -148,10 +149,19 @@ export class PublicationWorkflow implements IPublicationWorkflow {
         listingVersion: current.listingVersion + 1,
         offerDeadline,
       });
-      // Whatever the old round left open is declined: the new round starts clean.
+      // Whatever the old round left open is declined, and its investor told: the new round starts
+      // clean. After a fall-through these are the backups the agent chose not to promote (T377).
       const declined = await repos.offers.declineOpen(packageId, current.round);
       const property = await repos.properties.findById(pkg.propertyId);
       if (!property) throw new NotFoundError(NOT_FOUND);
+      for (const offer of declined) {
+        await notifyInvestor(repos, offer.investorId, {
+          type: "OFFER_DECLINED",
+          packageId,
+          title: "Your offer was declined",
+          body: `The listing in ${placeOf(property)} opened a new offer round, so your earlier offer was closed.`,
+        });
+      }
       // Matching runs again for the new round, so every matched investor is told again (FR-058).
       await snapshotAndQueueMatching(repos, pkg, property, "REOPEN");
       await scheduleRoundClose(repos, pkg);

@@ -63,7 +63,7 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | POST | `/listing-packages/:id/publication` | AGENT (own) | `{ offerDeadline?, version }` → 200 `AgentPackageView` (now ACCEPTING_OFFERS; the MATCH_PACKAGE job is queued in the same change and runs in the worker) | 400 lists invalid fields (FR-012) |
 | POST | `/listing-packages/:id/withdrawal` | AGENT (own) | `{ version }` → 200 `AgentPackageView` | |
 | GET | `/listing-packages/:id/timeline` | AGENT (own) | → `TimelineEntryView[]` (the package's audit entries, newest first, without per-investor match decisions) | Sprint 2 (T297) |
-| POST | `/listing-packages/:id/reopening` | AGENT (own) | `{ offerDeadline, version }` → 200 `AgentPackageView` (round + 1, ACCEPTING_OFFERS; the MATCH_PACKAGE job is queued in the same change, as for publication) | FR-058; from NO_OFFERS_RECEIVED or FELL_THROUGH (Sprint 3, T307) |
+| POST | `/listing-packages/:id/reopening` | AGENT (own) | `{ offerDeadline, version }` → 200 `AgentPackageView` (round + 1, ACCEPTING_OFFERS; the MATCH_PACKAGE job is queued in the same change, as for publication) | FR-058; from NO_OFFERS_RECEIVED or FELL_THROUGH (Sprint 3, T307). Offers the old round left open (backups after a fall-through) are declined and their investors told; 409 `BACKUP_PENDING` while a promoted backup decides (T377) |
 | PATCH | `/listing-packages/:id/offer-deadline` | AGENT (own) | `{ offerDeadline, version }` → 200 `AgentPackageView` | Extend the deadline, from ACCEPTING_OFFERS or NO_OFFERS_RECEIVED (Sprint 3, T307); a material edit made while NO_OFFERS_RECEIVED is matched now as the next listing version (T375) |
 | POST | `/listing-packages/:id/photo-uploads` | AGENT (own) | `{ contentType, sizeBytes }` → 201 `{ storageKey, upload: UploadInstruction }` | Vendor-neutral `{ url, method, headers, expiresAt }` ([providers.md](./providers.md)); the browser uploads directly (XIV) |
 | POST | `/listing-packages/:id/photos` | AGENT (own) | `{ storageKey, position }` → 201 `Photo` | Verifies the object exists. Photo uploads and changes only while the package is editable, else 409 `PACKAGE_LOCKED` (T375) |
@@ -76,7 +76,7 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | Method | Path | Role | Body / Response | Spec |
 | --- | --- | --- | --- | --- |
 | GET | `/investor/packages` | INVESTOR | → `InvestorPackageSummary[]` (matched only, newest first, `offerDeadline`, `myOfferStatus?`) | FR-040 |
-| GET | `/investor/packages/:id` | INVESTOR | → `InvestorPackageView` — **no PII fields in the schema**, with `myDeal` (`{ status, reconfirmBy }` of the investor's own deal, or null); for the investor whose offer is ACCEPTED on the active or closed deal, → `InvestorPackageView & { sellerContact, streetLine }`, audited PII_ACCESSED | FR-030, FR-031, FR-055 |
+| GET | `/investor/packages/:id` | INVESTOR | → `InvestorPackageView` — **no PII fields in the schema**, with `myDeal` (`{ status, reconfirmBy }` of the investor's own deal, or null) and `myOwnTerms` (the investor's own last terms while the agent's counter stands, else null; T377); for the investor whose offer is ACCEPTED on the active or closed deal, → `InvestorPackageView & { sellerContact, streetLine }`, audited PII_ACCESSED | FR-030, FR-031, FR-055 |
 | GET | `/investor/buy-boxes` | INVESTOR | → `BuyBoxView[]` (own boxes, default first) | FR-060 |
 | POST | `/investor/buy-boxes` | INVESTOR | `CreateBuyBoxInput` (name, strategy?, criteria) → 201 `BuyBoxView` (version 1); enqueues MATCH_BUY_BOX | FR-060, FR-023 |
 | GET | `/investor/buy-boxes/:id` | INVESTOR (owner) | → `BuyBoxView` | FR-060 |
@@ -89,7 +89,7 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | --- | --- | --- | --- | --- |
 | POST | `/listing-packages/:id/offers` | INVESTOR (matched) | `CreateOfferInput` → 201 `OfferView` | FR-041, FR-044, FR-045 |
 | GET | `/listing-packages/:id/offers` | AGENT (own), OPS | → `OfferView[]` (latest revision per investor; `investorActive` flag) | Story 3, scenario 2; edge case "investor deactivated" |
-| PATCH | `/offers/:offerId` | INVESTOR (owner) | `ReviseOfferInput` + `version` → 200 (new revision). For a BACKUP offer, only `expiresAt` may change, and that is allowed after the deadline | FR-042; edge case "backup offer expires" |
+| PATCH | `/offers/:offerId` | INVESTOR (owner) | `ReviseOfferInput` + `version` → 200 (new revision). For a BACKUP offer, only `expiresAt` may change, and that is allowed after the deadline | FR-042, FR-044; edge case "backup offer expires". After the deadline only a COUNTERED offer may be revised (while the package is ACCEPTING_OFFERS, T377); any other revision is refused `OFFER_DEADLINE_PASSED` |
 | POST | `/offers/:offerId/withdrawal` | INVESTOR (owner) | `{ version }` → 200 `OfferView` (ACTIVE, COUNTERED, or BACKUP; allowed after the deadline) | FR-043, FR-054 |
 | POST | `/offers/:offerId/counter-response` | INVESTOR (owner) | `{ action: "ACCEPT" \| "DECLINE", version }` → 200 `OfferView`; a revision goes through `PATCH /offers/:offerId` | Story 4, scenario 3 |
 | POST | `/offers/:offerId/reconfirmation` | INVESTOR (owner) | `{ action: "CONFIRM" \| "DECLINE" }` → 200 `OfferView` | FR-057 |
@@ -100,7 +100,7 @@ Entity fields are defined in [../data-model.md](../data-model.md).
 | Method | Path | Role | Body / Response | Spec |
 | --- | --- | --- | --- | --- |
 | GET | `/listing-packages/:id/offer-comparison` | AGENT (own) | `?sort=netProceeds\|closingDate\|certainty` → `{ rows: OfferComparisonRow[], assumptions }` (each row includes the net-proceeds breakdown) | FR-050, FR-051 |
-| POST | `/listing-packages/:id/decisions` | AGENT (own) | `{ type: "ACCEPT"\|"COUNTER"\|"DECLINE_ALL", offerId?, counterTerms?, note?, version }` → 201 `Decision` | FR-052, FR-053 (409 if an offer is already accepted; 409 `INVESTOR_INACTIVE` for the offer of a deactivated investor, T370) |
+| POST | `/listing-packages/:id/decisions` | AGENT (own) | `{ type: "ACCEPT"\|"COUNTER"\|"DECLINE_ALL", offerId?, counterTerms?, note?, version }` → 201 `Decision` | FR-052, FR-053 (409 if an offer is already accepted; 409 `INVESTOR_INACTIVE` for the offer of a deactivated investor, T370). `counterTerms` may change any term. DECLINE_ALL after the deadline moves the package to NO_OFFERS_RECEIVED (T377) |
 | GET | `/listing-packages/:id/deal` | AGENT (own) | → `DealView` (the package's latest deal) with `allowedNextMilestones[]` and `backups[]`; 404 before any acceptance. The buyer reads their deal's status in `InvestorPackageView.myDeal`; the ops view comes with US6 | FR-055 |
 | POST | `/deals/:dealId/milestones` | AGENT (own) | `{ milestone, version }` → 200 `DealView` | 409 with `details.allowedNext` if out of order |
 | POST | `/deals/:dealId/fall-through` | AGENT (own) | `{ reason, version }` → 200 `DealView` (with the ranked backups) | FR-056 |

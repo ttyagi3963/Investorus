@@ -4,7 +4,8 @@
 // from the buyer and the audit log; an expired backup is listed but marked, and only an unexpired
 // backup can be promoted, one at a time, with
 // 48 hours to reconfirm; reconfirming makes it the accepted offer, and declining or the timeout
-// frees the agent to promote another; and the package cannot be reopened while a backup decides.
+// frees the agent to promote another; and the package cannot be reopened while a backup decides,
+// but can be with backups left, which are declined and told (T377).
 // A promoted backup that is withdrawn or expires is released at once and can never be reconfirmed
 // into an accepted offer, which would reveal the seller (T365).
 import { describe, expect, it } from "vitest";
@@ -115,6 +116,21 @@ describe("DealLifecycleWorkflow fall-through and backups", () => {
         offerDeadline: "2026-11-06T12:00:00Z",
       }),
     ).rejects.toMatchObject({ code: "BACKUP_PENDING" });
+  });
+
+  it("reopens after a fall-through with a backup left, declining it and telling its investor (T377)", async () => {
+    const { uow, pkg, publication, ridge, fallThrough, status, notices } = await accepted();
+    await fallThrough();
+    const fell = (await uow.repos.packages.findById(pkg.id))!;
+
+    await expect(
+      publication.reopen(avery, pkg.id, {
+        version: fell.version,
+        offerDeadline: "2026-11-06T12:00:00Z",
+      }),
+    ).resolves.toMatchObject({ package: { status: "ACCEPTING_OFFERS", round: 2 } });
+    expect(await status(ridge.id)).toBe("DECLINED");
+    expect(await notices("user-ridge")).toContain("OFFER_DECLINED");
   });
 
   it("refuses to promote the backup of an investor operations deactivated (T370)", async () => {

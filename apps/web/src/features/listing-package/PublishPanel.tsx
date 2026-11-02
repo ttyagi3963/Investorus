@@ -2,9 +2,10 @@
 // The top of the package page (T301, T316, T330): the page header with the street line, the status
 // chip, the place and offer deadline, and, by status, what the agent can do. A draft has Publish,
 // which either publishes or lists every blocking field under the header; an open package links to
-// compare the offers and can Extend deadline; a package with no offers can be extended or reopened;
-// from acceptance on, a link goes to the deal. Withdraw asks in a dialog first (focus moves into it
-// and back to the button).
+// compare the offers and can Extend deadline; a package with no offers (or none left open after
+// the deadline, T377) can be extended or reopened; from acceptance on, a link goes to the deal,
+// where a fallen-through deal is promoted, reopened, or withdrawn. Withdraw asks in a dialog first
+// (focus moves into it and back to the button).
 import type { AgentPackageView, PackageStatus } from "@clever/contracts/listing-package";
 import { Button, buttonClasses, ConfirmDialog, PACKAGE_STATUS_TONES, StatusChip } from "@clever/ui";
 import Link from "next/link";
@@ -122,7 +123,13 @@ export function PublishPanel({ pkg }: { pkg: AgentPackageView }) {
       />
       {pkg.status === "NO_OFFERS_RECEIVED" && (
         <p className="rounded-control bg-status-offers-in p-inset-md text-body text-status-offers-in">
-          The deadline passed with no offers. Extend it, reopen for a new round, or withdraw.
+          The deadline passed with no open offers. Extend it, reopen for a new round, or withdraw.
+        </p>
+      )}
+      {pkg.status === "FELL_THROUGH" && (
+        <p className="rounded-control bg-status-error p-inset-md text-body text-status-error">
+          The deal fell through. On the deal page, promote a backup offer, reopen for a new round,
+          or withdraw.
         </p>
       )}
       {blockers && <PublishBlockers blockers={blockers} onPage />}

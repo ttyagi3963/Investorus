@@ -372,7 +372,8 @@ Constraints:
 - Partial unique `(packageId, investorId, round)` where status in
   (`ACTIVE`, `COUNTERED`, `BACKUP`, `ACCEPTED`) — at most one active offer per investor per
   package (FR-042, FR-045).
-- New offers and revisions are refused when `now > package.offerDeadline` (FR-044).
+- New offers and revisions are refused when `now > package.offerDeadline` (FR-044), except a
+  revision that answers the agent's counter, which the agent may send after the deadline (T377).
 
 Derived (not stored): `estimatedNetProceeds = price − feesAndConcessions − round(price ×
 closingCostPct) − flatFees`, using `ConfigEntry["netProceeds"]` (FR-050, FR-051). The breakdown is
@@ -536,6 +537,7 @@ time), `nearMiss` (`{ windowDays, minCount }`, defaults 30 and 5; `minCount` may
 | DRAFT | publish (valid) | ACCEPTING_OFFERS |
 | DRAFT, ACCEPTING_OFFERS, NO_OFFERS_RECEIVED | withdraw | WITHDRAWN ■ |
 | ACCEPTING_OFFERS | deadline passes with 0 offers | NO_OFFERS_RECEIVED |
+| ACCEPTING_OFFERS | decline all after the deadline (T377) | NO_OFFERS_RECEIVED |
 | ACCEPTING_OFFERS | seller accepts an offer | OFFER_ACCEPTED |
 | NO_OFFERS_RECEIVED | reopen / extend deadline | ACCEPTING_OFFERS (round + 1 on reopen) |
 | OFFER_ACCEPTED | milestone | UNDER_CONTRACT |
@@ -544,21 +546,24 @@ time), `nearMiss` (`{ windowDays, minCount }`, defaults 30 and 5; `minCount` may
 | CLOSING | milestone | CLOSED ■ |
 | OFFER_ACCEPTED … CLOSING | fell through (reason required) | FELL_THROUGH |
 | FELL_THROUGH | promoted backup reconfirms | OFFER_ACCEPTED |
-| FELL_THROUGH | reopen (no usable backups) | ACCEPTING_OFFERS (round + 1) |
-| FELL_THROUGH | withdraw | WITHDRAWN ■ |
+| FELL_THROUGH | reopen (backups left are declined and told, T377) | ACCEPTING_OFFERS (round + 1) |
+| FELL_THROUGH | withdraw (backups left are declined) | WITHDRAWN ■ |
 
 - `■` marks final states: CLOSED and WITHDRAWN.
 - Out-of-order milestones are refused, and the response lists the allowed next states (spec
   edge case).
 - If the deadline passes with ≥ 1 offer, the package stays ACCEPTING_OFFERS with
   `offersClosed = true` (derived from the deadline). New offers are refused, and the agent can
-  still decide.
+  still decide; declining all then moves the package to NO_OFFERS_RECEIVED, since no offer can
+  come (T377). Before the deadline a decline all leaves the round open for new offers.
+- From FELL_THROUGH, reopen and withdraw are refused (409 `BACKUP_PENDING`) while a promoted
+  backup's deal is PENDING_RECONFIRMATION.
 
 ### OfferStatus
 
 ```text
 ACTIVE ─revise─▶ ACTIVE (new revision)
-ACTIVE ─agent counter─▶ COUNTERED ─investor accepts counter / revises─▶ ACTIVE
+ACTIVE ─agent counter─▶ COUNTERED ─investor accepts counter / revises (even after the deadline)─▶ ACTIVE
 COUNTERED ─investor declines counter─▶ ACTIVE (at the investor's last own revision; agent notified)
 ACTIVE|COUNTERED ─withdraw─▶ WITHDRAWN ■
 ACTIVE|COUNTERED ─expiresAt passes─▶ EXPIRED ■

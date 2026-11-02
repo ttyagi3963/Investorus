@@ -1,6 +1,7 @@
 // The offer rules (T296, T307; FR-042, FR-043, XII): a matched investor makes one offer per package
-// and round and can revise it until the deadline; each revise restates every term, names the
-// version it read, and is kept as a revision with its own expiry job. The investor can withdraw an
+// and round and can revise it until the deadline, or answer a counter with a revision even after it
+// (T377); each revise restates every term, names the version it read, and is kept as a revision
+// with its own expiry job. The investor can withdraw an
 // offer until it is accepted, even after the deadline. A refusal says why (the deadline passed, the
 // package was withdrawn, an offer already exists). The investor answers an agent's counter by
 // taking its terms or keeping their own (T310), and can push out a backup offer's expiry, even after
@@ -107,8 +108,9 @@ export class OfferService implements IOfferService {
       const terms = checkOfferDates(rest, now);
       const pkg = await repos.packages.findById(current.packageId);
       if (!pkg) throw new NotFoundError(NOT_FOUND);
-      this.assertOpen(pkg);
-      // A revision of a countered offer replaces the counter (FR-052).
+      // A revision of a countered offer replaces the counter (FR-052). The agent may counter after
+      // the deadline, so the investor may answer then too; any other revision is refused (FR-044).
+      this.assertOpen(pkg, current.status === "COUNTERED");
       const offer = await repos.offers.revise(offerId, version, terms, { status: "ACTIVE" });
       await scheduleOfferExpiry(repos, offer);
       await audit(repos, actor, offer, "OFFER_REVISED");
@@ -248,15 +250,16 @@ export class OfferService implements IOfferService {
     });
   }
 
-  /** Offers are taken only while the package accepts them and before its deadline. */
-  private assertOpen(pkg: ListingPackage) {
+  /** Offers are taken only while the package accepts them and before its deadline, except an
+   * investor's answer to a counter, which the deadline does not stop. */
+  private assertOpen(pkg: ListingPackage, answeringCounter = false) {
     if (pkg.status !== "ACCEPTING_OFFERS") {
       throw new BusinessRuleError(
         "This package is no longer accepting offers",
         "PACKAGE_NOT_ACCEPTING_OFFERS",
       );
     }
-    if (pkg.offerDeadline && this.deps.clock.now() >= pkg.offerDeadline) {
+    if (!answeringCounter && pkg.offerDeadline && this.deps.clock.now() >= pkg.offerDeadline) {
       throw new BusinessRuleError("The offer deadline has passed", "OFFER_DEADLINE_PASSED");
     }
   }

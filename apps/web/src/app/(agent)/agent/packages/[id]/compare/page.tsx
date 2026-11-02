@@ -165,9 +165,15 @@ export default function ComparePage() {
       {!open && p && (
         <p role="status" className="rounded-card bg-status-closed p-inset-md text-status-closed">
           This package is no longer taking decisions on offers.{" "}
-          <Link href={`/agent/packages/${id}/deal`} className="font-semibold text-link underline">
-            See the deal
-          </Link>
+          {p.status === "NO_OFFERS_RECEIVED" ? (
+            <Link href={`/agent/packages/${id}`} className="font-semibold text-link underline">
+              Extend, reopen, or withdraw it
+            </Link>
+          ) : (
+            <Link href={`/agent/packages/${id}/deal`} className="font-semibold text-link underline">
+              See the deal
+            </Link>
+          )}
         </p>
       )}
       <div className="flex flex-wrap items-end justify-between gap-inline-md">

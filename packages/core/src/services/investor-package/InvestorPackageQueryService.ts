@@ -9,7 +9,7 @@ import { ForbiddenError, NotFoundError } from "@clever/contracts/common";
 import type { Deal, DealStatus } from "@clever/contracts/deal";
 import type { ListingPackage } from "@clever/contracts/listing-package";
 import type { Match } from "@clever/contracts/match";
-import type { Offer } from "@clever/contracts/offer";
+import type { Offer, OfferTerms } from "@clever/contracts/offer";
 import type { Photo } from "@clever/contracts/photo";
 import type { Property } from "@clever/contracts/property";
 import type { Seller } from "@clever/contracts/seller";
@@ -21,6 +21,8 @@ export type InvestorPackage = {
   property: Property;
   photos: Photo[];
   myOffer: Offer | null;
+  /** The investor's own last terms while the agent's counter stands in for them (T377). */
+  myOwnTerms: OfferTerms | null;
   /** Only what the investor may see of their deal: never the agent's fall-through reason. */
   myDeal: Pick<Deal, "status" | "reconfirmBy"> | null;
   matchedAt: Date;
@@ -106,5 +108,17 @@ async function load(
   if (!property) throw new NotFoundError(NOT_FOUND);
   const deal = myOffer && (await repos.deals.findByOffer(myOffer.id));
   const myDeal = deal ? { status: deal.status, reconfirmBy: deal.reconfirmBy } : null;
-  return { package: pkg, property, photos, myOffer, myDeal, matchedAt: match.firstMatchedAt };
+  const myOwnTerms =
+    myOffer?.status === "COUNTERED"
+      ? await repos.offers.findLastTerms(myOffer.id, "INVESTOR")
+      : null;
+  return {
+    package: pkg,
+    property,
+    photos,
+    myOffer,
+    myOwnTerms,
+    myDeal,
+    matchedAt: match.firstMatchedAt,
+  };
 }

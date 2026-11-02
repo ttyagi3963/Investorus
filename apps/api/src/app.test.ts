@@ -197,6 +197,7 @@ describe("investor routes", () => {
           },
           photos: [],
           myOffer: null,
+          myOwnTerms: null,
           myDeal: null,
           matchedAt: at,
         }),

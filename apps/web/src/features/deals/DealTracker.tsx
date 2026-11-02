@@ -3,8 +3,9 @@
 // milestones as a stepper with the current one marked, a button only for the allowed next milestone,
 // a fall-through dialog that needs a reason, and after a fall-through the backups ranked by net
 // proceeds with Promote (a deactivated investor's backup is flagged and cannot be promoted, T370).
-// With no usable backup left, the agent reopens the package for a new round
-// or withdraws it. Nothing changes on screen until the api answers (never optimistic, XIII).
+// While no promoted backup is deciding, the agent can instead reopen the package for a new round or
+// withdraw it, declining any backups left (T377). Nothing changes on screen until the api answers
+// (never optimistic, XIII).
 import type { DealView } from "@clever/contracts/deal";
 import type { AgentPackageView } from "@clever/contracts/listing-package";
 import {
@@ -197,13 +198,17 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
               </li>
             ))}
           </ul>
-          {decided && usable.length === 0 && (
+          {decided && (
             <div className="flex flex-wrap gap-inline-md">
               <DeadlineDialog
                 label="Reopen for a new round"
                 title="Reopen the package?"
-                note="Matched investors are told again and can make new offers."
-                triggerVariant="primary"
+                note={
+                  deal.backups.length > 0
+                    ? "The backup offers are declined and their investors told. Matched investors are told again and can make new offers."
+                    : "Matched investors are told again and can make new offers."
+                }
+                triggerVariant={usable.length === 0 ? "primary" : "secondary"}
                 isDisabled={isBusy}
                 onSubmit={(offerDeadline) =>
                   run(() => listingPackages.reopen(pkg.id, { version: pkg.version, offerDeadline }))
@@ -212,7 +217,7 @@ export function DealTracker({ pkg, deal }: { pkg: AgentPackageView; deal: DealVi
               <ConfirmDialog
                 triggerLabel="Withdraw"
                 title="Withdraw this package?"
-                message="Open offers are declined and matched investors are told. This cannot be undone."
+                message="Backup offers are declined and matched investors are told. This cannot be undone."
                 confirmLabel="Yes, withdraw"
                 cancelLabel="Keep it"
                 isDisabled={isBusy}

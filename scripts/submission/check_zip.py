@@ -31,9 +31,16 @@ MAX_UNZIPPED_BYTES = 500 * MB
 MAX_FILE_BYTES = 5 * MB  # "large media": the seed photos are under 5 MB in total (T138)
 FORBIDDEN_DIRS = {"node_modules", "dist", ".next", ".turbo", "coverage"}
 FORBIDDEN_FILES = {"assignment.md", "teams.md", "forgemini.md", ".env.local", "settings.local.json"}
-PRIVATE_DIRS = {"study-notes", "worktrees", ".claude", ".specify", "specs"}
-# The owner's private engineering process stays local (T412).
-PRIVATE_PATHS = ("CLAUDE.md", "scripts/board/", ".github/workflows/claude", ".github/pull_request_template.md")
+PRIVATE_DIRS = {"study-notes", "worktrees", ".claude", ".specify"}
+# The owner's private engineering process stays local (T412). Spec Kit's specs/ is private only at
+# the top level; e2e/specs/ holds the browser tests and ships.
+PRIVATE_PATHS = (
+    "CLAUDE.md",
+    "specs/",
+    "scripts/board/",
+    ".github/workflows/claude",
+    ".github/pull_request_template.md",
+)
 
 
 def human(n: float) -> str:

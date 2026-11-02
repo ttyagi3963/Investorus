@@ -1,6 +1,8 @@
 // The audit port over Prisma (T282): the only file with AuditLog queries. The entry records the
-// trace ID of the request or job that wrote it, read from the trace context.
+// trace ID of the request or job that wrote it, read from the trace context. Its details go through
+// redactPii: an entry can never be changed or deleted, so a personal detail written there would stay.
 import type { AuditAction, AuditEntry } from "@clever/contracts/audit";
+import { redactPii } from "../../errors/redact-pii.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { currentTraceId } from "../../infra/trace-context.js";
 import type { IAuditRepository, NewAuditEntry } from "./IAuditRepository.js";
@@ -12,7 +14,7 @@ export class PrismaAuditRepositoryImpl implements IAuditRepository {
     await this.db.auditLog.create({
       data: {
         ...entry,
-        details: (details ?? {}) as Prisma.InputJsonObject,
+        details: redactPii(details ?? {}) as Prisma.InputJsonObject,
         correlationId: currentTraceId() ?? null,
       },
     });

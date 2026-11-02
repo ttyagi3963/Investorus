@@ -7,10 +7,12 @@
 // names its attempt, so a run that lost its claim (the stale sweep gave the delivery to a newer
 // run) records nothing and is SKIPPED (T379). The caller (the worker's queue consumer) waits
 // `delayMs` before the next try, and calls giveUp when every try threw; this class never sleeps.
+// A failure's text is scrubbed here, where it is made, since it is stored, queued, and logged (XII).
 import type { DeliveryRetryPolicy } from "@clever/contracts/config";
 import { outboxEventInputSchema, type OutboxEventInput } from "@clever/contracts/events";
 import { DeliveryRejectedError } from "../errors/DeliveryRejectedError.js";
 import { InfrastructureError } from "../errors/InfrastructureError.js";
+import { scrubPiiText } from "../errors/redact-pii.js";
 import type { IClock } from "../providers/clock/IClock.js";
 import type { ICrmProvider } from "../providers/crm/ICrmProvider.js";
 import type { IMessagingProvider } from "../providers/messaging/IMessagingProvider.js";
@@ -39,7 +41,9 @@ export type DeliveryDispatcherDeps = {
 /** The send, prepared inside the first transaction and run after it commits. */
 type Send = () => Promise<void>;
 
-const describe = (err: unknown) => (err instanceof Error ? err.message : "Unknown failure");
+/** A provider's error may quote the recipient, so its emails and phone numbers are scrubbed. */
+const describe = (err: unknown) =>
+  err instanceof Error ? scrubPiiText(err.message) : "Unknown failure";
 
 export class DeliveryDispatcher {
   constructor(
@@ -58,7 +62,7 @@ export class DeliveryDispatcher {
         // Nothing to send to (an investor without an email, an unreadable event). Returned, not
         // thrown, so the attempt this transaction started is kept and can be set aside.
         if (err instanceof DeliveryRejectedError) {
-          return { kind: "rejected" as const, attempt, error: err.message };
+          return { kind: "rejected" as const, attempt, error: describe(err) };
         }
         throw err;
       }

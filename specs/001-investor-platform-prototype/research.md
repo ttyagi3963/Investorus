@@ -199,6 +199,10 @@ below are the planning baseline.
   neighborhood stay in plain text for matching and display. Investor-facing responses use a
   separate contract (`InvestorPackageView`) with no PII fields at all, so masking happens by
   construction at the outbound serializer. A shared `redactPii()` scrubs log and Sentry payloads.
+  Its `scrubPiiText()` also scrubs a delivery failure's text where it is made, so the stored
+  `Delivery.lastError` and the reason queued and logged with it carry no email or phone number,
+  and every audit entry's `details` go through `redactPii()`, since an entry can never be changed
+  (T382).
   Revealing seller details to the winning investor writes a `PII_ACCESSED` audit entry.
 - **Rationale**: Storing in full and masking on the way out is what XX.1 requires. Making the
   investor view a different type means PII cannot leak by forgetting to filter. A contract test

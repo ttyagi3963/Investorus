@@ -1,6 +1,7 @@
 // Guards the delivery rules (T339; FR-070, FR-071, FR-077, XII, contracts/events.md): a temporary
 // failure is retried with a growing wait and set aside after the last allowed attempt; a refusal
-// or an investor who cannot be reached is set aside at once; a CRM update carries the seller's
+// or an investor who cannot be reached is set aside at once; a failure's text is kept with no email
+// or phone number in it (T382); a CRM update carries the seller's
 // contact read at send time, that read is audited, and STALE counts as delivered; a duplicate job
 // sends nothing; the relay makes each delivery once, with no text for an investor with no phone, and
 // puts back a delivery whose job was lost when the worker died mid-send, and queues on Redis only
@@ -109,6 +110,29 @@ describe("DeliveryDispatcher", () => {
     expect((await ctx.dispatcher.dispatch(sms.id)).outcome).toBe("NEEDS_ATTENTION");
     expect([email.attempts, sms.attempts]).toEqual([1, 1]);
     expect(ctx.messaging.sendSms).not.toHaveBeenCalled();
+  });
+
+  it("stores and hands on a provider's error with the recipient's email and phone scrubbed", async () => {
+    const ctx = setup();
+    ctx.uow.repos.investors.contacts.set("investor-1", {
+      email: "i@example.test",
+      phone: "+15125550100",
+    });
+    const { email, sms } = await relayed(ctx, NOTICE);
+    ctx.messaging.sendEmail.mockRejectedValue(
+      new InfrastructureError("Mailbox i@example.test is full"),
+    );
+    ctx.messaging.sendSms.mockRejectedValue(
+      new DeliveryRejectedError("+15125550100 does not take texts"),
+    );
+
+    const retry = await ctx.dispatcher.dispatch(email.id);
+    const setAside = await ctx.dispatcher.dispatch(sms.id);
+
+    const errors = [email.lastError, sms.lastError, JSON.stringify([retry, setAside])].join("\n");
+    expect(errors).toContain("Mailbox [EMAIL] is full");
+    expect(errors).toContain("[PHONE] does not take texts");
+    expect(errors).not.toMatch(/i@example\.test|5125550100/);
   });
 
   it("sends the CRM the seller's contact read at send time and the event's number, audits the read, and takes STALE as sent", async () => {

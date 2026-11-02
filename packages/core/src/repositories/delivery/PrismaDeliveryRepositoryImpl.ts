@@ -1,12 +1,13 @@
 // The delivery port over Prisma (T339): the only file with Delivery queries. Status changes are
 // guarded by the status they start from, and an attempt's outcome also by its attempt number
 // (T379), so a late, duplicate, or superseded run cannot undo a newer state.
-// lastError is cut to 500 characters; callers pass messages that never carry PII.
+// lastError is scrubbed of emails and phone numbers and cut to 500 characters, whoever passes it.
 import type { DeliveryPlan } from "@clever/contracts/events";
+import { scrubPiiText } from "../../errors/redact-pii.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import type { DeliveryWithEvent, IDeliveryRepository } from "./IDeliveryRepository.js";
 
-const redacted = (error: string) => error.slice(0, 500);
+const redacted = (error: string) => scrubPiiText(error).slice(0, 500);
 
 export class PrismaDeliveryRepositoryImpl implements IDeliveryRepository {
   constructor(private readonly db: Prisma.TransactionClient) {}

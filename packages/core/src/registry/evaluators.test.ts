@@ -87,6 +87,15 @@ const CASES: [CriterionKey, Partial<BuyBox>, Partial<ListingFacts>, Partial<List
 ];
 
 describe("evaluateBuyBox", () => {
+  it("matches a listing at a ZIP that exists nowhere only through a nationwide box (T421)", () => {
+    const unknownPlace = { ...listing, zip: "99999", state: "Unknown" };
+    expect(evaluateBuyBox(anyBox, unknownPlace, TODAY).matched).toBe(true);
+    const california = { ...anyBox, geographyMode: "STATES" as const, geography: ["CA"] };
+    expect(evaluateBuyBox(california, unknownPlace, TODAY).matched).toBe(false);
+    const zips = { ...anyBox, geographyMode: "ZIPS" as const, geography: ["90025"] };
+    expect(evaluateBuyBox(zips, unknownPlace, TODAY).matched).toBe(false);
+  });
+
   it.each(CASES)(
     "%s: passes a listing that fits and fails one that does not",
     (key, box, fits, misses) => {

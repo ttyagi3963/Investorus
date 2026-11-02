@@ -314,6 +314,23 @@ describe("MatchingWorkflow", () => {
     expect(harbor.map((n) => n.type)).toEqual(["PACKAGE_MATCHED"]);
   });
 
+  it("records every matching box of an investor a saved box already matched to this version (T406)", async () => {
+    const { uow, pkg, matching } = await published();
+    // Summit saves one box before the publish's run: it matches, and summit is told at version 1.
+    await matching.evaluateBuyBox({ buyBoxId: "Austin flips", version: 3 });
+
+    await matching.evaluatePackage({
+      packageId: pkg.id,
+      round: 1,
+      listingVersion: 1,
+      trigger: "PUBLISH",
+    });
+
+    const summit = uow.repos.matches.rows.find((m) => m.investorId === "investor-summit");
+    expect(summit?.matchedBuyBoxIds).toEqual(["Austin flips", "Texas rentals"]);
+    expect(uow.repos.notifications.rows.filter((n) => n.userId === "user-summit")).toHaveLength(1);
+  });
+
   it("does nothing for an older listing version or a withdrawn package", async () => {
     const { uow, packages, pkg, matching } = await published();
     const { package: edited } = await packages.update(avery, pkg.id, {

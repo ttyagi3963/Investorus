@@ -98,8 +98,21 @@ export class MatchingWorkflow implements IMatchingWorkflow {
       // they still match (FR-022). Newly matched investors are handled below.
       for (const [investorId, prior] of earlier) {
         const lastTold = prior.lastNotifiedListingVersion!;
-        // Already told about, or decided at, this version: a re-run adds nothing.
-        if (lastTold >= listingVersion) continue;
+        const stillMatched = byInvestor.get(investorId) ?? [];
+        // Already told about, or decided at, this version: a re-run adds nothing. Its boxes are
+        // still recorded (a union), since a box saved before this run may have told them (T406).
+        if (lastTold >= listingVersion) {
+          if (stillMatched.length > 0) {
+            await repos.matches.upsert({
+              packageId,
+              investorId,
+              round,
+              matchedBuyBoxIds: stillMatched.map(({ box }) => box.id),
+              trigger,
+            });
+          }
+          continue;
+        }
         if (
           !(await repos.effects.claimOnce(
             `MATCH_DECISION:${packageId}:${listingVersion}:${investorId}`,
@@ -107,7 +120,6 @@ export class MatchingWorkflow implements IMatchingWorkflow {
         ) {
           continue;
         }
-        const stillMatched = byInvestor.get(investorId) ?? [];
         if (stillMatched.length > 0) {
           await repos.matches.upsert({
             packageId,

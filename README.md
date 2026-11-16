@@ -1,10 +1,209 @@
-# Investor Platform prototype
+# Investorus
 
-A working prototype of an investor marketplace for home sellers: an agent publishes a listing
-package, matching investors are notified, investors make offers, and the agent compares them
-and tracks the accepted deal to closing.
+**A reference architecture for taking a revenue-producing workflow off a brownfield mesh of
+no-code tools, without stopping the business.** The workflow's logic is scattered, its data is
+duplicated, its failures are silent, its core records have no owner, and the team running it has
+no spare capacity. Investorus is a working implementation of the system that replaces it, built
+as a proptech platform.
 
-## Start it
+[![CI](https://github.com/ttyagi3963/Investorus/actions/workflows/ci.yml/badge.svg)](https://github.com/ttyagi3963/Investorus/actions/workflows/ci.yml)
+
+The product is an off-market investor marketplace. An agent publishes a property, the platform
+matches it against every investor's buy box (the criteria an investor buys on), notifies the
+investors who fit, collects their offers, and tracks the accepted deal to closing. Instead of one
+or two buyers contacting the seller directly, many investors compete behind the agent, and the
+seller's identity stays private until an offer is accepted.
+
+The rest of this README is about the architecture.
+
+---
+
+## The problems in the existing system, and how each is fixed
+
+The existing workflow runs across a CRM, spreadsheets, automation recipes, low-code apps, and
+manual steps. It works and earns revenue, but it has eleven problems. Each one is fixed by a
+specific part of the architecture.
+
+| Problem in the existing system | How the architecture fixes it | Patterns |
+| --- | --- | --- |
+| **The workflow is spread across many tools.** | One modular monolith becomes the workflow's home. The migration is designed to retire the old tools one workflow at a time, behind a routing facade. | Strangler fig, facade, anti-corruption layer |
+| **It runs on tribal knowledge.** | Rules are written down as tested code, decisions as ADRs, and engineering rules as a constitution. The migration is designed to start by mapping today's hidden rules with the people who run them. | ADRs, constitution, mapping step |
+| **Business logic lives in several systems.** | Each rule has one home, the domain core, shared by the api and the worker. Matching criteria are defined once, in a registry. | Hexagonal core, criterion registry |
+| **Data is duplicated, so state is inconsistent.** | One system of record and one writer per field. The CRM receives one-way, ordered updates. Backfill reconciles field by field, not row counts. | Single writer, outbox, sequence ordering, reconciliation |
+| **Core records have no clean owner.** Investors, properties, buy boxes, listing packages, offers, and transaction status. | Each has one module in the core and its own repository port, so each has exactly one place where it can change. | Modular monolith, ports and adapters |
+| **Failed workflows are hard to diagnose.** | Every match decision is stored with its reasons, the audit log is append-only, and one trace ID follows a request into its background jobs. An operations console shows each listing's timeline and every delivery. | Explainable decisions, audit log, trace context |
+| **Outages and retries lose or duplicate work.** | Outside calls leave through an outbox, retry with backoff, and end in a dead-letter queue (DLQ) instead of vanishing. Every request and every delivery is idempotent. | Transactional outbox, idempotency keys, DLQ |
+| **Concurrent actions leave inconsistent state.** | Each use case is one transaction. Competing actions take a row lock, stale screens fail a version check, and unique constraints are the last line. | Unit of work, optimistic and pessimistic locking |
+| **Bad data: seller intake and buy boxes don't share a vocabulary.** | One typed schema serves the buy box editor, the api, and the legacy import. A bad record is rejected with its reason, never passed downstream. | Shared contracts, validating adapters |
+| **The workflow earns revenue, so it can't stop for a rewrite.** | The migration is designed so old and new run side by side in three stages: the platform shadows, then acts while the CRM mirrors, then runs alone. Every cutover gets a rehearsed recovery. | Strangler fig, shadow mode, parallel run |
+| **The team has no spare capacity.** | One language, one deployable core, and managed services. No fleet of microservices for a small team to run. | Modular monolith |
+
+The sections below describe each pattern in detail, and mark what is **built** in this repo and
+what is **planned** for the migration.
+
+---
+
+## Architecture at a glance
+
+A **modular monolith on one PostgreSQL system of record**, with every outside system behind an
+adapter. It runs as three processes that share one domain core, so a rule behaves the same
+whichever process applies it.
+
+```
+                  Browser
+                     |
+   +-----------------v-----------------+
+   |  web: Next.js 16 + BFF            |   session token in an HttpOnly cookie
+   +-----------------+-----------------+
+                     |  /api/v1  (trace ID, idempotency key)
+   +-----------------v-----------------+       +-----------------------------------+
+   |  api: Express 5                   |       |  worker                           |
+   |  domain core (hexagonal)          |       |  same domain core                 |
+   |  one transaction per use case     |       |  durable jobs, outbox relay       |
+   +-----------------+-----------------+       +------+--------------------+-------+
+                     |                                |                    |
+   +-----------------v--------------------------------v--+       +---------v-------+
+   |  PostgreSQL 17: the system of record                |       |  Redis 7        |
+   |  state, append-only audit, outbox, jobs,            |       |  delivery queue |
+   |  idempotency keys                                   |       |  and DLQ only   |
+   +-----------------------------------------------------+       +-----------------+
+
+   Anti-corruption layer (ports and adapters), used by the api and the worker:
+     outbound:  CRM, email and SMS, object storage (stand-in and S3), ZIP lookup     [built]
+     inbound:   legacy CSV import                                                    [built]
+                CRM and automation webhooks, behind the migration facade             [planned]
+```
+
+**Why a monolith and not microservices.** The hardest rules here (one accepted offer per listing,
+one delivery per event) are far easier to guarantee inside one database transaction than across
+services, and a small team can't operate a fleet of them. Lint rules keep the modules apart
+without a network between them. Matching is the first module to extract if load ever demands it.
+
+---
+
+## Patterns, and the problem each one solves
+
+Every pattern below is either **built** and running in this repo, or **planned** as part of the
+designed migration path. Each links to its architecture decision record (ADR).
+
+### 1. Migrating off the old tools without a big-bang rewrite
+
+| Pattern | Problem it solves | How | Status |
+| --- | --- | --- | --- |
+| **Strangler fig** | A rewrite can't stop the business | Replace one workflow at a time while the old tools keep running: map, shadow, backfill and reconcile, move write ownership, cut over by cohort, retire | Planned ([0021](docs/adr/0021-migrate-by-strangling-one-workflow-and-one-cohort-at-a-time.md)) |
+| **Facade as a routing rule** | Work arrives through many doors, not one | Each opportunity gets a canonical ID and a route, legacy or platform, at intake; every automation checks the route first, so a deal never switches systems halfway | Planned ([0021](docs/adr/0021-migrate-by-strangling-one-workflow-and-one-cohort-at-a-time.md)) |
+| **Anti-corruption layer** | Vendor formats leak into business rules | Ports in the domain's own terms; adapters translate, time out after 5 s, validate every answer, and turn vendor errors into "temporary" or "refused" | Outbound and CSV import built; webhooks planned ([0005](docs/adr/0005-use-ports-and-adapters-behind-a-bff.md), [0006](docs/adr/0006-abstract-only-where-a-swap-is-real.md)) |
+| **One writer per field** | Two systems silently disagree about one record | The platform owns listings, buy boxes, offers, and deals; the CRM receives one-way updates through the outbox | Built for platform data ([0009](docs/adr/0009-send-every-outside-call-through-a-transactional-outbox.md)) |
+| **Shadow mode and parallel run** | Hidden rules get lost in the move | The platform decides but sends nothing, while a daily report explains every difference from the old process | Planned ([0021](docs/adr/0021-migrate-by-strangling-one-workflow-and-one-cohort-at-a-time.md)) |
+| **Restartable backfill with reconciliation** | Legacy data has duplicates and gaps | The legacy investor import maps old columns, reports every rejected row with its reason, and skips rows already done on a retry | Built |
+| **Expand, migrate, contract** | Old and new code must share one database during a rollout | Forward-only migrations with a drift check in CI; a versioned api (`/api/v1`) | Built |
+
+### 2. Consistency inside the system
+
+| Pattern | Problem it solves | How | Status |
+| --- | --- | --- | --- |
+| **Unit of work** | A change commits but its audit entry or message doesn't | The state change, its audit entry, its outbox events, and any timer it starts commit in one transaction | Built ([0007](docs/adr/0007-run-each-use-case-in-one-transaction.md)) |
+| **Optimistic concurrency** | A stale screen overwrites newer data | Writes name the version they were based on; a mismatch returns 409 | Built ([0008](docs/adr/0008-resolve-concurrency-in-three-layers.md)) |
+| **Pessimistic row lock** | Two acceptances, or an offer landing at the deadline | Competing actions on a listing take the same row lock first, backed by unique constraints (one active deal per listing, one live offer per investor per round) | Built ([0008](docs/adr/0008-resolve-concurrency-in-three-layers.md)) |
+| **Durable timers in Postgres** | A restart loses a deadline | Deadlines are job rows written with the change; workers claim them with `FOR UPDATE SKIP LOCKED` and a renewed lease, and every handler is safe to run late, twice, or for nothing | Built ([0010](docs/adr/0010-run-time-based-rules-as-durable-jobs-in-postgres.md)) |
+| **Effect markers** | A job re-run after a crash repeats a side effect | Each one-time effect claims a key in the same transaction | Built ([0010](docs/adr/0010-run-time-based-rules-as-durable-jobs-in-postgres.md)) |
+
+### 3. Reliable integration with outside systems
+
+| Pattern | Problem it solves | How | Status |
+| --- | --- | --- | --- |
+| **Transactional outbox** | An outage fails the user's action, or loses the message | The event is a row in the same transaction as the change; the worker delivers it later | Built ([0009](docs/adr/0009-send-every-outside-call-through-a-transactional-outbox.md)) |
+| **Idempotency keys** | A retried request or delivery runs twice | Every mutating api request needs an `Idempotency-Key` (a retry replays the stored answer); every delivery sends its own ID so the receiver can drop a repeat | Built ([0011](docs/adr/0011-make-every-mutating-request-idempotent.md)) |
+| **Retry with backoff, then a DLQ** | Transient failures need retries; permanent ones need a human | Exponential backoff with jitter for about five minutes, then a dead-letter queue that operations can see and retry from a console | Built ([0009](docs/adr/0009-send-every-outside-call-through-a-transactional-outbox.md)) |
+| **Redis as a disposable queue** | Losing the queue must not lose work | Delivery state lives in Postgres; Redis holds only the BullMQ queue, and the relay re-queues anything Redis lost | Built ([0012](docs/adr/0012-use-postgres-as-the-backbone-and-redis-only-for-delivery.md)) |
+| **Ordered updates by sequence number** | A late retry overwrites newer CRM data | Each event gets a database sequence number; the receiver keeps only a newer one | Built ([0008](docs/adr/0008-resolve-concurrency-in-three-layers.md)) |
+| **Fault injection** | Failure paths that were never exercised | Each stand-in service can be switched to down, slow, or garbage responses from the operations console | Built ([0015](docs/adr/0015-design-for-the-reviewers-2-gb-machine.md)) |
+
+### 4. Explainability, privacy, and observability
+
+| Pattern | Problem it solves | How | Status |
+| --- | --- | --- | --- |
+| **Rules engine from a criterion registry** | Matching rules grow past understanding | Each of 13 criteria is defined once; a criterion missing from any layer fails the type check; SQL narrows, then evaluators decide | Built ([0016](docs/adr/0016-one-matching-engine-from-a-criterion-registry.md)) |
+| **Explainable, replayable decisions** | "Why didn't this investor see this house?" | Every match decision is stored with each criterion's expected and actual values and the rule version; a non-match replays against the versions live at the time | Built ([0016](docs/adr/0016-one-matching-engine-from-a-criterion-registry.md)) |
+| **Append-only audit log** | History gets rewritten | A database trigger refuses updates and deletes on the audit table | Built |
+| **Privacy by design** | Personal details leak into events, logs, or the wrong view | Field-level AES-256-GCM encryption in the repository layer, a keyed hash for duplicate detection, PII-free view types and event schemas, audited reads | Built ([0013](docs/adr/0013-protect-seller-privacy-by-design.md)) |
+| **Trace context** | A failure can't be followed across processes | One W3C trace ID from the BFF through the api into background jobs, on every log line and error | Built; OpenTelemetry export planned ([0014](docs/adr/0014-make-every-request-traceable-and-keep-personal-details-out-of-logs.md)) |
+| **Theming as data** | Each partner brand becomes a code fork | Colors, fonts, shapes, names, and logos are validated token files in the database, chosen per request | Built |
+
+---
+
+## Engineering governance: directing AI agents
+
+The platform was built by an engineering lead directing AI agents as an engineering team, under
+explicit governance ([0001](docs/adr/0001-use-spec-driven-development-with-spec-kit.md),
+[0002](docs/adr/0002-govern-engineering-with-a-constitution.md),
+[0003](docs/adr/0003-direct-ai-agents-as-a-team-and-verify-before-trusting.md)).
+
+- **Spec first.** Every change traces to a task in a written specification, plan, and task list
+  (GitHub Spec Kit), under an engineering constitution covering privacy, idempotency, layering, and
+  testing. No code without a task.
+- **Agents split by ownership.** Helper agents work in parallel, each in its own git worktree, and
+  each file has one owner per batch. A lead agent reviews and integrates every change.
+- **Verify before trusting.** Every review finding, from people or AI, is checked against the
+  code, the running system, or Postgres before anything changes. A claim that doesn't hold is
+  rejected with the evidence instead of "fixed."
+- **Humans own the business rules.** Agents propose; the owner decides, and the record says who
+  decided. One agent decision was reversed on review: ADR 0018 is superseded by
+  [0019](docs/adr/0019-lock-out-only-a-banned-login.md).
+
+AI made code cheap. Confidence in it is still expensive, so the leader's job shifts to scope,
+verification, and decisions.
+
+---
+
+## CI/CD and quality
+
+Quality is a property of the pipeline, not of attention
+([0020](docs/adr/0020-hold-quality-with-gates-and-invest-in-the-developer-workflow.md)).
+
+- **Trunk-based delivery.** One branch and one pull request per batch, one commit per task, and a
+  pull request merges only when every gate is green.
+- **Gates on every pull request:** lint (with architecture-boundary and accessibility rules),
+  formatting, and typecheck; offline unit tests; integration tests on real PostgreSQL 17 through
+  Testcontainers, with a migration drift check; and a gitleaks secret scan. A dependency audit runs
+  as advice.
+- **Automated architecture review.** An AI reviewer comments on each pull request against the
+  constitution.
+- **A production-like rehearsal.** On code and build changes, CI runs the full stack inside a
+  Docker daemon limited to 2 GB of memory, no swap, and 2 cores, signs in with every demo account,
+  and fails on any time limit or out-of-memory kill
+  ([0015](docs/adr/0015-design-for-the-reviewers-2-gb-machine.md)). Measured on such a machine: a
+  4-minute build, and the home page answering 29 seconds after start.
+- **Tests by tier.** An in-memory fake carries the pure business rules for fast unit tests; locks,
+  constraints, races, and SQL are tested on a real database; 21 Playwright tests, including axe
+  accessibility checks, drive the running stack. Each important rule gets one test that fails
+  without the change.
+
+**Planned for production:** blue/green deploys, feature flags assigned per opportunity (the same
+route as the migration facade), canary releases to one market first, OpenTelemetry tracing,
+Sentry, and the four DORA metrics tracked against a baseline.
+
+---
+
+## Stack
+
+| Layer | Built | Production path |
+| --- | --- | --- |
+| Language and repo | TypeScript (strict) on Node 24; pnpm workspaces and Turborepo | Same |
+| Web | Next.js 16, React 19, React Aria, Tailwind 4 | Same, behind a CDN |
+| API | Express 5, Zod | Same, on a container platform |
+| Data | PostgreSQL 17, Prisma 7 | Managed PostgreSQL with point-in-time restore |
+| Queue | Redis 7, BullMQ (worker only) | Managed Redis |
+| Outside services | Stand-ins with switchable outages; S3 adapter built | Real CRM, email, and SMS adapters behind the same ports |
+| Tests | Vitest, Testcontainers, Playwright | Same |
+| Delivery | Docker Compose, GitHub Actions | Infrastructure as code, blue/green deploys |
+
+Every rejected alternative is recorded in [ADR 0004](docs/adr/0004-choose-the-technology-stack.md).
+All 21 ADRs are indexed in [docs/adr](docs/adr/).
+
+---
+
+## Run it
 
 You need Docker with Compose v2. Nothing else: no secrets, accounts, or extra commands.
 
@@ -12,328 +211,45 @@ You need Docker with Compose v2. Nothing else: no secrets, accounts, or extra co
 docker compose up --build
 ```
 
-The first start takes a few minutes: it builds the app, creates the database, and loads the demo
-data. It is ready when **http://localhost:3000** opens.
+When **http://localhost:3000** opens, sign in with one press on the home page. Every demo account
+uses the password `demo1234`: agents `avery` and `blake`, investors `harbor`, `summit`, `ridge`,
+`cobalt`, and `dune`, and operations `morgan` (all `@example.com`). The sandbox at
+**http://localhost:4100** shows every email, text, and CRM update the platform sends, live.
 
-## Open it
+**See the outbox and the DLQ work.** As `morgan`, open **Simulations** and set the CRM to **Down**.
+In another browser window, publish a listing as `avery`: it succeeds. Back as `morgan`, **Failed
+jobs** shows the deliveries retrying, and after about five minutes, waiting for attention. Set the
+CRM back to **Up** and press **Retry all**: every delivery is sent exactly once.
 
-Once the containers are up, you can open the prototype as any of the people who use it. On the
-home page, each demo account has a **Sign in** button that signs in with one press (the password
-is `demo1234` for all of them; see [Demo accounts](#demo-accounts)).
-
-1. **As an agent:** open http://localhost:3000 and sign in as Avery or Blake. Agents build and
-   publish listing packages, compare the offers that come in, and track the accepted deal to
-   closing.
-2. **As an investor:** open http://localhost:3000 and sign in as Harbor or another investor.
-   Investors set up their buy boxes, see the listings that match them, and make offers.
-3. **As operations:** open http://localhost:3000 and sign in as Morgan. Operations sees every
-   listing's full history, retries failed deliveries, imports investors, and can switch on
-   simulated outages.
-4. **The sandbox:** open http://localhost:4100 (no sign-in). Here you see the emails, texts, and
-   CRM updates that would have been sent if real email, SMS, and CRM services were connected. They
-   are live: each one appears the moment an action you take in the app triggers it.
-
-A browser window holds one sign-in at a time, so open each role in its own window. For example:
-
-| Window | Open as |
-| --- | --- |
-| Chrome | Agent |
-| Chrome, incognito | Investor |
-| Edge | Operations |
-| Edge, InPrivate | Sandbox |
-
-Then act in one window and watch the others react: publish as the agent, and the match appears
-for the investor and the notice on the sandbox page.
-
-To stop: `Ctrl+C`, or `docker compose down`. To start over with fresh demo data:
-`docker compose down -v`, then `docker compose up --build` again.
-
-### What is running
-
-| Service | Address | What it is |
-| --- | --- | --- |
-| Web app | http://localhost:3000 | The app for agents, investors, and operations |
-| API | http://localhost:4000/api/v1/health | The backend (the web app talks to it for you) |
-| Sandbox | http://localhost:4100 | Stand-ins for the CRM, email and SMS, and file storage, so nothing calls a paid service |
-
-On first start, Compose starts PostgreSQL, runs the database migrations and the seed
-automatically, and then starts the apps. Later starts reuse the built images and the stored
-data, and the seed adds no duplicates. The api and the worker start once the sandbox is
-listening, and the web app once the api is healthy. To fit a 2 GB machine, each Node service has
-a heap cap in [compose.yaml](compose.yaml) (`NODE_OPTIONS`): 384 MB for the web app and the
-worker, 256 MB for the api, and 128 MB for the sandbox.
-
-Settings come from the committed [.env](.env) file. It holds demo values only, and they protect
-nothing real.
-
-## Demo accounts
-
-Every demo account uses the password **`demo1234`**. The seed creates them automatically. On the
-home page and the sign-in page, each account's **Sign in** button signs in with one press.
-
-The seed also creates a small Los Angeles market: 13 listing packages with made-up addresses in
-real LA ZIP codes (Highland Park, Echo Park, West Adams, Inglewood, Van Nuys, Venice, and more),
-priced around each ZIP's typical home value. Ten are taking offers (one is a lot no investor
-matches), one is under contract, and two are drafts. Ten listings have photos (one to three
-each, from [seed/photos](seed/photos/)); the two drafts and the empty lot have none.
-
-| Role | Email | Shows |
-| --- | --- | --- |
-| Agent | `avery@example.com` | Building and publishing a listing package; seven seeded listings, one a draft |
-| Agent | `blake@example.com` | Comparing offers and tracking deals to close; six seeded listings, one with four offers and one under contract |
-| Investor | `summit@example.com` | Two buy boxes (two listings match both); the backup offer on Blake's Inglewood deal; has a phone number, so match notices also arrive as texts |
-| Investor | `harbor@example.com` | One broad buy box (any home but land, anywhere) |
-| Investor | `ridge@example.com` | A deliberately narrow buy box (Westside condos: one seeded match); add a second one to see more |
-| Investor | `cobalt@example.com` | Offers on Blake's West Adams and Van Nuys listings, and the accepted offer on his Inglewood one |
-| Investor | `dune@example.com` | An offer on Blake's West Adams listing |
-| Operations | `morgan@example.com` | The operations console: each package's full history, failed deliveries and retries, simulated outages, the CRM comparison, and the legacy investor import |
-
-## A 15-minute tour
-
-With a window open for each role (see [Open it](#open-it)), follow these steps in order:
-
-1. **An agent publishes.** Sign in as `avery`, open the draft duplex, add a closing window, an
-   offer program, and a photo (any image on your computer), and publish. Matching runs at once.
-2. **Investors hear about it.** The sandbox page shows Harbor's match email (investors with a
-   phone number, such as Summit, also get a text). In the private window, sign in as `harbor`:
-   the listing is in the matched list. Open it, see why it matched, and make an offer. The seller's details are
-   never shown to investors.
-3. **The agent compares and accepts.** Sign in as `blake`. The West Adams listing already has
-   four offers side by side: accept one and move the deal through its milestones to closing. Or
-   mark it fallen through, promote a backup, and sign in as that investor to reconfirm.
-4. **An investor tunes a buy box.** As `ridge`, edit or add a buy box under **Buy boxes**. It is
-   matched at once against every listing still taking offers.
-5. **Operations sees everything.** As `morgan`, open a package's history: every match decision,
-   with the reason, and every delivery. Then try an outage (below), and import
-   [seed/legacy-investors.csv](seed/legacy-investors.csv) under **Investor imports**: 26 rows are
-   imported and 4 rejected with their reasons, and importing it again duplicates nothing.
-6. **A partner brand.** Open **http://partner.localhost:3000**: the same app under a partner's
-   name, colors, and logo (see **Switch brands** below).
-
-## Try an outage
-
-Emails, texts, and CRM updates leave through a transactional outbox and a Redis queue, so an
-outside service being down never fails anyone's action and loses nothing. PostgreSQL keeps each
-delivery's state: a delivery whose queue job is lost is queued again, a run that outlived its
-2-minute lease cannot overwrite a newer one's result, and a delivery whose job kept failing ends
-in **Failed jobs** rather than vanishing.
-
-1. Sign in as `morgan@example.com`, open **Simulations**, and set the CRM to **Down** and
-   messaging to **Garbage**.
-2. In another browser, sign in as `avery@example.com` and publish a package (or as an investor,
-   make an offer). It succeeds.
-3. Back as morgan, **Failed jobs** shows the deliveries retrying; after about five minutes of
-   retries they need attention. **Packages** → the package shows the same in its trace.
-4. Set both services back to **Up** and press **Retry all**. Every delivery is sent once: the
-   sandbox page (http://localhost:4100) shows the CRM record and the messages, and **CRM** shows the
-   listing in sync.
-
-## Switch brands
-
-The platform is white-label: every color, font, shape, name, and logo comes from the brand, stored
-in the database. Two brands are seeded, Clever Offers and a fictional partner, Larkspur Home Offers.
-
-- Open **http://partner.localhost:3000**: the partner's address opens the partner brand (most
-  browsers send `*.localhost` to your own machine; if yours does not, use the switcher).
-- Or use the **Brand** switcher on the home page, the sign-in page, or the style guide. The
-  choice is kept in a cookie.
-- **http://localhost:3000/design-system** is the living style guide: the brand's colors with their
-  values, type, spacing, shapes, and every component in each state.
-- As `morgan@example.com`, **Brands** edits a brand's token file (or uploads one). A file missing
-  a variable, or with text under 4.5:1 contrast, is refused with each problem listed; a saved one
-  changes every page at once.
-
-A new brand is a folder in [seed/brands/](seed/brands/) (`tokens.json`, `content.json`,
-`hosts.json`) and a logo in `apps/web/public/brands/<id>/`. Each brand's tokens are checked when
-the brand is loaded (required variables, contrast, safe logo paths), so a broken brand is refused.
-
-## Using S3 (optional)
-
-Photos go to the sandbox's storage by default. To use your own S3 bucket instead, create
-`.env.local` next to `.env`. Git and Docker builds ignore it, so your keys stay on your machine.
+**See idempotency work.** The api answers curl on port 4000. Send the same request twice with the
+same `Idempotency-Key`, and the second answer is the first one replayed, with
+`Idempotent-Replay: true`:
 
 ```sh
-STORAGE_PROVIDER=s3
-S3_BUCKET=<your bucket>
-S3_REGION=<its region, for example us-west-1>
-AWS_ACCESS_KEY_ID=<your key id>
-AWS_SECRET_ACCESS_KEY=<your secret>
-```
-
-Then start with both files, so the web's Content-Security-Policy allows the bucket (the web gets
-the bucket and region from `.env.local`, never the keys):
-
-```sh
-docker compose --env-file .env --env-file .env.local up --build
-```
-
-The bucket needs:
-
-- **Public photos, nothing else public.** Under Block public access, turn off the two settings
-  about bucket policies (keep the two about ACLs on), then add this bucket policy. It lets anyone
-  read listing photos at their plain address, so photo links never expire, while import files
-  stay private:
-
-  ```json
-  {
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Sid": "PublicListingPhotos",
-        "Effect": "Allow",
-        "Principal": "*",
-        "Action": "s3:GetObject",
-        "Resource": "arn:aws:s3:::<your bucket>/packages/*"
-      }
-    ]
-  }
-  ```
-
-- **A CORS rule** that allows `PUT` and `GET` from `http://localhost:3000` and
-  `http://partner.localhost:3000` with the `Content-Type` header, because the browser uploads
-  straight to the bucket.
-- **An IAM user** with `s3:PutObject` and `s3:GetObject` on `<bucket>/*`, and `s3:ListBucket`
-  on the bucket. Without `s3:ListBucket`, S3 answers 403 instead of 404 for an object that was
-  never uploaded.
-
-Run `docker compose up --build`. Delete `.env.local` to go back to the sandbox.
-
-## Try the api with curl
-
-The browser talks to the api through the web app, but the api answers curl directly on port 4000.
-Every POST, PUT, and PATCH from a signed-in user needs an `Idempotency-Key` header, so a retried
-request never runs twice. The recipes need only curl and a POSIX shell.
-
-```sh
-# Health: no sign-in needed.
-curl -s http://localhost:4000/api/v1/health
-# {"status":"ok","db":"ok"}
-
-# Sign in (here as operations) and keep the token.
 TOKEN=$(curl -s -X POST http://localhost:4000/api/v1/sessions \
   -H 'Content-Type: application/json' \
   -d '{"email":"morgan@example.com","password":"demo1234"}' \
   | sed -E 's/.*"token":"([^"]+)".*/\1/')
-
-# Send the match digests now. The same request with the same key again replays the first answer
-# (the same job ID) with `Idempotent-Replay: true`, and nothing runs twice.
 curl -si -X POST http://localhost:4000/api/v1/ops/match-digests \
   -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: digest-1'
-# HTTP/1.1 202 Accepted
-# {"jobId":"41bd25ba-…"}
-curl -si -X POST http://localhost:4000/api/v1/ops/match-digests \
-  -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: digest-1'
-# HTTP/1.1 202 Accepted
-# Idempotent-Replay: true
-# {"jobId":"41bd25ba-…"}
-
-# The same key with a different body is refused.
-curl -si -X POST http://localhost:4000/api/v1/ops/match-digests \
-  -H "Authorization: Bearer $TOKEN" -H 'Idempotency-Key: digest-1' \
-  -H 'Content-Type: application/json' -d '{"again":true}'
-# HTTP/1.1 422 Unprocessable Entity
-# {"error":"This Idempotency-Key was already used for another request","code":"IDEMPOTENCY_KEY_REUSED",…}
 ```
 
-A duplicate that arrives while the first request with its key is still running gets
-`409 Conflict` with `Retry-After: 1`; retried after that second, it gets the replayed answer.
-Every answer carries an `X-Request-Id`, which also appears in the logs and in error messages.
+For development: Node 24+ and pnpm 10, then `pnpm install`, `pnpm test` (unit, offline), and
+`pnpm test:integration` (needs Docker).
 
-## Prototype Shortcuts
+---
 
-What the prototype does more simply than production would, and the production approach.
+## Known shortcuts and their production path
 
-| Shortcut | Production approach |
+Recorded on purpose, so each one has a planned way out.
+
+| Shortcut | Production path |
 | --- | --- |
-| Encryption key and JWT secret committed in `.env` | KMS or a secrets manager; key rotation via the cipher's key-version prefix |
-| Each listing package has its own Property row; rows for the same physical home are linked only by `addressHash` | A shared physical-home record (parcel or APN) linking every listing of one house |
-| A homeowner who sells a second property becomes a second Seller record | Identity resolution that links or merges duplicate sellers |
-| Each listing package has its own Seller row (`ListingPackage.sellerId` unique), so one homeowner's sales are not grouped | A Person or Contact record that groups a homeowner's per-listing Seller rows, so the seller dashboard can sign them in once and show every sale; the same pattern as the physical-home record for Property |
-| One login per investor (User ↔ Investor is 1:1) | Several Users per investor company, with offers and audit entries recording the acting user (for example `submittedByUserId`) |
-| No seller access; the agent presents offers | Read-only seller dashboard: a SELLER role and unique `User.sellerId`, magic-link sign-in (so `passwordHash` becomes nullable or moves to a credentials table); Seller data unchanged |
-| Email/password demo auth, 8 h JWT, no refresh or MFA; each request checks in Postgres that the login is not banned, so a ban takes effect at once (T370; an inactive investor keeps access, T398) | SSO for agents and ops (Okta/Google), magic link or passkeys for investors, short-lived tokens with rotation and a revocation list |
-| Sandbox stand-ins for CRM, email/SMS, storage | HubSpot, SendGrid/Twilio, and S3 provider implementations behind the same ports (the S3 storage adapter is already built; see **Using S3**) |
-| Listing photos are public: anyone with a photo's link can open it, and the link never expires (the owner's decision, 2026-11-01, T326). Import files stay private. | A private bucket served through a CDN with signed cookies, or an app address that checks access and redirects to a short-lived link, so a leaked link stops working and access can be withdrawn |
-| Brands live in the database and are chosen per request by cookie, host, or `DEFAULT_BRAND_ID`, but emails and texts always carry the default brand's name, the brand's font must be registered in the web app's code to load, and content and hosts change only through the seed files (Sprint 7, T346–T353) | Each agent and investor belongs to a brand, so messages carry that brand; brand fonts are self-hosted files stored with the brand; content, hosts, and logos are edited in the console with design review; the theme CSS is served as a cached, versioned stylesheet from a CDN |
-| Static ZIP list: every US ZIP with its postal town and state (the twelve the seed uses carry Los Angeles neighborhood names). A listing at a ZIP that exists nowhere is still accepted, as an unknown city and state that only nationwide buy boxes match; a buy box or an import refuses such a ZIP, since it could never match (T421) | Address validation and geocoding provider |
-| The seed writes listings straight to Accepting offers, past the publish rule, so the empty lot has no photo; the seed photos are stored by the sandbox when it starts, so with `STORAGE_PROVIDER=s3` the seeded listings' photos are missing (T420). Every package an agent publishes still needs a photo | Seed data published through the same publish rule, with its photos uploaded through the configured storage provider |
-| `LogErrorReporterImpl` instead of Sentry | Sentry provider plus alert routing for needs-attention deliveries |
-| Tracing is a W3C `traceparent` trace ID carried in an `AsyncLocalStorage` request context and written as `trace_id` on every log line, with no spans, metrics, or dashboards | The OpenTelemetry SDK with HTTP, Express, and Postgres instrumentation reading the same context and header, exporting traces to a collector (Jaeger or Tempo); Prometheus metrics (request latency and errors, job queue depth and age, failed jobs, match run time) with Grafana dashboards and alerts |
-| Single PostgreSQL instance; the sandbox shares the server (separate schema) | Managed PostgreSQL with backups, read replica, and PITR; the sandbox does not exist in production |
-| Redis without persistence or HA | Managed Redis with AOF; the outbox in PostgreSQL already covers Redis loss |
-| Milestones entered manually by the agent | Title and escrow integrations as events |
-| Two brands seeded from JSON files (Clever and a fictional partner) | Brand onboarding through the ops theme API and the content/config layer, with design review |
-| The web app's Content-Security-Policy forbids framing, plugins, and outside form posts, but not inline scripts or styles (T362) | A nonce-based CSP set per request in proxy.ts (`script-src 'nonce-…' 'strict-dynamic'`), with the brand's style element carrying the nonce |
-| No rate limiting. CSRF is covered by a SameSite=Lax cookie plus an `Origin`/`Host` check on every state-changing BFF route (meets XII), but there are no synchronizer tokens. | Edge rate limits and a WAF; add double-submit CSRF tokens if the BFF is ever exposed cross-site |
-| Plain HTTP (no TLS) on localhost and the Compose network | TLS at the load balancer or ingress; mTLS between services |
-| No horizontal scaling tests | Multiple worker replicas are already safe (`SKIP LOCKED`, a job lease the running worker renews, unique constraints); load test before launch |
-| "Why not matched?" replays non-matches with the current evaluator and flags `replayedWithNewerRules` when the rules changed since matching ran | Keep every released `EVALUATOR_VERSION` runnable (versioned evaluator modules) so old decisions replay exactly |
-| A buy box save re-matches against every package still accepting offers in one job | Incremental matching by changed criteria |
-| List routes have no cursor pagination: each returns a plain array, and the delivery list stops at the newest 200 (T386). The agent's and the investor's package lists read the properties in one query but each row's photos and match count or offer separately, as the CRM comparison does each package's deliveries | Keyset pagination as contracts/api.md describes (`?cursor=&limit=`, `{ items, nextCursor }`; open task T016), and list read models that join or batch every per-row read |
-| Not built, though the spec or the api contract names them (T386; each marked in contracts/api.md): the offer revision history route (FR-042; open task T150; revisions are stored and audited); the near-miss summary (FR-062, a SHOULD; T223); an operations editor for the fee assumptions (`/ops/config`; FR-051 is met by the `netProceeds` Config row, read on every comparison and changed in the database); the config-driven package form and its wizard (`/package-form`; T130, T134); a special-circumstances field and an offer deadline chosen at publish (FR-011; publish sets 72 hours and the agent extends it); `/listing-packages/:id/matches` (the counts are on the package view, each match in the ops trace); the job status route `/jobs/:jobId` and a 202 for a material edit (T189); and the shared Table, Tabs, Notice, EmptyState, LoadingState, and ErrorState components in packages/ui (FR-094; T087; the screens use their own) | Build each against the contract already written, with the same service-owned rules and tests |
-| The investor import writes each CSV row in its own transaction and queues one MATCH_BUY_BOX job per changed box (T395 review; safe for long files since the job keeps its lease, T378) | Chunks of 100–250 rows per transaction with a savepoint per row, so one refused row does not undo its chunk, and one re-match pass for the batch |
-| "A STATES or ZIPS buy box has at least one place" is enforced by the service and the import, not the database (T395 review) | A deferred constraint trigger on BuyBoxGeography, so a direct SQL or seed write cannot leave a box with no places |
-| Each brand's token file is a complete set: Larkspur repeats about 80% of Clever's tokens (156 of 195 values identical), so a shared fix is made in every file (T408, decided by the owner 2026-11-01) | A neutral base theme defines every token (structure, spacing and type scales, component tokens, motion, default colors); each brand stores only its overrides (palette, fonts, radius, logo, copy, a few semantic mappings); the api merges base and overrides on every read and validates the merged result; the ops brand editor shows inherited versus overridden values with reset to base |
-
-## Development
-
-Node 24+ and pnpm 10 (`npx pnpm@10.34.9` works if pnpm is not installed).
-
-```sh
-pnpm install
-pnpm lint
-pnpm typecheck
-pnpm test               # unit tests, offline
-pnpm test:integration   # needs Docker (Testcontainers)
-```
-
-### End-to-end tests
-
-Browser tests of the critical journeys (sign-in and route guards, publishing with a photo, buy box
-matching, offers, the deal from deadline to reconfirmed backup, the operations console and its
-outages, white-label, and accessibility with axe) live in `e2e/` and use Playwright with Chromium.
-They drive a running stack and create their own packages and buy boxes, so they need only the
-demo accounts. Start the stack, install Chromium once, then run them:
-
-```sh
-docker compose up --build -d
-pnpm --filter @clever/e2e exec playwright install chromium
-pnpm test:e2e
-```
-
-They take about 6 minutes: one test waits out the worker's ten delivery attempts during a CRM
-outage. They add data to the stack they run against, and switch the stand-in services' outage
-modes (always back to up). To run them against another stack, set its addresses:
-`E2E_BASE_URL` (default `http://localhost:3000`), `E2E_PARTNER_URL`
-(`http://partner.localhost:3000`), `E2E_API_URL` (`http://localhost:4000`), and
-`E2E_SANDBOX_URL` (`http://localhost:4100`). The sandbox must accept uploads from the web and
-partner origins (`WEB_ORIGIN`) and the web must name the sandbox's public address
-(`PUBLIC_SANDBOX_URL`). On failure, `e2e/test-results/` holds a trace, screenshot, and video per
-test (`pnpm --filter @clever/e2e exec playwright show-trace <trace.zip>`).
-
-They run by hand, not in CI: start the stack, then run `pnpm test:e2e` before changing a user
-journey, or whenever you want the full flows checked. They are not part of `pnpm test`, and the
-images never contain a browser.
-
-### Checking the limits
-
-The prototype must build within 20 minutes and show the home page within 5 minutes on a 2 GB
-x86_64 machine. On such a machine (for example a 2 GB cloud VM with Docker), from the unzipped
-folder:
-
-```sh
-scripts/verify-limits.sh --clean   # --clean empties Docker's build cache first, so the build is timed cold
-```
-
-It times the build and the home page's first answer, prints each container's memory and the total,
-and exits 1 if a limit is broken (for memory, a total over 2,048 MiB).
-`scripts/submission/rehearse.sh <zip>` checks the same limits in a simulated 2 GB, 2-core machine;
-CI runs it on every push to `main` and on pull requests that change code or the build.
-
-### How it was built
-
-The project was built spec-first with GitHub Spec Kit (specification, plan, task list) under a
-written engineering constitution, by an engineering lead directing AI agents. The key decisions,
-their alternatives, and their trade-offs are in [docs/adr](docs/adr/). The spec documents, task
-log, and constitution are kept private and are available on request. Comments in the code cite
-them by task number (for example `T367`) and constitution principle (for example `XII`).
+| Demo encryption key and JWT secret committed in `.env` | A secrets manager and KMS, with key rotation through the cipher's key-version prefix |
+| Email and password sign-in, 8-hour JWT | SSO for staff; magic links or passkeys for investors; short-lived tokens with rotation |
+| Stand-ins for the CRM, email, and SMS | Vendor adapters behind the same ports (the S3 adapter already shows the swap) |
+| Trace IDs in logs, no spans or metrics | OpenTelemetry traces, Prometheus metrics, and alerts on delivery backlog and job lag |
+| Single PostgreSQL instance; Redis without persistence | Managed PostgreSQL with replicas and point-in-time restore; managed Redis (the outbox already covers Redis loss) |
+| No rate limiting; plain HTTP locally | Edge rate limits and a WAF; TLS at the load balancer |
+| A buy box change re-matches every open listing in one job | Incremental matching by changed criteria |
+| No cursor pagination on list routes | Keyset pagination |
